@@ -50,6 +50,7 @@ const win = require('./shell-window.js');
 const market = require('./shell-market.js');
 const tray = require('./shell-tray.js');
 const update = require('./shell-update.js');
+const ipc = require('./shell-ipc.js');
 
 const APP_NAME = 'Bigfish';
 const HOST = '127.0.0.1';
@@ -207,34 +208,6 @@ if (!gotLock) {
     backend.stopDsh();
   });
 
-  // Pet drag + click（拖动移动由主进程按全局光标绝对定位驱动，设计档 PET-DRAG §2.2）
-  ipcMain.on('pet-drag-start', drag.handlePetDragStart);
-  ipcMain.on('pet-drag-heartbeat', drag.handlePetDragHeartbeat);
-  ipcMain.on('pet-drag-end', drag.handlePetDragEnd);
-  ipcMain.on('pet-clicked', pet.handlePetClicked);
-  ipcMain.on('pet-right-clicked', pet.handlePetRightClicked);
-  ipcMain.on('pet-set-ignore-mouse', drag.handlePetSetIgnoreMouse);
-
-  // 插件市场 IPC
-  ipcMain.handle('market:list', market.marketList);
-  ipcMain.handle('market:state', market.marketState);
-  ipcMain.handle('market:install', market.marketInstall);
-  ipcMain.handle('market:uninstall', market.marketUninstall);
-  ipcMain.handle('market:disable', market.marketDisable);
-  ipcMain.handle('market:enable', market.marketEnable);
-  ipcMain.handle('market:restart', market.marketRestart);
-  ipcMain.handle('market:update', market.marketUpdate);
-  ipcMain.handle('market:update-all', market.marketUpdateAll);
-  ipcMain.on('market-open-external', market.marketOpenExternal);
-
-  // 更新窗口 IPC（U-13：关闭只关窗不取消；取消 → 中止在途并清临时，回到可重试态）
-  ipcMain.on('upd:cancel', update.handleUpdCancel);
-  ipcMain.on('upd:install-now', update.handleUpdInstallNow);
-  ipcMain.on('upd:retry', update.handleUpdRetry);
-  ipcMain.on('upd:close-window', update.handleUpdCloseWindow);
-
-  // 好感度 / 兑换屋 IPC
-  ipcMain.handle('affinity:view', affinity.handleAffinityView);
-  ipcMain.handle('affinity:exchange', affinity.handleAffinityExchange);
-  ipcMain.handle('affinity:buy', affinity.handleAffinityBuy);
+  // IPC 通道注册（shell-ipc.js——通道 → 域处理器函数，薄绑定）
+  ipc.register();
 }
