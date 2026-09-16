@@ -1824,7 +1824,7 @@ function maybeShowModeDialog() {
       '🐳 鲸鱼模式：桌宠鲸鱼娘陪伴，带背景图（默认）。',
       '🧘 专注模式：隐藏桌宠，恢复纯色背景，适合专心工作学习。',
       '',
-      '之后可以在右下角托盘 → 模式 随时切换。',
+      '之后可以在托盘菜单切换「🐳 鲸鱼模式 / 🧘 专注模式」。',
     ].join('\n'),
     buttons: ['鲸鱼模式', '专注模式'],
     defaultId: 0,
@@ -1860,40 +1860,45 @@ function resetBackground() {
 function rebuildTrayMenu() {
   if (!tray) return;
   const menu = Menu.buildFromTemplate([
-    { label: '显示 / 隐藏 Bigfish', click: () => toggleMainWindow() },
-    { label: '插件市场', click: () => createMarketWindow() },
-    { label: '鲸鱼娘兑换屋', click: () => openExchangeWindow() },
-    // 找回鲸鱼娘（US-14）：专注模式下桌宠窗口不存在 ⇒ 置灰不可用
-    { label: '找回鲸鱼娘', enabled: settings.mode !== 'focus', click: () => summonPet() },
-    { type: 'separator' },
-    // 更新分组（U-7：首条分隔线后，「更换背景」组之前）
+    { label: '显示 / 隐藏主界面', click: () => toggleMainWindow() },
     { label: '检查更新', click: () => { manualCheckUpdates(); } },
-    { label: '自动检查更新', type: 'checkbox', checked: settings.autoCheckUpdates, click: (item) => setAutoCheckUpdates(item.checked) },
     { type: 'separator' },
-    { label: '更换背景', click: () => chooseBackground() },
+    // 模式提级为一级 radio（US-4 / 用户点名项）
+    { label: '🐳 鲸鱼模式', type: 'radio', checked: settings.mode !== 'focus', click: () => setMode('whale') },
+    { label: '🧘 专注模式', type: 'radio', checked: settings.mode === 'focus', click: () => setMode('focus') },
+    { label: '更换背景…', click: () => chooseBackground() },
     { label: '恢复默认背景', click: () => resetBackground() },
     { type: 'separator' },
+    { label: '插件市场', click: () => createMarketWindow() },
+    // 鲸鱼娘兑换屋：一级常驻项（无 enabled 条件）——专注模式下唯一可达入口（US-4 硬要求 / DD-3）
+    { label: '鲸鱼娘兑换屋', click: () => openExchangeWindow() },
     {
-      label: '模式',
+      label: '设置',
       submenu: [
-        { label: '🐳 鲸鱼模式（桌宠 + 背景图）', type: 'radio', checked: settings.mode !== 'focus', click: () => setMode('whale') },
-        { label: '🧘 专注模式（隐藏桌宠 + 纯色背景）', type: 'radio', checked: settings.mode === 'focus', click: () => setMode('focus') },
+        { label: '自动检查更新', type: 'checkbox', checked: settings.autoCheckUpdates, click: (item) => setAutoCheckUpdates(item.checked) },
+        { label: '任务完成时通知', type: 'checkbox', checked: settings.notifyOnComplete, click: (item) => setNotify(item.checked) },
+        { label: '开机自启', type: 'checkbox', checked: settings.launchAtLogin, click: (item) => setAutoStart(item.checked) },
+        {
+          label: 'Windows 右键菜单',
+          submenu: [
+            { label: '安装「用 Bigfish 打开」', click: () => installContextMenu() },
+            { label: '卸载', click: () => uninstallContextMenu() },
+          ],
+        },
       ],
     },
-    { label: '任务完成时通知', type: 'checkbox', checked: settings.notifyOnComplete, click: (item) => setNotify(item.checked) },
-    { label: '开机自启', type: 'checkbox', checked: settings.launchAtLogin, click: (item) => setAutoStart(item.checked) },
     { type: 'separator' },
     {
-      label: 'Windows 右键菜单',
+      label: '高级',
       submenu: [
-        { label: '安装「用 Bigfish 打开」', click: () => installContextMenu() },
-        { label: '卸载', click: () => uninstallContextMenu() },
+        // 找回鲸鱼娘（US-14）：专注模式下桌宠窗口不存在 ⇒ 置灰不可用；低频救援动作归「高级 ▸」（DD-16）
+        { label: '找回鲸鱼娘', enabled: settings.mode !== 'focus', click: () => summonPet() },
+        { label: '重置插件配置（保留 API Key 和会话）', click: () => resetConfigKeepSessions() },
+        { label: '彻底恢复出厂（清空所有）', click: () => resetAllData() },
+        { label: '卸载 Bigfish', click: () => uninstall() },
       ],
     },
     { type: 'separator' },
-    { label: '重置插件配置（保留 API Key 和会话）', click: () => resetConfigKeepSessions() },
-    { label: '彻底恢复出厂（清空所有）', click: () => resetAllData() },
-    { label: '卸载 Bigfish', click: () => uninstall() },
     { label: '退出', click: () => { quitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
