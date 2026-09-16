@@ -772,6 +772,20 @@ function createWindow() {
   mainWindow.loadURL(`http://${HOST}:${port}`);
 }
 
+/** 显示并聚焦主界面（US-1「只开不隐」；F4 起为唯一显示入口）。 */
+function showMainWindow() {
+  if (!mainWindow) {
+    createWindow();
+    if (!mainWindow) return;
+    // 建窗路径（零窗口时）：等 ready-to-show 首帧就绪再显示，避免露出未加载的空窗
+    mainWindow.once('ready-to-show', () => { mainWindow?.show(); mainWindow?.focus(); });
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 function toggleMainWindow() {
   ensurePet();
   if (!mainWindow) { createWindow(); return; }
@@ -2661,7 +2675,7 @@ if (!gotLock) {
     // 原地点击也起过跟随循环（按下即起）——点完即止，保证拖动状态在所有路径下清空
     petStopDrag('pointerup');
     wakePet();
-    toggleMainWindow();
+    showMainWindow(); // 只开不隐（US-1 / R3）；隐藏只走托盘项
     petSay('要我帮忙吗？');
     // 点击 → 开心动画（新素材）
     setPetState('happy');

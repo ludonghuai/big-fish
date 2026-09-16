@@ -95,7 +95,10 @@ function endDrag(reason) {
   window.petAPI.dragEnd(reason);
 }
 
-window.addEventListener('pointerdown', (e) => beginDrag(e));
+window.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return; // 左键守卫（F1）：仅左键进入拖动 / 点击链；右键链唯一入口 = contextmenu
+  beginDrag(e);
+});
 window.addEventListener('pointermove', (e) => {
   if (dragging) {
     // 自愈：pointerup 丢失（键已松开）——按既有的点击/拖动语义收尾，避免误触贴墙挣脱分支
@@ -108,9 +111,10 @@ window.addEventListener('pointermove', (e) => {
     return;
   }
   // 伪取消的对称自愈：仍按住 + 命中点在窗口内 → 重新起拖（设计档 §2.2.4.1）
-  if (e.buttons !== 0 && isInteractivePoint(e.clientX, e.clientY)) beginDrag(e);
+  if ((e.buttons & 1) !== 0 && isInteractivePoint(e.clientX, e.clientY)) beginDrag(e);
 });
 window.addEventListener('pointerup', (e) => {
+  if (e.button !== 0) return; // 左键守卫（F1）：仅左键走「点松收尾」（moved 分支不变）
   if (!dragging) return;
   // 点击 / 拖动判定沿用既有语义：屏幕坐标位移 > 5px 判为拖动
   if (moved) endDrag('pointerup');
