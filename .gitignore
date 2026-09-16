@@ -1,0 +1,14 @@
+node_modules/
+dist/
+electron-dist/
+node-runtime/
+.npm-cache/
+.electron-cache/
+.electron-builder-cache/
+.dsh-home/
+.dsh-home-packaged/
+*.log
+.DS_Store
+probe-electron.js
+download-electron.js
+download-node.js
