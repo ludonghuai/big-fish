@@ -13,7 +13,6 @@
 |---|---|---|---|---|---|
 | R1 | 桌宠拖拽跟手修复（Windows） | `docs/requirements/PET.md` §三 US-1…US-8 / §四 NFR-1…NFR-4 | `docs/batches/B01-pet-drag-follow.md` §2 | 在途 | 归批（B01） |
 | R2 | 自动更新：App 本体（含内置技能/插件随包更新）+ Harness（npm latest）+ 已装插件（注册表版本对比）；更新源统一迁 Gitee | `docs/requirements/UPDATE.md` §一 / §三 US-1…US-9 | `docs/batches/B02-auto-update.md` §2 + `docs/batches/B04-harness-activate-fix.md` §2 | 待核销 | 归批（B02 实施 + B04 AC9 修复轮）——真机复测 AC9 通过（B04 §6.2）；剩 AC5/AC10/AC11/AC12 为发布门项（见 T8） |
-| R3 | App 更新安装包清理——已下载完成的安装包不在磁盘累积（下次启动回收，不在安装器运行时删） | `docs/requirements/UPDATE.md` §三 US-10 | `docs/batches/B05-installer-cleanup.md` §2 | 在途 | 归批（B05） |
 | R4 | 桌宠多屏几何（多屏丢失 / 跨屏尺寸与抓取点 / 落点校正） | `docs/requirements/PET.md` §三 US-9…US-14 / §四 NFR-5…NFR-8 | `docs/batches/B03-pet-multimonitor.md` §2 | 在途 | 归批（B03 实机验收——13 轮修正均机检结，但实机面未跑，见 T9） |
 
 ## 二、技术待办

@@ -322,7 +322,7 @@ error（auto）：仅写日志（静默）；error（manual）：错误弹窗 + 
 
 - **落点与产物**：App 下载唯一落点 = `userData/updates/`（`updater.js:118-120`）——流式写 `path.basename(url) + '.part'`（`fileBase` = `updater.js:117`，**不保证有扩展名**：假源桩 URL `/installer` 即产出无扩展名的成品 `updates/installer`，实证 `.test-userdata/updater.log:4`）→ 校验前改名去 `.part`（`updater.js:159`）。
 - **回收范围 = 该目录全部条目**（文件与子目录一律递归删；目录本身保留）：既有实现只删 `*.part`（`updater.js:465`）——已完成的安装包因此长期留在磁盘（`docs/batches/B05-installer-cleanup.md` §1.6 事实 1/3；设计者亲验实证 = `.test-userdata/updates/installer`，4125 字节，立于 2026-09-16 13:17、历三次启动（`updater.log:7/19/29`）未被回收）。
-- **时机 = 下次启动**（为什么不是即时删）：安装器由 `installApp()` 以 `spawn(…, {detached:true})` 拉起后应用随即退出（`updater.js:191-206`／`main.js:2594-2600`），此刻安装器仍在运行、其**自身可执行文件被 Windows 锁定**——即时删会失败或危及安装；启动清理天然居于「安装器已结束」之后（裁定依据 = `docs/batches/B05-installer-cleanup.md` §1.4）。
+- **时机 = 下次启动**（为什么不是即时删）：安装器由 `installApp()` 以 `spawn(…, {detached:true})` 拉起后应用随即退出（`updater.js:191-206`／`upd:install-now` 处理器 `main.js:2781-2787`），此刻安装器仍在运行、其**自身可执行文件被 Windows 锁定**——即时删会失败或危及安装；启动清理天然居于「安装器已结束」之后（裁定依据 = `docs/batches/B05-installer-cleanup.md` §1.4）。
 - **失败面 = best-effort**：单条删除失败（占用 / 权限）不抛、不阻断启动，本次跳过、**下次启动再试**（与 Harness 版本 GC 同口径，L7）。占用是**正常路径下的常见情形**——安装器 `runAfterFinish` 拉起新版时其 exe 可能仍被自身进程锁定，故「首次启动残留 → 下次启动清空」是设计内行为，不是缺陷。
 - **无状态损失**：`pendingAppFile` 为进程内变量（`main.js:343` 声明、`main.js:468` 赋值），跨启动不可达——被回收的「已下载未安装包」在重启后本就不存在可用引用，用户重走「检查更新 → 下载」即既有「可重试」语义（US-2 / US-5）。
 - **不引入 in-flight 守卫**：唯一调用点 = boot（`main.js:600`，在 `scheduleUpdateChecks()` 内 `init(ctx)` 之后），此刻无在途 App 下载（下载只在用户确认后触发）；与 Harness 面「`harnessInstallInFlight` → 跳过本轮」（`updater.js:469`）不同，那一处因 `runStoreCleanup()` 会在成功重启后再被调用、可与安装在途重叠。
@@ -520,12 +520,12 @@ node make-latest.js [--version <v>] [--note <文本>]
 - B02 初版 **11 行**（本节主表 `update` 6 + `harness` 3 + `plugin update` 1 + `update gate` 1）。
 - B04 **新增 3 行**（`harness activate verify`、`harness migrate`、`harness cleanup`）、**就地修改 2 行**（`harness install phase=… detail` 口径化；`harness activate dsh active …` 附 `version=`）。
 - B05 **新增 1 行**（`update cleanup type=app removed=<n> failed=<m>`）——**终态 = 15 行**（14 + 1）。
-- **计数口径（D3，评审 #2）**：本节「行数」只计**主格式行**（主表 `[ISO] …` 起各行及其 `detail` / 取值子行，逐行点算 = 15）；本节「失败 / 取消变体」段的 **6** 处变体另行计价、**不并入**本数——故本节机检计数唯一为 **15**（不因变体另得第二值）。
+- **计数口径（D3，评审 #2）**：本节「行数」只计**主格式行**（主表 `[ISO] …` 起各行及其 `detail` / 取值子行，逐行点算 = 15；`detail` / 取值子行**随所属主行计价、不另计**——机检 = `[ISO]` 前缀行数 = 15）；本节「失败 / 取消变体」段的 **6** 处变体另行计价、**不并入**本数——故本节机检计数唯一为 **15**（不因变体另得第二值）。
 
 **失败 / 取消变体（通用口径——B05 补齐漏登记，一致性修正，非新增语义）**：本节主表各行在同一 `[ISO] …` 前缀下另有**实现已产出、而本节枚举此前漏列**的变体——
 `update download type=app fail detail=…`（`updater.js:182`）、`update download type=app canceled`（`updater.js:179`）、
 `update install type=app fail detail=…`（`updater.js:203`）、`update install type=app open-path fail detail=…`（`updater.js:198`）、
-`plugin update spec=… result=skip detail=no-installed-version`（`main.js:1966`）、`harness cleanup active=n/a removed=0 adopted=none detail=…`（`updater.js:442`，异常面）。
+`plugin update spec=… result=skip detail=no-installed-version`（`main.js:2149`）、`harness cleanup active=n/a removed=0 adopted=none detail=…`（`updater.js:442`，异常面）。
 取证时按「阶段 + 字段前缀」匹配；新增任何 `result=` / `ok=` 取值或新阶段行须同步本表。
 
 写入口：updater.js（update / harness 域阶段行 + 上述三条新增行）+ main.js（编排域两行 `dsh active` / `backend ready`）。
@@ -537,8 +537,8 @@ node make-latest.js [--version <v>] [--note <文本>]
 |---|---|---|---|---|
 | `updater.js` | 486 | ① `startupCleanup` 的 App 面由「只删 `*.part`」扩为「回收 `userData/updates/` 全部条目」（`L457-471`；缺陷点 = `L465`），逐条 best-effort（占用/权限失败跳过）；② 该面落 `update cleanup` 取证行（§2.2.9）；③ `rm` 辅助函数（`L458-460`）随唯一调用点退场 | +约 5 / −约 2 | 预估 ≈489（**须 < 500**；实测回填于批次档 §5） |
 | `docs/requirements/UPDATE.md` | 134 | 新增 US-10（§三）+ §二 范围段 / §三 验收编号来源 / 头部关联批次 同步 + 变更记录一行 | **+12** | **146**（实测；本批已落地） |
-| `docs/design/AUTO-UPDATE.md`（本档） | 748 | B05 修订面（§一 / §2.1 / §2.2.3 / §2.2.4 / §2.2.9 / §2.3 / §2.4–§2.6 / §3.1–§3.3 / §四）+ 评审修正轮 3 处（评审 #1/#2/#3） | +约 90 | **838**（实测内容行口径，含修正轮） |
-| `main.js` | 2640 | **不改**——调用点 `L600`（在 `init(ctx)` 之后）与日志落点 `updaterLog`（`L347-353`）均不变；`pendingAppFile`（`L343` / `L468`）语义不变 | 0 | 2640 |
+| `docs/design/AUTO-UPDATE.md`（本档） | 748 | B05 修订面（§一 / §2.1 / §2.2.3 / §2.2.4 / §2.2.9 / §2.3 / §2.4–§2.6 / §3.1–§3.3 / §四）+ 评审修正轮 **5 处**（轮次 1：#1/#2/#3；轮次 2：#1/#4） | +约 90 | **839**（实测内容行口径，含两轮修正） |
+| `main.js` | **2827**（2026-09-16 重测更正；原记 2640 为 B04 收口值） | **不改**——调用点 `L600`（在 `init(ctx)` 之后）与日志落点 `updaterLog`（`L347-353`）均不变；`pendingAppFile`（`L343` / `L468`）语义不变 | 0 | **2827** |
 | `harness-store.js` | 332 | **不改**——Harness 版本库面；本批不动 Harness 回收语义（B04 已定） | 0 | 332 |
 | `update-lib.js` | 90 | **不改**——纯函数面（AC8 回归面） | 0 | 90 |
 | `update.html` / `update.js` / `update-preload.js` | 92 / 104 / 10 | **不改**——回收面零 UI（不弹窗、不气泡、不开窗） | 0 | 不变 |
@@ -660,7 +660,7 @@ node make-latest.js [--version <v>] [--note <文本>]
 - **O2（发现即报告，一致性面）**：`market.js:473` 的镜像来源标签「精选镜像目录（GitHub）」不在批次档 AC6 五处清单内，但与本批兜底源迁移同一语义面——本设计将其并入清理（标签随源迁移）；`main.js:1670` 注释同批同步。
 - **O3（发现即报告，文档地图陈旧）**：`docs/README.md` §二的当前文档表未登记 `docs/requirements/UPDATE.md`、`docs/design/AUTO-UPDATE.md`、`docs/batches/B02-auto-update.md`、`docs/batches/B04-harness-activate-fix.md`（该表只列 PET / B01 / B03 系）——B02 §6.5 已声明「待各会话收口后由主 agent 统一更新」。本设计不改（批次档 B04 §1.7 列 `docs/README.md` 为不触碰面），仅报告。
 - **O4（发现即报告，贴线文件）**：`market.js` 实测 500 行，已贴「单文件 > 500 行须拆分」硬上限（B02 评审 #5 定的守住线）。本批不动该文件；拆分裁决仍归 T2 评估。
-- **O5（发现即报告 + 一致性修正，一致性面）**：§2.2.9 的行枚举此前漏登记 6 处**实现已产出**的失败 / 取消变体（`updater.js:179/182/198/203/442`、`main.js:1966`）——本批补齐为「失败 / 取消变体（通用口径）」段（非新增语义；属 B02 交付即存在的文档与代码不一致）。已修，随本批落档。
+- **O5（发现即报告 + 一致性修正，一致性面）**：§2.2.9 的行枚举此前漏登记 6 处**实现已产出**的失败 / 取消变体（`updater.js:179/182/198/203/442`、`result=skip` 取证行 `main.js:2149`）——本批补齐为「失败 / 取消变体（通用口径）」段（非新增语义；属 B02 交付即存在的文档与代码不一致）。已修，随本批落档。
 - **O6（发现即报告，台账指针已可收回）**：`docs/TODO.md` R3 已登记本需求（挂 `docs/requirements/UPDATE.md` §三 US-10（待建）与 `docs/batches/B05-installer-cleanup.md` §2（待建），status=待设计）——本次两处「（待建）」均已落地（US-10 已写入需求档；§2 由本角色落笔）；台账的「（待建）」字样与 status 推进（待设计 → 在途）归主 agent（台账写权不在本角色）。
 - **O7（发现即报告，台账证据陈旧）**：`docs/TODO.md` T4 的证据行「全仓无测试文件」与现状不符——本仓现有 3 个测试文件（`tests/update-lib.test.js`、`tests/update-stub.mjs`、`tests/harness-store.test.js`，B02/B04 交付）；其 `package.json:13-21` 行号亦已漂移。台账写权在主 agent，本角色仅报告。
 
@@ -836,3 +836,4 @@ node make-latest.js [--version <v>] [--note <文本>]
 | 2026-09-16 | **B04 实施收口修正轮**（批次档 §5.2 / §5.6 披露 1/2/4/5 落地）：§2.3 表 5 个改动文件「末行数」改按终态实测（2640 / 486 / 332 / 113 / 269）+ 口径说明同步；§2.3 拆分计划就地落「>300 行收口复核结论 = 保持单文件」（依 R3 不升级体量裁定）；§2.2.1 `activate()` 补指针写入失败面；§2.2.4 startupCleanup 补「版本读数不可得 → 回收」子状态。**不改需求档。** |
 | 2026-09-16 | **B05 评审修正轮**（评审 #1/#2/#3 落地）：§2.2.3「实现形态」「取证行」拆两类（① 目录不存在 `ENOENT` → `removed=0 failed=0` 仍落取证行；② 枚举失败 `EACCES`/`EPERM`/`ENOTDIR` → `… detail=read-fail`，不并入 `failed`）； |
 |  | §2.2.9 主行补 `detail=read-fail` 子形态 + 行数口径注明「15 = 主格式行 / 6 处变体不并入」（两处「上表」相对指针改「本节主表」）；§2.3 按实测对账（需求档 134 → 146 / +12）+ 补本档自身行（748 → **838**）+ 表口径注明「文档行按实测 / 代码行按预估」；§3.1 注 B05-1 ③ 补枚举失败期望行（不入本轮机检集）。 |
+| 2026-09-16 | **B05 评审修正轮 2**（评审 #1/#4 落地）：§2.3 `main.js` 行重测更正（2640 → **2827**，末行数同步）；§2.2.3 / §2.5 O5 / §2.2.9 变体段的 `main.js` 行号指针改符号锚定（现行为准：`upd:install-now` 处理器 `main.js:2781-2787`、`result=skip` 取证行 `main.js:2149`）；§2.2.9 口径行补「`detail` / 取值子行随所属主行计价、不另计」半句；本档行数 838 → **839**。**不改需求档。** |

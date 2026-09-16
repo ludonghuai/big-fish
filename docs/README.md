@@ -17,16 +17,16 @@
 | 文档 | 层 | 状态 | 内容 |
 |---|---|---|---|
 | `docs/requirements/PET.md` | 需求档 | 生效 | 桌宠板块需求：拖拽跟手（US-1…US-8、NFR-1…NFR-4，B01）＋ 多屏几何与可见性（US-9…US-14、NFR-5…NFR-8，B03） |
-| `docs/requirements/UPDATE.md` | 需求档 | 他会话在途（状态未经本会话核实） | 自动更新板块需求：App 本体 / Harness 后端 / 已装插件 / 发布侧（条目 US-1…US-10、NFR-1…NFR-4；B02 ＋ B05 修订面） |
+| `docs/requirements/UPDATE.md` | 需求档 | 生效 | 自动更新板块需求：App 本体 / Harness 后端 / 已装插件 / 发布侧（条目 US-1…US-10、NFR-1…NFR-4；B02 ＋ B05 修订面） |
 | `docs/design/PET-DRAG.md` | 设计档 | 已批准并实现 | B01 批次拖拽跟手设计（选型对比 / 契约 / 受影响文件 / 决策 / 用例表） |
 | `docs/design/PET-MULTIMONITOR.md` | 设计档 | 已批准（实施中，含 E6 证伪后的设计修正轮） | B03 批次桌宠多屏几何与可见性设计（取屏策略 / DPI 口径 / 跨屏拖重锚 / 持久化与找回 / 用例表 TC-1…TC-28）；设计评审已通过、修正轮已落地并经用户批准；E6 实证收口后的设计修正轮（尺寸策略重写）已落档，实施进行中 |
-| `docs/design/AUTO-UPDATE.md` | 设计档 | 他会话在途（状态未经本会话核实） | 自动更新设计（App 本体 / Harness / 插件 / 发布侧）；回指 `docs/requirements/UPDATE.md` 的 US-1…US-10、NFR-1…NFR-4；关联批次 B02 / B04 / B05 |
+| `docs/design/AUTO-UPDATE.md` | 设计档 | 已批准并实现（B05 面核销于 2026-09-16；B02 / B04 面状态见各自批次档 §6） | 自动更新设计（App 本体 / Harness / 插件 / 发布侧）；回指 `docs/requirements/UPDATE.md` 的 US-1…US-10、NFR-1…NFR-4；关联批次 B02 / B04 / B05 |
 | `docs/batches/B01-pet-drag-follow.md` | 批次档 | 在途 | B01 批次六段记录（§1 立案 … §6 核销） |
 | `docs/batches/B02-auto-update.md` | 批次档 | 他会话在途（状态未经本会话核实） | B02 批次六段记录（自动更新：App 本体 / Harness 后端 / 已装插件） |
-| `docs/batches/B03-pet-multimonitor.md` | 批次档 | 在途 | B03 批次六段记录（§1 立案 / §2 任务书 / §3 设计评审已落、评审修正轮已落地 / §5 实施记录已落（§5.1–§5.11）；§4 与 §6 待落） |
+| `docs/batches/B03-pet-multimonitor.md` | 批次档 | 在途（实机验收面待用户） | B03 批次六段记录（§1–§6 全落：立案 / 任务书 / 设计评审 / 评审裁决 / 实施记录 §5.1–§5.11 / 验收核销 §6.1–§6.7）；跨屏突跳（第 13 轮）与多屏实机验收待用户三屏环境（见 `docs/TODO.md` T9） |
 | `docs/batches/B04-harness-activate-fix.md` | 批次档 | 他会话在途（状态未经本会话核实） | B04 批次六段记录（Harness 更新激活修复：junction 失效） |
-| `docs/batches/B05-installer-cleanup.md` | 批次档 | 他会话在途（状态未经本会话核实） | B05 批次六段记录（App 安装包清理） |
-| `docs/TODO.md` | 台账 | 生效 | 需求池（R1…R3，3 条）与技术待办（T1 / T2 / T4 / T5 / T7 / T8，6 条；T3 / T6 已核销、在归档档）：一条一行，挂需求档节 + 批次档 §2 / 归属档节 + 最小证据行；归档档 = `docs/TODO-archive.md` |
+| `docs/batches/B05-installer-cleanup.md` | 批次档 | 已核销（2026-09-16） | B05 批次六段记录（App 安装包清理：§1 立案 / §2 任务书与 §2.7·§2.8 更正 / §3 设计评审两轮 pass / §4 裁决与批准（§4.6·§4.7）/ §5 实施记录 / §6 验收核销）；代码改动 = `updater.js`（486 → 497 行）；台账 R3 已核销归档 |
+| `docs/TODO.md` | 台账 | 生效 | 需求池（R1 / R2 / R4，3 条；R3 已核销、在归档档）与技术待办（T1 / T2 / T4 / T5 / T7 / T8 / T9，7 条；T3 / T6 已核销、在归档档）：一条一行，挂需求档节 + 批次档 §2 / 归属档节 + 最小证据行；归档档 = `docs/TODO-archive.md` |
 
 ## 三、三档之间的关系
 
@@ -38,6 +38,7 @@
 
 | 日期 | 变更点 |
 |---|---|
+| 2026-09-16 | B05 核销同步（D7）：B05 批次档行改「已核销（2026-09-16）」并补六段落点；B03 批次档行「§4 与 §6 待落」更正为 §1–§6 全落（实机验收面待用户，T9）；`docs/TODO.md` 行——需求池 R1 / R2 / R4（3 条）、技术待办 7 条（补 T9）；UPDATE 档与 AUTO-UPDATE 档行去占位（生效 / 已批准并实现）。 |
 | 2026-09-16 | B03 设计评审修正轮（发现 #11）：补台账层落点约定一行与 `docs/TODO.md` 登记行（状态：生效）；同步 `docs/design/PET-MULTIMONITOR.md` 登记行的用例表计数（TC-1…TC-18 → TC-1…TC-20）。 |
 | 2026-09-16 | B03 状态同步：`docs/design/PET-MULTIMONITOR.md` 行状态由「待评审」改为「已评审待批准」（设计评审已通过 + 修正轮已落地，待用户批准）；`docs/batches/B03-pet-multimonitor.md` 行补记「§1–§3 已落、评审修正轮已落地」。纯状态同步，无语义改动。 |
 | 2026-09-16 | B03 连带收口同步（计数 / 状态 / 指针；无语义改动）：B03 设计档行——用例表 TC-1…TC-20 → TC-1…TC-28、状态改「已批准（实施中，含 E6 证伪后的设计修正轮）」；B03 批次档行——§5 实施记录已落（§4 / §6 待落）；`docs/TODO.md` 行——需求池 → R1…R3（3 条）、技术待办 → 6 条（T3 / T6 已核销）；§一 落点约定的本仓板块补「自动更新（UPDATE）」；提示词行 `DSH_BUNDLED_SKILL_DIR` 指针 `main.js:136` → `main.js:149`。 |

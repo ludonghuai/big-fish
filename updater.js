@@ -452,18 +452,29 @@ function cleanupHarnessStale() {
   return runStoreCleanup();
 }
 
-/** 启动时清残留（§2.2.4 startupCleanup）：App 面 userData/updates/*.part + 版本库
+/** 启动时清残留（§2.2.4 startupCleanup）：App 面回收 userData/updates/ 全部条目
+ *  （B05 / §2.2.3：逐条 best-effort 删除 + 取证行 update cleanup type=app）+ 版本库
  *  （旧布局迁移 / 回收 + 版本 GC；不误删现行副本——判据 = 活跃指针）。 */
 function startupCleanup() {
-  const rm = (p) => {
-    try { if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); } catch { /* best effort */ }
-  };
+  let removed = 0;
+  let failed = 0;
   try {
     const dir = path.join(ctx.dirs.userData, 'updates');
-    if (fs.existsSync(dir)) {
-      for (const f of fs.readdirSync(dir)) {
-        if (f.endsWith('.part')) rm(path.join(dir, f));
+    let entries = null;
+    try {
+      entries = fs.readdirSync(dir);
+    } catch (err) { // 目录不存在（ENOENT）= 本空；非 ENOENT（EACCES/EPERM/ENOTDIR 等）= 枚举失败
+      const detail = err && err.code === 'ENOENT' ? '' : ' detail=read-fail';
+      log(`update cleanup type=app removed=0 failed=0${detail}`);
+    }
+    if (entries) {
+      for (const f of entries) {
+        try {
+          fs.rmSync(path.join(dir, f), { recursive: true, force: true });
+          removed += 1;
+        } catch { failed += 1; /* best effort：占用 / 权限失败，下次启动再试 */ }
       }
+      log(`update cleanup type=app removed=${removed} failed=${failed}`);
     }
   } catch { /* best effort */ }
   if (!harnessInstallInFlight) runStoreCleanup(); // 安装在途 → 跳过本轮清理（§2.2.4）
