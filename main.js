@@ -126,11 +126,12 @@ function findFreePort() {
 }
 
 function dshBinPath() {
+  // Harness 运行时：活跃指针副本优先（userData/dsh-update/versions/<v>；无指针时兼容旧布局
+  // userData/dsh）——dev 与打包同口径（US-6 / DD-8）；无指针兜底出厂副本（打包 = 冻结树
+  // resourcesPath/dsh，dev = dsh-bundle 出厂副本）。
+  const active = harnessStore.resolveActiveBin(app.getPath('userData'));
+  if (active) return active;
   if (app.isPackaged) {
-    // Harness 运行时：活跃指针副本优先（userData/dsh-update/versions/<v>；无指针时兼容旧布局
-    // userData/dsh），出厂冻结树（extraResources）兜底（§2.2.1 / AC9）。dev 分支见下，口径不变。
-    const active = harnessStore.resolveActiveBin(app.getPath('userData'));
-    if (active) return active;
     return path.join(process.resourcesPath, 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
   }
   return path.join(app.getAppPath(), 'dsh-bundle', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
@@ -562,21 +563,19 @@ async function startHarnessUpdate(res) {
 
 // ---- 门禁 + 调度（§2.2.7） ----
 async function manualCheckUpdates() {
-  if (!app.isPackaged) {
-    dialog.showMessageBox({ type: 'info', title: APP_NAME, message: '更新检查只在安装版可用', detail: '请安装打包好的 Bigfish 后使用更新检查。' });
-    updaterLog('update gate reason=manual skipped=dev');
-    return;
-  }
   if (updateGateBlocked('manual')) { notify(APP_NAME, '检查/更新正在进行'); return; }
-  await runAppCheck('manual');
+  // App 面：dev 下不执行、无 UI，仅记 gate 行（US-6 / DD-9）；Harness 面两态同路径
+  if (app.isPackaged) await runAppCheck('manual');
+  else updaterLog('update gate reason=manual face=app skipped=dev');
   await runHarnessCheck('manual');
 }
 
 async function runAutoChecks(reason) {
-  if (!app.isPackaged) { updaterLog(`update gate reason=${reason} skipped=dev`); return; }
   if (!settings.autoCheckUpdates) { updaterLog(`update gate reason=${reason} skipped=toggle-off`); return; }
   if (updateGateBlocked(reason)) return;
-  await runAppCheck(reason);
+  // App 面：dev 下静默跳过（记 gate 行）；Harness 面两态同路径
+  if (app.isPackaged) await runAppCheck(reason);
+  else updaterLog(`update gate reason=${reason} face=app skipped=dev`);
   await runHarnessCheck(reason);
 }
 
