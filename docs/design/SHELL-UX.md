@@ -140,7 +140,7 @@
 **主窗口改动（`main.js:725-745`）**：
 
 - `createWindow()`：删除 `ready-to-show` 中的 `mainWindow?.show()`（向导窗显示块由 **F2** 先行摘除——§2.2.4；本步摘除后 `ready-to-show` 处理器为空，整块移除）；`show: false`、`close → hide`、`closed → null`、`setWindowOpenHandler` / `will-navigate` / `did-finish-load → applyBackground()` 全部保留。
-- 新增 `showMainWindow()`：`mainWindow` 不存在则 `createWindow()`；存在则 `isMinimized() → restore()`、`show()`、`focus()`。作为「显示 + 聚焦」的唯一入口。
+- 新增 `showMainWindow()`：`mainWindow` 不存在则 `createWindow()`——**零窗口建窗分支经 `ready-to-show` 首帧就绪后才 `show` + `focus`**（防露未加载空窗；实施期形态注，实现 = `main.js:732-733`）；存在则 `isMinimized() → restore()`、`show()`、`focus()`。作为「显示 + 聚焦」的唯一入口。
 - `toggleMainWindow()` 保留（`isVisible() ? hide() : showMainWindow()`）——托盘项与快捷键沿用。
 
 **显示时机表**：
@@ -311,7 +311,7 @@ runAutoChecks(reason)：
 | `shell-assets.js`（新） | 图标路径（`appIconPath` / `trayIconPath`） | `699-720` | fs/path → — |
 | `shell-notify.js`（新） | 系统通知 + 任务完成提醒（`notify` / `latestMtime` / `start·stopCompletionWatcher`） | `246-258` / `605-697` | electron → 注入 `getDshHome` |
 | `shell-backend.js`（新） | 后端生命周期 + 路径解析（起停 / 解析 / 重启等；函数清单见注 S1） | `115-244` / `356-362` / `607-611` / `2366-2383` | electron、net/http/fs/child_process → 注入 `sanitizeProfileBundles`、`getMainWindow`、`isQuitting` |
-| `shell-pet-geometry.js`（新） | 桌宠几何与可见性 helper 组 + 几何日志 + 位置文本 + 尺寸校准（`petGeomLog`…`petSettlePos` / `handleDisplayChange` / `petGeomSnapshot` / `petSavePos` / `petPosText` / `petCalibrateSize`——注 S4） | `785-1113` / `1209-1210` / `1219-1270` | electron(screen)、fs、`shell-settings` → 注入 `getPetWindow`、`getPetDrag`（无新注入项） |
+| `shell-pet-geometry.js`（新） | 桌宠几何 helper 组 + 日志 / 尺寸校准（函数清单见注 S4） | `785-1113`/`1209-1210`/`1219-1270` | electron(screen)、fs、`shell-settings`→注入 `getPetWindow`、`getPetDrag`（无新注入） |
 | `shell-pet-drag.js`（新） | 拖动跟随 + 拖动 / 穿透 IPC 处理器函数（函数清单见注 S2） | `1190-1208` / `1212-1217` / `1272-1373` / `2591-2618` / `2619-2658` / `2679-2687`（`:1209-1210` / `:1219-1270` 归 geometry——注 S4） | electron(screen)、`shell-settings`、`shell-pet-geometry` → 注入 `getPetWindow`、pet 状态访问面（注 S2） |
 | `shell-pet.js`（新） | 桌宠窗口与状态机 + 台词 + 点击 IPC 处理器函数（函数清单见注 S3） | `260-315` / `1114-1188` / `1374-1520` / `2660-2678` | electron、`shell-settings`、`shell-pet-geometry`、`shell-pet-drag` → 注入 `showMainWindow`、`openExchangeWindow`、`broadcastAffinity` |
 | `shell-affinity.js`（新） | 好感度 + 兑换屋窗口 + 重置两函数 + `affinity:*` 处理器函数 | `1521-1757` / `2803-2830` | electron、fs、`shell-backend`、`shell-notify`、`shell-assets` → 注入 `petSay`、`setPetState`、`getPetWindow`、`setQuitting` |
@@ -334,7 +334,8 @@ runAutoChecks(reason)：
 > `scheduleWander` · `doWander` · `summonPet` · `createPetWindow` · `ensurePet` · `destroyPetWindow` · 状态（`petWindow` / `petState` / 定时器 / 散步状态）·
 > 处理器函数 `handlePetClicked` / `handlePetRightClicked`。
 
-> **注 S4（`petCalibrateSize()` 归属修订——评审修正轮 1 #14）**：`petCalibrateSize()`（`main.js:1238-1270`）与 `petPosText()`（`:1209-1210`）归属 **`shell-pet-geometry.js`**（尺寸校准 = 几何 helper 组的一部分，PET NFR-8「单一实现」口径；其依赖 `petSizeBaseline` / `petCurrentDisplay` / `PET_SIZE_DIP` / `PET_SIZE_TOLERANCE_DIP` / `petGeomLog` 全在本模块内）。
+> **注 S4（`petCalibrateSize()` 归属修订——评审修正轮 1 #14）**：`petCalibrateSize()`（`main.js:1238-1270`）与 `petPosText()`（`:1209-1210`）归属 **`shell-pet-geometry.js`**（几何 helper 组，PET NFR-8「单一实现」口径；依赖 `petSizeBaseline` / `petCurrentDisplay` / `PET_SIZE_DIP` / `PET_SIZE_TOLERANCE_DIP` / `petGeomLog` 均在本模块内）。
+> **函数清单**：`petGeomLog`…`petSettlePos` / `handleDisplayChange` / `petGeomSnapshot` / `petSavePos` / `petPosText` / `petCalibrateSize`。
 > **来源段修订**：geometry 增 `:1209-1210` / `:1219-1270`；`shell-pet-drag` 相应为 `:1190-1208` / `:1212-1217` / `:1272-1373` + IPC 段（注 S2 清单同步）。
 > **跨模块访问**：`shell-pet-drag`（`petStopDrag` / `petDragTick` / `pet-drag-end` 处理器）与 `shell-pet`（`createPetWindow` / `summonPet`）经 `require('./shell-pet-geometry.js')` 直接调用——依赖方向已声明（两者 → geometry）、无环、**无新注入项**；geometry 自身调用为模块内调用。
 > **状态面**：`createPetWindow()` 对 `petSizeBaseline`（`:1166`，连带 `petWanderSizeCheckedAt` `:1167`）的重置经 geometry 导出的**转发访问器**完成（§2.2.6 允许面 ②）——单一实现不破。
@@ -434,7 +435,7 @@ runAutoChecks(reason)：
 
 | 文件 | 当前行数 | 改动点（含现状行号） | 预计改动量 | 末行数（预估） |
 |---|---|---|---|---|
-| `main.js` | 2831 | F1 `:2660-2667`（toggle → `showMainWindow`）；F2 删 `:81` / `:616-647` / `:741-744` / `:1893` / `:2550` / `:2579-2588`（+`:63` 变量）；F3 重排 `:1889-1930`/文案 `:1856`；F4 `:725-745`（去自动显示）+`showMainWindow`；F5 `:567-584` 改写+`:131-140` dev 分支；F6 拆出全部域（§2.2.6） | −约 2550 / +约 40（余 = 组合根） | ≈300 |
+| `main.js` | 2831 | F1 `:2660-2667`（toggle→`showMainWindow`）；F2 删 `:81` / `:616-647` / `:741-744` / `:1893` / `:2550` / `:2579-2588`（+`:63` 变量）；F3 重排 `:1889-1930`/文案 `:1856`；F4 `:725-745`（去自动显示）+`showMainWindow`；F5 `:567-584` 改写+`:131-140` dev 分支；F6 拆出全部域（§2.2.6） | −约 2550 / +约 40（余=组合根） | ≈300 |
 | `pet.js` | 185 | F1：`pointerdown`（`:98`）/ `pointerup`（`:113-120`）加左键守卫；自愈起拖条件（`:111`）改 `(e.buttons & 1) !== 0` | +4 / −2 | ≈187 |
 | `pet-preload.js` | 15 | **不改**（通道与载荷零变更） | 0 | 15 |
 | `welcome.html` / `welcome.js` / `welcome-preload.js` | 104 / 23 / 7 | **删除**（F2） | −134 | 不存在 |
@@ -550,14 +551,14 @@ runAutoChecks(reason)：
 
 | 验收 | 回指需求 | 判定方式（细化） | 机检可能性 |
 |---|---|---|---|
-| AC1 | US-1、US-2 | 真机：左键（已显示时）→ 仍显示 + 聚焦；右键 → 只开兑换屋且主界面状态不变；拖动后松手 → 不开窗。静态：`pet.js` 左键守卫在场（`button === 0` 判据 2 处 + 自愈条件 1 处）；`pet-clicked` 处理器调 `showMainWindow()`（无 `toggleMainWindow` 调用）；右键链唯一入口 = `contextmenu` | 半机检（静态全机检 + 真机目视） |
+| AC1 | US-1、US-2 | 真机：左键（已显示时）→ 仍显示 + 聚焦；右键 → 只开兑换屋且主界面状态不变；拖动后松手 → 不开窗。静态：`pet.js` 左键守卫在场（早退式守卫：`e.button !== 0` 早退 ×2（`:99` / `:117`）+ 自愈起拖条件 `(e.buttons & 1) !== 0` 位掩码 ×1（`:114`））；`pet-clicked` 处理器调 `showMainWindow()`（无 `toggleMainWindow` 调用）；右键链唯一入口 = `contextmenu` | 半机检（静态全机检 + 真机目视） |
 | AC2 | US-5、US-3、NFR-1、NFR-2 | 真机（隔离 `--user-data-dir` + 隔离 `DSH_HOME`，承 B02 §6.7 手法；预置 `settings.json`：`modeChosen:true`）：冷启动 → 无向导窗、主界面不自动显示、托盘在场、桌宠在场；左键 / 托盘项可打开主界面。辅：`createWindow` 无 `ready-to-show → show` 路径（静态） | 半机检（静态 + 真机窗口枚举） |
-| AC3 | US-3、NFR-1 | 机检：`grep -rn "createWelcomeWindow\|onboardingDone\|welcome-open-url\|welcome-done\|welcomeWindow"` 全仓 0 处（范围 = 全仓，**排除** `docs/`（设计 / 批次档自身引述这些符号）、`.test-*`（含 `.test-userdata/`——O4）、`dsh-bundle/`）；`welcome.html` / `welcome.js` / `welcome-preload.js` 不存在；`package.json` `build.files` 无 `welcome` 字样 | 全机检 |
+| AC3 | US-3、NFR-1 | 机检：`grep -rn "createWelcomeWindow\|onboardingDone\|welcome-open-url\|welcome-done\|welcomeWindow"` 全仓 0 处（范围=全仓；**排除** `docs/`（含设计 / 批次档引述）、`.test-*`（O4）、`dsh-bundle/`）；`welcome.html` / `welcome.js` / `welcome-preload.js` 不存在；`build.files` 无 `welcome` 字样 | 全机检 |
 | AC4 | US-4、NFR-2 | 真机目视 + 逐条核对：一级 11 项及其顺序、4 分隔线、2 个 radio 及其 `checked` 条件、`设置 ▸` / `高级 ▸` 成员（§2.2.3 表逐行对照）；专注模式：「鲸鱼娘兑换屋」可开、「找回鲸鱼娘」置灰 | 人判 + 静态（结构逐条） |
 | AC5 | US-6 | dev 实跑：点「检查更新」→ 无「只在安装版可用」弹窗；`updater.log` 出现 gate 行（`face=app skipped=dev`）且随后有 harness 检查行；`dshBinPath` 无指针 / 有指针两态正确。静态：App 面受 `app.isPackaged` 保护；该提示文案 grep = 0 处（范围 = 代码 / 配置，**排除** `docs/`——本档与相关档含该文案引述） | 半机检（日志 + 静态全机检；点击行为目视） |
 | AC6 | US-6 | 代码路径对照（沿用 B02/B05 判据，不新增）：App 面分支 / 更新窗口 / 清单与校验链路与 B05 终态逐条一致（diff 核对）；真机发布门项另计（T8） | 半机检（diff 对照） |
-| AC7 | US-7、NFR-3 | 行数实测：**源码 js 全档 ≤500**（文件集 = 全仓 `.js`，含 `probe-*.js` / `scripts/` / `tests/`；**排除** `dsh-bundle/`、`node_modules/`、`.test-*`；唯一超顶者 `main.js`（拆分后清零）；口径 `find /c /v ""` 逐档）；`node --check` 全绿（15 新模块 + `main.js` + `pet.js`）；锚点 grep 清单（§2.2.6）逐条在场；`package.json` 依赖段零 diff；真机回归清单（§3.2 TC-19） | 机检（行数 / 语法 / grep）+ 真机回归 |
-| AC8 | US-8 | 删除面：四组文件不存在 + 全仓 grep 0 处引用（范围排除 `docs/` / `.test-*` / `dsh-bundle`；§2.2.7 判据）；保留面：`assets/pet/idle.png` / `assets/pet-new/**` / `probe-*.js` ×7 / `debug-pet.cmd` 逐项在场；`package.json` **F7 提交自身**零改动（scripts / `build.files` / 依赖三面；F2 / F6 的预期 diff 随各自提交落地，不属 F7 判据——§2.2.7 判据③）；真机冒烟（启动 + 桌宠待机动画） | 机检（文件存在性 + grep + diff）+ 真机冒烟 |
+| AC7 | US-7、NFR-3 | 行数实测：**源码 js 全档 ≤500**（= 全仓 `.js`，含 `probe-*.js` / `scripts/` / `tests/`；**排除** `dsh-bundle/`、`node_modules/`、`.test-*`；唯一超顶者 `main.js`（拆分清零）；口径 `find /c /v ""`）；`node --check` 全绿（15 新模块 + `main.js` / `pet.js`）；锚点清单（§2.2.6）在场；依赖段零 diff；真机回归（§3.2 TC-19） | 机检（行数 / 语法）+ 真机回归 |
+| AC8 | US-8 | 删除面：四组文件不存在 + 全仓 grep 0 处（排除 `docs/` / `.test-*` / `dsh-bundle`；§2.2.7）；保留面：`assets/pet/idle.png` / `assets/pet-new/**` / `probe-*.js` ×7 / `debug-pet.cmd` 在场；`package.json` **F7 提交自身**零改动（三面；F2 / F6 预期 diff 除外——§2.2.7 判据③）；真机冒烟 | 机检（存在性 + grep + diff）+ 真机冒烟 |
 
 > 回指口径（评审修正轮 1 #8）：NFR-1（验收：AC2、AC3）落 AC2 / AC3 行；NFR-2 无独立 AC 编号（`docs/requirements/SHELL.md` §四——度量为评审核对 §2.3 / §2.5 + 平台分支 grep 计数，§3.3 手段 ⑥），回指附于其覆盖的改动面（US-5 → AC2、US-4 → AC4）。
 
@@ -619,4 +620,6 @@ runAutoChecks(reason)：
 |---|---|
 | 2026-09-16 | 初版：B06 桌面壳 UX 整合设计——需求层回指（US-1…US-7、NFR-1…NFR-4）、方案选型对比（A 桌宠按键 / B 托盘结构 / C 启动形态 / D 更新门禁 / E 拆分方案）、契约与结构（桌宠交互 / 窗口显示 / 托盘明细 / 向导删除 / 门禁口径 / 拆分架构与迁移计划）、受影响文件全清单、关键决策 DD-1…DD-14、冲突点核对与观察项、UI 决策 U-1…U-9、测试层（AC1…AC7 判定细化 + 用例 TC-1…TC-20）。 |
 | 2026-09-16 | **追加 F7（无用文件清理）**（主 agent 裁定并入本批；依据 = 用户指示「删 1-5」）：新增选型 F（白名单精确删除）、§2.2.7（删除 / 保留清单与判据）、影响文件表三条删除行、DD-15、C16、AC8、TC-21…TC-23、观察项 O7（`THIRD-PARTY-NOTICES.md:53-54` 陈旧提及）；§一 回指表 / §2.1 判据域 / 静态核对清单同步为 US-1…US-8。 |
-| 2026-09-16 | **评审修正轮 1**（发现 #2–#12、#14；#13 无设计改动）：F2 补 `ready-to-show` 向导显块；AC3 五符号 + AC3 / AC5 / AC7 / §3.3 判据范围排除；AC8 / TC-21 零 diff 限 F7 自身；§2.2.6 逐档预估 + >300 档结论 + 覆盖核对 + 注 S4；macOS `activate` 改经 `showMainWindow()`（+ L3 / TC-26）；§3.1 NFR 回指；§2.3 / §2.5 as-of 注；L1 并入追认；DD-16 / U-10；TC-24 / TC-25。 |
+| 2026-09-16 | **评审修正轮 1**（#2–#12、#14；#13 无改动）：F2 补 `ready-to-show` 向导显块；AC3 五符号 + AC3 / AC5 / AC7 / §3.3 判据范围排除；AC8 / TC-21 零 diff 限 F7 自身；§2.2.6 逐档预估 + >300 档结论 + 覆盖核对 + 注 S4；macOS `activate` 改经 `showMainWindow()`（+ L3 / TC-26）；§3.1 NFR 回指；§2.3 / §2.5 as-of 注；L1 并入追认；DD-16 / U-10；TC-24 / TC-25。 |
+| 2026-09-16 | **修正轮 1 遗留项：行宽**——§2.2.6 `shell-pet-geometry.js` 行函数枚举移入注 S4（行内改「函数清单见注 S4」）；`docs/design/AUTO-UPDATE.md` TC-16 行示例路径缩短；两行均压至 ≤300 字符（语义不变）。 |
+| 2026-09-16 | **实施期形态注（P0 落地后）**：§2.2.2 补零窗口建窗分支口径（`showMainWindow()` 经 `ready-to-show` 首帧就绪后才 `show` + `focus`，防露未加载空窗——实现 = `main.js:732-733`）；§3.1 AC1 机检措辞按实现形态（`e.button !== 0` 早退 ×2 + `(e.buttons & 1) !== 0` 位掩码 ×1）；均不改语义。 |
