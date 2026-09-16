@@ -788,7 +788,8 @@ function toggleMainWindow() {
 //   坐标空间在上游未声明（证据 E6）——本组「仅在 DIP 假设成立时自洽」（设计档 §2.2）。
 //   统一短路口径：返回 null 不等于「位置为零」，调用方拿到 null 必须跳过写入。
 //   尺寸策略（§2.3.5）：petCalibrateSize() 是**唯一尺寸写入路径**（锚点 + 容差 + 不可判定门，DD-20）；
-//   尺寸**写入** = setBounds（位置原样传回）、**读回** = getSize()（DD-21 / §2.2 Q7）。
+//   尺寸**写入** = setBounds（**尺寸专用形态**：不提供 x / y，第 13 轮改写，DD-25 / E8）· **读回** = getSize()（DD-21 / §2.2 Q7）；
+//   **位置保护** = 写入前后各读一次位置、差异 > 1 DIP 才条件回写（§2.3.5-F）。
 // ---------------------------------------------------------------------------
 const PET_SIZE_DIP = { w: 250, h: 270 };  // 窗口逻辑尺寸（DIP），跨屏不变（US-11）；与建窗 / pet.html 同源
 const PET_DEFAULT_MARGIN_DIP = 24;        // petDefaultPos() 的右下角边距（设计档 DD-6）
@@ -1222,10 +1223,13 @@ let petDrag = null;
  *   ④ **不可判定门**（第 10 轮更名 / 改写，DD-20；原「混合 DPI 门」的**骑线拦截子句已删**——
  *   其前提经 §2.2 Q6 证伪）：`petCurrentDisplay()` 为 null（窗口中心点不在任何屏上）→ 返回
  *   （**推迟**写入——第 ⑤ 步需该屏 `scaleFactor` 入锚点，中心点不在任何屏上时无从取得）。
- *   **这是唯一的推迟条件**：与其它屏（含 `scaleFactor` **不同**者）重叠、与桌面外（无屏覆盖处）
- *   重叠 ⇒ **一律过门**（照第 ⑤ 步写入）。
- *   ⑤ 尺寸写入 = `setBounds`（位置 = 第 ④ 步后的 `getPosition()` **原样传回**，不改位置；
- *   第 10 轮由 `setSize` 改写，DD-21 / §2.2 Q7）→ `getSize()` 读回 → 更新锚点（含该屏 scaleFactor）→ 记 1 行。
+ *   **这是唯一的推迟条件**：与其它屏（含 `scaleFactor` **不同**者）重叠、与桌面外（无屏覆盖处）重叠 ⇒ **一律过门**（照第 ⑤ 步写入）。
+ *   ⑤ **尺寸写入 + 位置保护**（第 13 轮改写，DD-25 / §2.3.5-F；三步 + 一次复核）：Ⅰ 写入前读数 →
+ *   Ⅱ **尺寸专用写入** = `setBounds({ width, height })`（**不提供 `x` / `y`**：E8 ⇒ 调用方不传位置，
+ *   旧「读位置 → 原样传回」形态已废）→ Ⅲ 写入后读数校验：任一分量之差 **> 1 DIP** ⇒ `setPosition`
+ *   **条件回写**一次（值 = 写入前读数）并**复核** ⇒ `note=pos-restored` / `note=pos-unfixed`（复核仍不
+ *   一致 ⇒ **判失败**，F15）；回写写的是同一位置值 ⇒ 非位置钳制、不发位置型行（§2.3.5-B 第 5 条）
+ *   → Ⅳ `getSize()` 读回 → 更新锚点 → 记 1 行（发射时点 = 写入与复核**之后** ⇒ `pos-after` = 终值）。
  * `reason` 判据句（**唯一形态**，与 §2.3.5-B2 / §3.3 列义（四）同源，纯算术）：
  *   锚点为空 **∨** 当前所在屏 scaleFactor ≠ 设锚点时的 scaleFactor ⇒ `size-anchor`；否则 `size-drift`。
  *   不得写成「锚点为空 ⇒ size-anchor；否则 size-drift」——那会把拖动期跨屏的那一次记成 `size-drift`。
@@ -1239,20 +1243,30 @@ function petCalibrateSize() {
     && Math.abs(ch - petSizeBaseline.h) <= PET_SIZE_TOLERANCE_DIP) return;
   const display = petCurrentDisplay();                                // ④ 不可判定门（DD-20）
   if (!display) return;                                                // 无屏（中心点不在任何屏上）⇒ 不可判定 ⇒ 推迟
-  const pos = petWindow.getPosition();                                 // 第 ⑤ 步与日志行共用同一次位置读数
-  const [x, y] = pos;
-  petWindow.setBounds({ x, y, width: PET_SIZE_DIP.w, height: PET_SIZE_DIP.h }); // ⑤ 位置原样传回（DD-21）
-  const [aw, ah] = petWindow.getSize();
+  // ⑤ 位置读数点（**单一定义**）：写入前读数与**回写后复核**共用同一处 `getPosition()` ⇒ 本函数内
+  //   `getPosition()` 文本 2 处（§3.3 位置保护判别面的计数面）；回写路径上该读数点执行 2 次。
+  const readPos = () => petWindow.getPosition();
+  const pos = readPos();                                              // Ⅰ 写入前位置（pos 列 / 回写值共用）
+  petWindow.setBounds({ width: PET_SIZE_DIP.w, height: PET_SIZE_DIP.h }); // Ⅱ 尺寸专用写入（不提供 x / y，E8）
+  let posAfter = petWindow.getPosition(), note = '';                  // Ⅲ 写入后读数（校验）+ 回写留痕位
+  if (Math.abs(posAfter[0] - pos[0]) > 1 || Math.abs(posAfter[1] - pos[1]) > 1) { // 容差 1 DIP（§2.2 位置侧实证 A 组：(−1,−1)）
+    petWindow.setPosition(pos[0], pos[1]);                            // 条件回写（唯一一处；值 = 写入前读数）
+    posAfter = readPos();                                             // 回写后复核
+    note = (Math.abs(posAfter[0] - pos[0]) <= 1 && Math.abs(posAfter[1] - pos[1]) <= 1)
+      ? 'pos-restored' : 'pos-unfixed';
+  }
+  const [aw, ah] = petWindow.getSize();                               // Ⅳ 读回尺寸
   const scale = display.scaleFactor;
   const reason = (!petSizeBaseline || petSizeBaseline.scaleFactor !== scale) ? 'size-anchor' : 'size-drift';
+  petSizeBaseline = { w: aw, h: ah, scaleFactor: scale };             // 先更新锚点、后记 1 行（§2.3.5-C 第 ⑤ 步 ④ 的次序）
   if (PET_GEOM_DEBUG) {
     const b = display.bounds;
     petGeomLog(
       `geom-fix reason=${reason} size-from=${petPosText([cw, ch])} size-to=${petPosText([aw, ah])}`
-      + ` display=${display.id} scale=${scale} bounds=(${b.x},${b.y},${b.width},${b.height}) pos=${petPosText(pos)}`,
+      + ` display=${display.id} scale=${scale} bounds=(${b.x},${b.y},${b.width},${b.height})`
+      + ` pos=${petPosText(pos)} pos-after=${petPosText(posAfter)}${note ? ` note=${note}` : ''}`,
     );
   }
-  petSizeBaseline = { w: aw, h: ah, scaleFactor: scale };
 }
 
 /** 终止拖动跟随（唯一清空点）：停循环 → 最终位置同步 + 尺寸回拉 → 日志/探针 → 兜底通知渲染层。 */
