@@ -36,6 +36,8 @@ const os = require('node:os');
 const { compareVersions } = require('./update-lib.js');
 const updater = require('./updater.js');
 const harnessStore = require('./harness-store.js');
+const settings = require('./shell-settings.js');
+const assets = require('./shell-assets.js');
 
 const APP_NAME = 'Bigfish';
 const HOST = '127.0.0.1';
@@ -46,6 +48,10 @@ const IDLE_NOTIFY_MS = 30 * 1000; // backend quiet for this long after activity 
 if (process.env.BIGFISH_USER_DATA && String(process.env.BIGFISH_USER_DATA).trim() !== '') {
   try { app.setPath('userData', String(process.env.BIGFISH_USER_DATA).trim()); } catch { /* ignore */ }
 }
+
+let quitting = false;
+function isQuitting() { return quitting; }
+function setQuitting(v) { quitting = v; }
 
 // 检查更新：从 Gitee 仓库 raw 拉取 latest.json（唯一清单源；AC6）。
 // 测试钩子：BIGFISH_UPDATE_URL 可覆盖（设计档 §2.2.2 假清单桩；仅此面允许 http 本地桩）。
@@ -63,51 +69,9 @@ let petWindow = null;
 let tray = null;
 /** @type {number | null} */
 let port = null;
-let quitting = false;
 let completionWatcherTimer = null;
 let lastBusyAt = 0;
 let notifiedForCycle = false;
-
-// ---------------------------------------------------------------------------
-// Settings (persisted to userData/settings.json)
-// ---------------------------------------------------------------------------
-const DEFAULT_SETTINGS = {
-  notifyOnComplete: true,
-  launchAtLogin: false,
-  autoCheckUpdates: true, // 自动检查更新开关（启动检查 + 6h 轮询；托盘 checkbox，§2.2.7）
-  petEnabled: true,
-  mode: 'whale',        // 'whale' 鲸鱼模式（桌宠+背景图） | 'focus' 专注模式（无桌宠、纯色背景）
-  modeChosen: false,    // 是否已弹过模式选择
-  lastModeVersion: '',  // 上次选择模式时的版本号（更新后重新弹窗）
-  petPos: null,         // 桌宠上次位置（DIP 整数 { x, y }；null = 无存档）——US-13
-};
-let settings = { ...DEFAULT_SETTINGS };
-
-// settings.json 存在但无法解析（整个 JSON 损坏）——与「无存档」区分：
-//   无存档（首次运行）⇒ 不带 x/y 建窗（TC-18）；损坏 ⇒ 回落 petDefaultPos()（TC-19）。
-let settingsFileCorrupt = false;
-
-function settingsPath() {
-  return path.join(app.getPath('userData'), 'settings.json');
-}
-function loadSettings() {
-  try {
-    settings = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) };
-    settingsFileCorrupt = false;
-  } catch (err) {
-    // ENOENT = 文件不存在（首次运行，无存档）；其余（解析失败 / 不可读）= 存档损坏
-    settingsFileCorrupt = !!err && err.code !== 'ENOENT';
-    settings = { ...DEFAULT_SETTINGS };
-  }
-}
-function saveSettings() {
-  try {
-    fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
-    fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2));
-  } catch (err) {
-    console.error('[bigfish] failed to save settings:', err);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Backend lifecycle
@@ -247,7 +211,7 @@ function stopDsh() {
 function notify(title, body, onClick) {
   if (!Notification.isSupported()) return;
   try {
-    const n = new Notification({ title, body, icon: appIconPath() });
+    const n = new Notification({ title, body, icon: assets.appIconPath() });
     if (typeof onClick === 'function') n.on('click', onClick); // 气泡点击（U-2：点击查看 → 弹窗）
     n.show();
   } catch (err) {
@@ -330,7 +294,7 @@ function uninstall() {
 // ---------------------------------------------------------------------------
 // 自动更新编排（设计档 docs/design/AUTO-UPDATE.md §2.2）——
 //   updater.js：检查/下载/校验/安装器/Harness 安装激活回滚；
-//   main.js：门禁、弹窗/气泡、更新窗口生命周期、6h 轮询、Harness 停-切-启编排。
+//   shell-update.js：门禁、弹窗/气泡、更新窗口生命周期、6h 轮询、Harness 停-切-启编排。
 // ---------------------------------------------------------------------------
 const NPMIRROR_DSH_META = 'https://registry.npmmirror.com/@deepseek-ai/dsh';
 const NPMJS_DSH_META = 'https://registry.npmjs.org/@deepseek-ai/dsh';
@@ -370,7 +334,7 @@ function createUpdateWindow() {
     title: '更新 Bigfish',
     autoHideMenuBar: true,
     backgroundColor: '#0f1115',
-    icon: appIconPath(),
+    icon: assets.appIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'update-preload.js'),
       contextIsolation: true,
@@ -511,7 +475,7 @@ async function runHarnessCheck(reason) {
 
 /**
  * Harness 更新编排（§2.2.4 ④⑤⑥⑦ + 停-切-启）：
- * installHarness 在冒烟通过后回调 { phase:'stop-backend' } 并等待其完成——main.js 在该回调停后端
+ * installHarness 在冒烟通过后回调 { phase:'stop-backend' } 并等待其完成——shell-update.js 在该回调停后端
  * （对齐 C1「停 dsh → 切 → 启 dsh」，依赖安装/冒烟不触碰现行副本，停机窗口最小化）；
  * 成功后重启后端并写两条编排域日志（AC9 机器证据，§2.2.9）。
  */
@@ -571,7 +535,7 @@ async function manualCheckUpdates() {
 }
 
 async function runAutoChecks(reason) {
-  if (!settings.autoCheckUpdates) { updaterLog(`update gate reason=${reason} skipped=toggle-off`); return; }
+  if (!settings.get().autoCheckUpdates) { updaterLog(`update gate reason=${reason} skipped=toggle-off`); return; }
   if (updateGateBlocked(reason)) return;
   // App 面：dev 下静默跳过（记 gate 行）；Harness 面两态同路径
   if (app.isPackaged) await runAppCheck(reason);
@@ -633,7 +597,7 @@ function startCompletionWatcher() {
   stopCompletionWatcher();
   const skip = new Set(['profiles', 'node_modules']);
   completionWatcherTimer = setInterval(() => {
-    if (!settings.notifyOnComplete) return;
+    if (!settings.get().notifyOnComplete) return;
     const { t } = latestMtime(dshHome(), skip);
     const now = Date.now();
     if (t > lastBusyAt + 2000 && now - t < 2000) {
@@ -657,35 +621,12 @@ function stopCompletionWatcher() {
 }
 
 // ---------------------------------------------------------------------------
-// Assets
-// ---------------------------------------------------------------------------
-function appIconPath() {
-  const candidates = [
-    path.join(__dirname, 'assets', 'icon.png'),
-    path.join(__dirname, 'build', 'icon.png'),
-    path.join(__dirname, 'build', 'icon.ico'),
-  ];
-  for (const p of candidates) if (fs.existsSync(p)) return p;
-  return undefined;
-}
-function trayIconPath() {
-  const candidates = [
-    path.join(__dirname, 'assets', 'tray.png'),
-    path.join(__dirname, 'assets', 'icon.png'),
-    path.join(__dirname, 'build', 'tray.png'),
-    path.join(__dirname, 'build', 'icon.png'),
-  ];
-  for (const p of candidates) if (fs.existsSync(p)) return p;
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
 // Main window
 // ---------------------------------------------------------------------------
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: APP_NAME,
-    icon: appIconPath(),
+    icon: assets.appIconPath(),
     width: 1280,
     height: 860,
     minWidth: 900,
@@ -874,7 +815,7 @@ let petStartPosLogged = false;
 function petResolveStartPos() {
   const first = !petStartPosLogged;
   petStartPosLogged = true;
-  const saved = settings.petPos;
+  const saved = settings.get().petPos;
   const hasArchive = !(saved === null || saved === undefined);
   const pos = (hasArchive && Number.isInteger(saved.x) && Number.isInteger(saved.y))
     ? [saved.x, saved.y] : null;
@@ -882,7 +823,7 @@ function petResolveStartPos() {
     if (PET_GEOM_DEBUG && first) petGeomLog(`pos-restore pos=${petPosText(pos)} valid=1`);
     return pos;
   }
-  if (!hasArchive && !settingsFileCorrupt) {
+  if (!hasArchive && !settings.isFileCorrupt()) {
     // 真正无存档（首次运行 / 旧档缺键）⇒ 不带坐标建窗
     if (PET_GEOM_DEBUG && first) petGeomLog('pos-restore pos=n/a valid=0 note=no-archive');
     return null;
@@ -896,7 +837,7 @@ function petResolveStartPos() {
 }
 
 /**
- * 位置持久化（US-13）：写 settings.petPos（DIP 整数）+ saveSettings()；与上次写入值相同则跳过。
+ * 位置持久化（US-13）：写 settings.get().petPos（DIP 整数）+ settings.saveSettings()；与上次写入值相同则跳过。
  * 只在离散停泊事件调用（松手 / 散步段末 / 显示器事件 / 找回 / 退出前），不得在 tick 内调用。
  * 无窗口 / 已销毁 → 直接返回（不写盘、不报错）。
  */
@@ -905,10 +846,10 @@ function petSavePos() {
   const [x, y] = petWindow.getPosition();
   const px = Math.round(x);
   const py = Math.round(y);
-  const last = settings.petPos;
+  const last = settings.get().petPos;
   if (last && last.x === px && last.y === py) return; // 去重：与前次写入值相同则跳过
-  settings.petPos = { x: px, y: py };
-  saveSettings();
+  settings.get().petPos = { x: px, y: py };
+  settings.saveSettings();
   if (PET_GEOM_DEBUG) petGeomLog(`pos-save pos=${petPosText([px, py])}`);
 }
 
@@ -1077,7 +1018,7 @@ function handleDisplayChange(kind, display, metrics) {
 
 /** 找回鲸鱼娘（US-14）：拉回主屏默认落点并落盘；专注模式下入口置灰、此处分外守卫。 */
 function summonPet() {
-  if (settings.mode === 'focus') return;
+  if (settings.get().mode === 'focus') return;
   ensurePet();
   if (!petWindow || petWindow.isDestroyed()) return;
   petApplyPos(petDefaultPos(), 'summon');
@@ -1137,7 +1078,7 @@ function createPetWindow(startPos) {
 
 /** 桌宠启用但窗口没了时，重建它（解决关窗后桌宠消失）。 */
 function ensurePet() {
-  if (settings.petEnabled && (!petWindow || petWindow.isDestroyed())) {
+  if (settings.get().petEnabled && (!petWindow || petWindow.isDestroyed())) {
     // 重建也走启动位置解析（US-13：模式切回鲸鱼时不回到系统默认落点）
     createPetWindow(petResolveStartPos());
   }
@@ -1627,7 +1568,7 @@ function openExchangeWindow() {
     title: '鲸鱼娘兑换屋',
     autoHideMenuBar: true,
     backgroundColor: '#14161c',
-    icon: appIconPath(),
+    icon: assets.appIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'exchange-preload.js'),
       contextIsolation: true,
@@ -1724,7 +1665,7 @@ async function resetConfigKeepSessions() {
 // Tray
 // ---------------------------------------------------------------------------
 function createTray() {
-  const icon = trayIconPath();
+  const icon = assets.trayIconPath();
   if (icon) {
     tray = new Tray(nativeImage.createFromPath(icon));
   } else {
@@ -1753,7 +1694,7 @@ function applyBackground() {
     bgCssKey = null;
   }
   let css;
-  if (settings.mode === 'focus') {
+  if (settings.get().mode === 'focus') {
     // 专注模式：纯色背景（恢复 dsh 默认主题）
     css = `html { background-image: none !important; }`;
   } else {
@@ -1791,11 +1732,11 @@ function applyBackground() {
 /** 切换模式：whale=鲸鱼模式（桌宠+背景图）| focus=专注模式（无桌宠、纯色背景）。 */
 function setMode(mode) {
   const m = mode === 'focus' ? 'focus' : 'whale';
-  settings.mode = m;
-  settings.petEnabled = m === 'whale';
-  settings.modeChosen = true;
-  settings.lastModeVersion = app.getVersion();
-  saveSettings();
+  settings.get().mode = m;
+  settings.get().petEnabled = m === 'whale';
+  settings.get().modeChosen = true;
+  settings.get().lastModeVersion = app.getVersion();
+  settings.saveSettings();
   if (m === 'focus') {
     destroyPetWindow();
   } else {
@@ -1807,8 +1748,8 @@ function setMode(mode) {
 
 /** 首次安装 / 更新后弹窗让用户选择模式。 */
 function maybeShowModeDialog() {
-  const firstRun = !settings.modeChosen;
-  const updated = settings.lastModeVersion !== app.getVersion();
+  const firstRun = !settings.get().modeChosen;
+  const updated = settings.get().lastModeVersion !== app.getVersion();
   if (!firstRun && !updated) return;
   const choice = dialog.showMessageBoxSync({
     type: 'question',
@@ -1858,8 +1799,8 @@ function rebuildTrayMenu() {
     { label: '检查更新', click: () => { manualCheckUpdates(); } },
     { type: 'separator' },
     // 模式提级为一级 radio（US-4 / 用户点名项）
-    { label: '🐳 鲸鱼模式', type: 'radio', checked: settings.mode !== 'focus', click: () => setMode('whale') },
-    { label: '🧘 专注模式', type: 'radio', checked: settings.mode === 'focus', click: () => setMode('focus') },
+    { label: '🐳 鲸鱼模式', type: 'radio', checked: settings.get().mode !== 'focus', click: () => setMode('whale') },
+    { label: '🧘 专注模式', type: 'radio', checked: settings.get().mode === 'focus', click: () => setMode('focus') },
     { label: '更换背景…', click: () => chooseBackground() },
     { label: '恢复默认背景', click: () => resetBackground() },
     { type: 'separator' },
@@ -1869,9 +1810,9 @@ function rebuildTrayMenu() {
     {
       label: '设置',
       submenu: [
-        { label: '自动检查更新', type: 'checkbox', checked: settings.autoCheckUpdates, click: (item) => setAutoCheckUpdates(item.checked) },
-        { label: '任务完成时通知', type: 'checkbox', checked: settings.notifyOnComplete, click: (item) => setNotify(item.checked) },
-        { label: '开机自启', type: 'checkbox', checked: settings.launchAtLogin, click: (item) => setAutoStart(item.checked) },
+        { label: '自动检查更新', type: 'checkbox', checked: settings.get().autoCheckUpdates, click: (item) => setAutoCheckUpdates(item.checked) },
+        { label: '任务完成时通知', type: 'checkbox', checked: settings.get().notifyOnComplete, click: (item) => setNotify(item.checked) },
+        { label: '开机自启', type: 'checkbox', checked: settings.get().launchAtLogin, click: (item) => setAutoStart(item.checked) },
         {
           label: 'Windows 右键菜单',
           submenu: [
@@ -1886,7 +1827,7 @@ function rebuildTrayMenu() {
       label: '高级',
       submenu: [
         // 找回鲸鱼娘（US-14）：专注模式下桌宠窗口不存在 ⇒ 置灰不可用；低频救援动作归「高级 ▸」（DD-16）
-        { label: '找回鲸鱼娘', enabled: settings.mode !== 'focus', click: () => summonPet() },
+        { label: '找回鲸鱼娘', enabled: settings.get().mode !== 'focus', click: () => summonPet() },
         { label: '重置插件配置（保留 API Key 和会话）', click: () => resetConfigKeepSessions() },
         { label: '彻底恢复出厂（清空所有）', click: () => resetAllData() },
         { label: '卸载 Bigfish', click: () => uninstall() },
@@ -1899,20 +1840,20 @@ function rebuildTrayMenu() {
 }
 
 function setNotify(enabled) {
-  settings.notifyOnComplete = enabled;
-  saveSettings();
+  settings.get().notifyOnComplete = enabled;
+  settings.saveSettings();
   if (!enabled) { lastBusyAt = 0; notifiedForCycle = false; }
 }
 
 function setAutoStart(enabled) {
-  settings.launchAtLogin = enabled;
-  saveSettings();
+  settings.get().launchAtLogin = enabled;
+  settings.saveSettings();
   app.setLoginItemSettings({ openAtLogin: enabled });
 }
 
 function setAutoCheckUpdates(enabled) {
-  settings.autoCheckUpdates = enabled;
-  saveSettings();
+  settings.get().autoCheckUpdates = enabled;
+  settings.saveSettings();
   rebuildTrayMenu();
 }
 
@@ -2371,7 +2312,7 @@ function createMarketWindow() {
     title: 'Bigfish 插件市场',
     autoHideMenuBar: true,
     backgroundColor: '#0f1115',
-    icon: appIconPath(),
+    icon: assets.appIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'market-preload.js'),
       contextIsolation: true,
@@ -2429,7 +2370,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
-    loadSettings();
+    settings.loadSettings();
     let booted = false;
     try {
       await startDsh();
@@ -2508,14 +2449,14 @@ if (!gotLock) {
     screen.on('display-metrics-changed', (_e, display, changedMetrics) => handleDisplayChange('metrics', display, changedMetrics));
     // 首次安装 / 更新后：弹窗让用户选择模式（鲸鱼 / 专注）
     maybeShowModeDialog();
-    if (settings.petEnabled) {
+    if (settings.get().petEnabled) {
       createPetWindow(petResolveStartPos());
       petGeomSnapshot('start'); // 启动建窗后 1 行 geom（发射规则①）
       scheduleWander();
       scheduleSleep();
       schedulePetChatter();
     }
-    if (settings.launchAtLogin) setAutoStart(true);
+    if (settings.get().launchAtLogin) setAutoStart(true);
 
     handleOpenArg(process.argv);
 
