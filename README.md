@@ -121,7 +121,8 @@ Bigfish 遵循 DeepSeek Harness 官方 Cordis 插件体系：
 
 ## 目录
 
-- `main.js` — Electron 主进程：拉起后端、就绪检测、窗口生命周期、桌宠、插件引擎、进程树清理
+- `main.js` — Electron 主进程组合根：常量、userData 覆盖、单实例锁、启动引导、退出钩子、模块接线
+- `shell-*.js` — 主进程 15 个域模块（设置 / 资产 / 通知 / 后端 / 桌宠（几何 · 拖动 · 本体）/ 兑换屋 / 模式背景 / 插件 / 主窗口 / 市场 / 托盘 / 更新 / IPC 注册）
 - `market.html / market.js / market-preload.js` — 插件市场窗口
 - `exchange.html / exchange.js / exchange-preload.js` — 兑换屋窗口
 - `plugins.json` — 插件市场内置精选目录（离线兜底）
