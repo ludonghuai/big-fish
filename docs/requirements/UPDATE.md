@@ -4,6 +4,7 @@
 > 落点：`docs/requirements/UPDATE.md`（本档为自动更新需求唯一权威源）
 > 关联批次：`docs/batches/B02-auto-update.md`（§1.3 需求结论、§1.4 技术裁定、§1.5 验收 AC1…AC12、§1.7 既有约束）
 > 　　＋`docs/batches/B05-installer-cleanup.md`（§1.3 需求结论、§1.4 技术裁定、§1.5 验收 AC15 / AC15-b、§1.7 既有约束；B05 修订面 = 新增 US-10）
+> 　　＋`docs/batches/B06-shell-ux.md`（§1.3 需求结论 C5、§1.4 技术裁定 R4；B06 修订面 = dev 门禁口径注记）
 > 关联设计档：`docs/design/AUTO-UPDATE.md`（设计档回指本档条目 US-1…US-10、NFR-1…NFR-4）
 
 ---
@@ -41,6 +42,7 @@
 作为一个使用 Bigfish 的用户，我想要应用在启动时自动检查一次、运行中每 6 小时轻量轮询一次、并且能从托盘手动触发检查，以便及时知道有新版本可装——启动检查发现新版弹窗告知版本号与更新说明，轮询发现新版只发托盘气泡、不弹模态窗。
 
 - 边界（不做）：不做常驻长连接推送；轮询只拉取清单 JSON、不预下载安装包；dev 模式不检查（沿用现状 `!app.isPackaged` 短路）。
+- **B06 口径修订（2026-09-16；类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）**：dev 条款收窄——**App 面**仍仅安装版可用（dev 无入口 / 无提示）；**Harness 面**在 dev 放行（检查 + 更新）。权威口径 = `docs/requirements/SHELL.md` §三 US-6。
 
 ### US-2 App 下载与完整性校验（验收：AC3、AC4）
 
@@ -64,6 +66,8 @@
 
 作为一个使用 Bigfish 的用户，我想要自动检查失败时不被弹窗打扰、手动检查失败时得到明确提示且可重试，以便网络不好时应用保持安静、我想查的时候一定能查到——托盘「自动检查」开关关闭时零网络请求（市场页主动打开除外），dev 模式不检查。
 
+- **B06 口径修订（2026-09-16；类别 = 语义变更）**：story 句中「dev 模式不检查」收窄为「App 面不检查；Harness 面两态放行」——权威口径 = `docs/requirements/SHELL.md` §三 US-6。
+
 - 边界（不做）：手动「检查更新」不受开关约束（用户显式动作，始终可用）；开关只控制自动检查（启动检查 + 6 小时轮询）。
 
 ### US-6 Harness 更新（验收：AC8、AC9）
@@ -71,6 +75,7 @@
 作为一个使用 Bigfish 的用户，我想要 Harness 后端（`@deepseek-ai/dsh`）也能自动升级，以便后端修复与新功能不用等 App 发版——npmmirror 优先、npmjs 兜底查 `latest` dist-tag；`-rc.N` 后缀的版本比较正确；更新装到 userData 独立目录、不写安装目录；`dshBinPath` 优先 userData 副本；成功后重启 dsh 后端；失败旧版照常运行、可重试。
 
 - 边界（不做）：不追 `next` / `alpha` dist-tag（只追 `latest`，裁定见批次档 §1.4）；dev 模式不更新（dev 从 `dsh-bundle/` 启动）。
+- **B06 口径修订（2026-09-16；类别 = 语义变更）**：dev 不再整体短路——dev 的 `dshBinPath()` 改读活跃指针（与打包分支同口径），Harness 更新在 dev 真生效；兜底仍为 `dsh-bundle/`。权威口径 = `docs/requirements/SHELL.md` §三 US-6。
 
 ### US-7 已装插件更新（验收：AC10）
 
@@ -125,6 +130,7 @@
 - 核心机制只用 Electron 三平台共有 API（fetch/fs/crypto/spawn/dialog/Tray/Notification），不新增平台分支——安装包启动分支按 `urls[process.platform]` 取 URL，属既有清单语义，非平台代码分支。
 - Windows 为验收目标平台；macOS / Linux 既有行为不得回退（既有「弹窗 + 打开下载页」升级为下载安装流程，安装器为各平台各自格式）。
 - dev 模式不检查（`!app.isPackaged` 短路，现状保留）。
+  - **B06 口径修订（2026-09-16；类别 = 语义变更）**：同一收窄适用——App 面仅安装版；Harness 面在 dev 放行。
 - 旧清单格式（无 sha256 段）不导致崩溃——按 NFR-2 拒装并明确报错。
 - 度量方式：评审时逐条核对设计档 §2.3 改动点表；用例 TC-9（无 sha256 段清单）。
 
@@ -144,3 +150,4 @@
 |---|---|
 | 2026-09-16 | 初版：登记 B02 批次自动更新需求（US-1…US-9、NFR-1…NFR-4），覆盖 App 本体 / Harness / 插件 / 发布侧四个域，验收回指批次档 §1.5 的 AC1…AC12。 |
 | 2026-09-16 | B05 修订：新增 **US-10 App 更新安装包清理**（验收回指 `docs/batches/B05-installer-cleanup.md` §1.5 的 AC15 / AC15-b；范围边界四条 = 时机下次启动 / 失败面 best-effort / 下载校验重试语义不变 / 回收面限 `userData/updates/`）；§二 范围段与 §三 验收编号来源同步为两批（B02 + B05），头部关联批次补 B05 指针。 |
+| 2026-09-16 | **B06 口径修订注记**（类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）：US-1 边界 / US-5 story / US-6 边界 / NFR-3 中「dev 模式不检查 / 不更新」的条文收窄为「App 面仅安装版；Harness 面在 dev 放行（dev 读活跃指针）」。权威口径 = `docs/requirements/SHELL.md` §三 US-6（设计细节 = `docs/design/SHELL-UX.md` §2.2.5）；计数不变（10 / 4）。 |

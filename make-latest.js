@@ -4,16 +4,17 @@
  * 用法：node make-latest.js [--version <v>] [--note <文本>]
  *   version 缺省读 package.json.version；
  *   扫描 dist/：Bigfish.Setup.{v}.exe / Bigfish-{v}-arm64.dmg / Bigfish-{v}.AppImage；
- *   对存在的文件算 sha256 → 组装 latest.json（version/note/urls[Gitee Releases]/sha256）写仓库根；
+ *   对存在的文件算 sha256 → 组装 latest.json（version/note/urls[GitHub Releases]/sha256）写仓库根；
  *   缺失的平台跳过（urls 与 sha256 均不含该平台）；
- *   打印上传清单（Gitee 建 tag v{v} 上传附件 + 提交 latest.json）。
+ *   打印上传清单（GitHub 建 release v{v} 传附件 + Gitee 建 tag + 提交 latest.json）。
  * 退出码：0 成功 / 1 参数或产物缺失错误。本脚本为发布侧工具，不进 build.files（不随包分发）。
  */
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const GITEE_RELEASES = 'https://gitee.com/ludonghuai/big-fish/releases/download';
+// 附件托管在 GitHub Releases（Gitee 发行版附件单文件上限 100MB，装不下约 276MB 安装包）
+const RELEASES_DOWNLOAD = 'https://github.com/ludonghuai/big-fish/releases/download';
 const RAW_MANIFEST = 'https://gitee.com/ludonghuai/big-fish/raw/main/latest.json';
 
 function sha256File(file) {
@@ -55,7 +56,7 @@ function main() {
     const full = path.join(distDir, file);
     if (!fs.existsSync(full)) continue;
     sha256[platform] = sha256File(full);
-    urls[platform] = `${GITEE_RELEASES}/v${version}/${file}`;
+    urls[platform] = `${RELEASES_DOWNLOAD}/v${version}/${file}`;
     found.push({ platform, file, full });
   }
   if (found.length === 0) {
@@ -80,9 +81,10 @@ function main() {
   console.log(`✓ latest.json 已生成（version ${version}，含 ${found.length} 个平台 + sha256）`);
   console.log('');
   console.log('上传清单：');
-  console.log('  1. Gitee 建 tag v' + version + ' 并上传附件（Releases）：');
+  console.log('  1. GitHub 建仓 ludonghuai/big-fish（如未建）并建 release v' + version + '，上传附件：');
   for (const f of found) console.log('     · ' + f.full);
-  console.log('  2. 提交仓库文件：latest.json');
+  console.log('  2. Gitee 建 tag v' + version + '（仅代码与发行说明；附件超 100MB 上限不传）');
+  console.log('  3. 提交仓库文件：latest.json（urls 指向 GitHub 附件）');
   console.log('     raw 路径：' + RAW_MANIFEST);
   process.exit(0);
 }

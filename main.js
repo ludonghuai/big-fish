@@ -1304,7 +1304,7 @@ function petStopDrag(reason) {
 
 /**
  * 跟随循环的一个 tick：看门狗 → 读全局光标 → 显示器切换检测（US-12） → 推导目标
- *   → 同目标去重写入 → 跨屏尺寸标记（中心点进入新屏的首个 tick 校准一次）→ 采样日志。
+ *   → 同目标去重写入 → 跨屏尺寸标记（标称矩形完全进入新屏的首个 tick 校准一次）→ 采样日志。
  *   切换检测**不重锚抓取偏移**（`grabOffset` 全程恒定，§2.3.3 / DD-23）；热路径无新增 API 调用：
  *   切换检测与标记的消费判据均为纯算术比较。
  */
@@ -1347,16 +1347,20 @@ function petDragTick() {
     drag.lastApplied = target;
     wrote = 1;
   }
-  // 跨屏尺寸标记的消费判据（§2.3.3 简化二 / §2.1 F5 ②）：每 tick 用**纯算术**判「**窗口中心点**
-  //   进入新屏 `bounds`」（中心点 = target + PET_SIZE_DIP / 2，常量偏移；petPointInRect 取半开区间），
-  //   成立的**首个** tick 校准一次并清标记。判据读本 tick 已推导的 target（写入之后调用，使校准
-  //   读到的即目标位置）；无 getSize / 无取屏调用——每跨屏事件至多一次尺寸写入、同屏内全程零次。
-  if (drag.pendingSizeAnchor) {
-    const center = { x: target[0] + PET_SIZE_DIP.w / 2, y: target[1] + PET_SIZE_DIP.h / 2 };
-    if (petPointInRect(center, drag.pendingSizeAnchor.bounds)) {
-      drag.pendingSizeAnchor = null;
-      petCalibrateSize();
-    }
+  // 跨屏尺寸标记的消费判据（2026-09-16 修正；原判据 = §2.3.3 简化二 / §2.1 F5 ② 的「窗口中心点
+  //   进入新屏的首个 tick」）：每 tick 用**纯算术**判「**标称矩形完全进入新屏 `bounds`**」
+  //   （petRectInside = 四角 ⊆，与 petStraddleFix 共用同一 helper），成立的**首个** tick 校准一次并清标记。
+  //   改判据的理由（实机报告：位置处于屏交界临界点时持续抖动且位置偏移）：中心点进入时窗口仍骑线，
+  //   混合 DPI 下 Windows 在骑线点附近持续按多数屏重整尺寸 ⇒ 校准第 ③ 步的容差短路失效 ⇒
+  //   光标每次晃过交界都重新武装标记并被立即消费 = 一次真实 setBounds（= 抖动源）；且尺寸写入会
+  //   静默改位置（§2.3.5-F-1 已登记：Δy 突变全部落在尺寸写入行；F16：拖动循环按写入意图去重、
+  //   被改动的位置不会自愈）——骑线（临界）期改为**零写入**，窗口完全进入新屏才校准；停在骑线处
+  //   松手由松手路径兜底（§2.3.7 推离 + 调用点⑦校准），功能无缺口。
+  //   判据仍读本 tick 已推导的 target（写入之后调用，使校准读到的即目标位置）；无 getSize /
+  //   无取屏调用——每跨屏事件至多一次尺寸写入、同屏内全程零次（写入纪律不变）。
+  if (drag.pendingSizeAnchor && petRectInside(target, drag.pendingSizeAnchor.bounds)) {
+    drag.pendingSizeAnchor = null;
+    petCalibrateSize();
   }
   drag.tick++;
   if (PET_DRAG_DEBUG && drag.tick % PET_DRAG_LOG_SAMPLE_TICKS === 0) {
@@ -2603,7 +2607,7 @@ if (!gotLock) {
       lastMessageAt: Date.now(),
       displayBounds: null,       // 上一 tick 所在屏的 DIP 矩形（切换检测用，零 API 调用）
       displayId: null,           // 上一 tick 所在屏 id（唯一职责 = 切换检测的身份比较，§2.3.3）
-      pendingSizeAnchor: null,   // 跨屏尺寸标记 { bounds }：窗口中心点进入新屏的首个 tick 校准一次（§2.3.3）
+      pendingSizeAnchor: null,   // 跨屏尺寸标记 { bounds }：标称矩形完全进入新屏的首个 tick 校准一次（2026-09-16 修正；原 = 中心点进入）
     };
     petSyncDragDisplayCache(cursor); // 拖动起点刷新缓存（§2.3.3）
     if (PET_DRAG_DEBUG) petDragLog(`drag-start grabOffset=${petPosText([petDrag.grabOffset.x, petDrag.grabOffset.y])} pos=${petPosText(pos)}`);

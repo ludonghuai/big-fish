@@ -1,6 +1,6 @@
 {
   "name": "bigfish",
-  "version": "0.1.2",
+  "version": "0.0.1",
   "description": "Bigfish — Electron desktop shell for DeepSeek Harness",
   "private": true,
   "main": "main.js",
@@ -11,6 +11,8 @@
   "homepage": "https://gitee.com/ludonghuai/big-fish",
   "license": "MIT",
   "scripts": {
+    "postinstall": "node scripts/ensure-deps.js --bundle-only",
+    "prestart": "node scripts/ensure-deps.js",
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
@@ -82,6 +84,7 @@
       "target": [
         "nsis"
       ],
+      "artifactName": "${productName}.Setup.${version}.${ext}",
       "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },

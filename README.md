@@ -6,7 +6,7 @@
 
 免去手动开终端、记端口、开浏览器。装完双击即用。
 
-[下载安装包](https://github.com/turtle2209/Bigfish/releases) · [版本说明](版本说明.txt) · [使用说明](使用说明.txt) · [已知问题与排查](已知问题与排查.md) · [致谢与合规](THIRD-PARTY-NOTICES.md)
+[下载安装包](https://github.com/ludonghuai/big-fish/releases) · [版本说明](版本说明.txt) · [使用说明](使用说明.txt) · [已知问题与排查](已知问题与排查.md) · [致谢与合规](THIRD-PARTY-NOTICES.md)
 
 </div>
 
@@ -16,7 +16,7 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 
 把 `dsh web` 的本地后端 + React UI 包进一个原生桌面窗口，免去手动开终端、记端口、开浏览器。
 
-> **当前版本：`0.1.2`** · 已发布 Windows 安装包；macOS / Linux 目前需自行打包（见下文「打包」）
+> **当前版本：`0.0.1`** · 已发布 Windows 安装包；macOS / Linux 目前需自行打包（见下文「打包」）
 >
 > **源码、文档与问题反馈**：<https://gitee.com/ludonghuai/big-fish>
 
@@ -24,7 +24,7 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10 / 11 | [`Bigfish.Setup.0.1.2.exe`](https://github.com/turtle2209/Bigfish/releases/download/v0.1.2/Bigfish.Setup.0.1.2.exe) | 约 276 MB，双击按向导安装 |
+| Windows 10 / 11 | [`Bigfish.Setup.0.0.1.exe`](https://github.com/ludonghuai/big-fish/releases/download/v0.0.1/Bigfish.Setup.0.0.1.exe) | 约 276 MB，双击按向导安装 |
 
 安装包没有做代码签名：Windows 若弹「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」
 （不是病毒，是没买签名证书）。
@@ -81,9 +81,14 @@ npm install
 npm start
 ```
 
-> 需要 Node.js >= 22。首次运行还要装后端依赖：`cd dsh-bundle && npm install --omit=dev`；
+> 需要 Node.js >= 22。`npm install` 会自动把后端依赖（`dsh-bundle/`）一并装好；即使漏了，
+> `npm start` 启动前也会自检补齐（`scripts/ensure-deps.js`），不用再单独进 `dsh-bundle` 装一次。
 > 国内网络建议先 `npm config set registry https://registry.npmmirror.com/`。
 > 详细排查见 [已知问题与排查](已知问题与排查.md)。
+
+> 仓库**不提交 `node_modules`**：两处依赖合计约 750 MB / 4.3 万个文件，且 electron、koffi、
+> node-pty 都是平台专有二进制（Windows 上装好的那份拿到 macOS / Linux 直接不可用）。
+> 打包需要的内置 Node 与 pnpm 放在 `node-runtime/`（同样不入库，见下方「打包」）。
 
 ## 打包
 

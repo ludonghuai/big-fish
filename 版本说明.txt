@@ -1,5 +1,5 @@
 ══════════════════════════════════════
-        Bigfish 版本说明 v0.1.2
+        Bigfish 版本说明 v0.0.1
    DeepSeek Harness 第三方桌面端
    （非官方，独立社区项目，免费）
 ══════════════════════════════════════
@@ -9,7 +9,7 @@ Bigfish 是 DeepSeek Harness 的 Electron 桌面版：
 把 dsh 本地后端 + 网页界面包进原生窗口，双击即用。
 
 ──────────────────────────────
-一、v0.1.2 新增了什么（本期核心）
+一、v0.0.1 新增了什么（本期核心）
 ──────────────────────────────
 
 【1. 插件市场】（重大新功能）
@@ -46,11 +46,11 @@ Bigfish 是 DeepSeek Harness 的 Electron 桌面版：
 ──────────────────────────────
 三、安装包
 ──────────────────────────────
-   · Windows 10 / 11：Bigfish.Setup.0.1.2.exe（约 276 MB，未签名，
+   · Windows 10 / 11：Bigfish.Setup.0.0.1.exe（约 276 MB，未签名，
      SmartScreen 弹窗点「更多信息 → 仍要运行」）
    · macOS / Linux：本期没有发布安装包，需自行从源码打包
      （原生依赖要在对应系统上构建，见 README「打包」一节）
-   · 下载地址：https://github.com/turtle2209/Bigfish/releases
+   · 下载地址：https://github.com/ludonghuai/big-fish/releases
      （安装包超过 Gitee 发行版附件 100 MB 上限，所以放在 GitHub Releases）
 
 ──────────────────────────────
@@ -62,5 +62,5 @@ Bigfish 是 DeepSeek Harness 的 Electron 桌面版：
 
 ══════════════════════════════════════
    源码 / 反馈：https://gitee.com/ludonghuai/big-fish
-   安装包下载：https://github.com/turtle2209/Bigfish/releases
+   安装包下载：https://github.com/ludonghuai/big-fish/releases
 ══════════════════════════════════════

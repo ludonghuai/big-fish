@@ -2,15 +2,15 @@
         Bigfish 使用说明
    DeepSeek Harness 第三方桌面端
    （非官方，独立社区项目，免费）
-   v0.1.2 · Windows 10 / 11
+   v0.0.1 · Windows 10 / 11
 ══════════════════════════════════════
 
 【一、下载】
-  下载最新版安装包  Bigfish.Setup.0.1.2.exe（约 276 MB）：
-  https://github.com/turtle2209/Bigfish/releases
+  下载最新版安装包  Bigfish.Setup.0.0.1.exe（约 276 MB）：
+  https://github.com/ludonghuai/big-fish/releases
   · 安装包体积超过 Gitee 发行版附件的 100 MB 上限，所以托管在 GitHub Releases
   · 如果链接打不开（GitHub 在国内部分网络下不稳定），换个网络或用加速工具再试
-  · 下载时认准文件名 Bigfish.Setup.0.1.2.exe（点分隔），别下到旧版
+  · 下载时认准文件名 Bigfish.Setup.0.0.1.exe（点分隔），别下到旧版
 
 【二、安装】
   1. 双击 exe，按向导安装（安装包较大，需要几分钟，属正常，别关）

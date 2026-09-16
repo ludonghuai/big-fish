@@ -6,6 +6,7 @@
 > 关联批次：`docs/batches/B02-auto-update.md`（§1.4 技术裁定、§1.5 验收 AC1…AC12、§1.6 事实、§1.7 既有约束）
 > 　　＋`docs/batches/B04-harness-activate-fix.md`（§1.4 技术裁定三条、§1.5 验收 AC9 / AC9-b / AC13 / AC14、§1.6 实测事实、§1.7 既有约束；B04 修订面 = §2.0 偏差记录 / §2.1 选型 G / §2.2.1 / §2.2.4 / §2.2.9 / §2.3 / §2.4 / §3.1 / §3.2）
 > 　　＋`docs/batches/B05-installer-cleanup.md`（§1.3 需求结论、§1.4 技术裁定、§1.5 验收 AC15 / AC15-b、§1.6 事实、§1.7 既有约束；B05 修订面 = §一 需求回指 / §2.2.3 / §2.2.4 / §2.2.9 / §2.3 / §2.4 / §2.5 / §3.1 / §3.2 / §3.3）
+> 　　＋`docs/batches/B06-shell-ux.md`（§1.3 需求结论 C5、§1.4 技术裁定 R4；B06 修订面 = dev 更新门禁口径同步——注记落 §一 / §2.2.1 / §2.2.7 / §2.2.9 / §2.3 / §2.5 / §2.6 共七处）
 
 ---
 
@@ -48,6 +49,8 @@
 | C12 | **B04：`dshBinPath()` 对外语义不变**——打包版优先 userData 副本、出厂副本兜底；dev 分支不变 | `main.js:130-138`（现行实现）；设计处理见 §2.2.1「Harness 版本读数」（副本落点变化属实现形态，语义不变） |
 | C13 | **B05：写入 / 删除面仍限 `userData`**（NFR-2）——回收只作用于 `userData/updates/`，不触碰安装目录、`~/.dsh`、系统临时目录 | `docs/batches/B05-installer-cleanup.md` §1.7；下载唯一落点 = `updater.js:118-120`（全仓 grep 字面量 `'updates'` 仅 `updater.js:118`（下载落点）与 `updater.js:462`（清理面）两处——设计者亲 grep） |
 | C14 | **B05：`updater.js` 单函数 <300 行、文件 <500 行**（B04 终态 486 行——本批只能小幅增量） | `updater.js` 实测 486 行（`find /c /v ""` 口径；B05 实施起点）；`startupCleanup` 现状 15 行 |
+
+> **B06 口径修订（2026-09-16；类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）**：本表 **C5**（「dev 模式不检查…现状保留」）与 **C12**（「dev 分支不变」）的旧口径已被 B06 修订——dev 不再整体短路：**App 面**仅安装版（不执行 / 无 UI，记 `face=app skipped=dev`）；**Harness 面**检查 + 更新放行，`dshBinPath()` dev 分支改读活跃指针（兜底 `dsh-bundle/` 不变）。权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5。
 
 ---
 
@@ -243,6 +246,7 @@ cleanup(userData)                           → { active, removed:[…], adopted
 
 - `getCurrentDshVersion()` 口径不变——读 `dshBinPath()` 解析结果的 `package.json.version`（`main.js:353-360`）。
 - `dshBinPath()`（`main.js:130-138`）打包分支改为三档解析：① `harness-store.resolveActiveBin(userData)`（活跃指针副本；无指针时兼容旧布局 `userData/dsh` 的可解析副本）→ 命中即返回；② 出厂 `resourcesPath/dsh/...` 兜底。dev 分支逐字不变。
+- **B06 口径修订（2026-09-16；类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）**：上一条的「dev 分支逐字不变」已被修订——dev 分支改读活跃指针（与打包分支同口径；兜底仍为 `dsh-bundle/`）。权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5。
 - **对外语义保持**（C12）：打包版优先 userData 副本、出厂副本兜底；仅副本落点由 `userData/dsh` 变为 `userData/dsh-update/versions/<version>`（属实现形态变化）。
 - **解析不依赖 `updater.init(ctx)`**：`dshBinPath()` 在 boot 早期即被 `resolveRuntime()` 调用（`main.js:199`，位于 `startDsh()` `main.js:193`；boot 路径 `main.js:2277`），而 `updater.init()` 在 `scheduleUpdateChecks()` 内（`main.js:586`）。故 `resolveActiveBin(userData)` 以 userData 路径为**显式入参**，不读模块级 `ctx`。
 
@@ -252,12 +256,12 @@ cleanup(userData)                           → { active, removed:[…], adopted
 
 ```json
 {
-  "version": "0.1.3",
+  "version": "0.0.1",
   "note": "更新说明（弹窗 detail 全文展示）",
   "urls": {
-    "win32": "https://gitee.com/ludonghuai/big-fish/releases/download/v0.1.3/Bigfish.Setup.0.1.3.exe",
-    "darwin": "https://gitee.com/ludonghuai/big-fish/releases/download/v0.1.3/Bigfish-0.1.3-arm64.dmg",
-    "linux": "https://gitee.com/ludonghuai/big-fish/releases/download/v0.1.3/Bigfish-0.1.3.AppImage"
+    "win32": "https://github.com/ludonghuai/big-fish/releases/download/v0.0.1/Bigfish.Setup.0.0.1.exe",
+    "darwin": "https://github.com/ludonghuai/big-fish/releases/download/v0.0.1/Bigfish-0.0.1-arm64.dmg",
+    "linux": "https://github.com/ludonghuai/big-fish/releases/download/v0.0.1/Bigfish-0.0.1.AppImage"
   },
   "sha256": {
     "win32": "<64 位 hex>",
@@ -266,6 +270,8 @@ cleanup(userData)                           → { active, removed:[…], adopted
   }
 }
 ```
+
+> **注（2026-09-16 托管定案）**：安装包二进制托管在 GitHub `ludonghuai/big-fish` Releases——Gitee 发行版附件单文件上限 100MB，装不下约 276MB 的安装包；清单唯一源不变（Gitee raw），`urls` 仅指向 GitHub 附件。项目由新维护者接手、版本自 0.0.1 重新计数；旧仓 `turtle2209/Bigfish` 的 0.1.x 用户不维护、不做过渡。
 
 - 清单唯一源：`https://gitee.com/ludonghuai/big-fish/raw/main/latest.json`（替换 `main.js:50-53` 的 jsdelivr/raw.githubusercontent 双源）。
 - 向后兼容：旧客户端只读 version/note/urls，多出的 sha256 段无害；新客户端遇缺 sha256 段 → 按 NFR-2 拒装并明确报错（fail-closed，不崩溃）。
@@ -470,6 +476,7 @@ market:update-all → 重新 fetchPluginRegistry() 重算 updates → 逐个 ins
 - **设置**：`DEFAULT_SETTINGS`（`main.js:75-83`）新增 `autoCheckUpdates: true`；托盘新增 checkbox「自动检查更新」（`rebuildTrayMenu`，`main.js:1201-1236`）→ `settings.autoCheckUpdates = item.checked; saveSettings(); rebuildTrayMenu()`。持久化复用既有 `settings.json` 封装（`main.js:86-103`）。
 - **调度**：`UPDATE_POLL_MS = 21600000`（6h，`BIGFISH_UPDATE_INTERVAL_MS` 可覆盖）；启动 5s 检查（沿用 `main.js:1780` 时点，改调新实现）后 `setInterval(轮询, UPDATE_POLL_MS)`；轮询 = App 检查 + Harness 检查（各自静默）。
 - **门禁**：`!app.isPackaged` → 全部不检查（dev 模式；托盘手动点击时弹提示「更新检查只在安装版可用」，先例 `uninstall()` 的 dev 提示，`main.js:303-306`）；`autoCheckUpdates === false` → 启动检查与轮询均跳过（AC7 零网络）；manual 检查不受开关约束。
+- **B06 口径修订（2026-09-16；类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）**：本条「dev → 全部不检查 + 手动点击弹提示」已被修订——dev 不再整体短路：App 面不执行 / 无提示（记 `face=app skipped=dev`）、Harness 面两态同路径；「更新检查只在安装版可用」提示退役。权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5。
 - **并发守卫**：模块级 `checkInFlight` / `downloadInFlight` / `harnessInFlight` 标志；轮询期间任一在途 → 跳过本轮（记日志）；手动触发时已有在途 → 气泡提示「检查/更新正在进行」；取消（U-13）中止在途操作并释放对应标志（回到可重试态，不残留半成品）。
 - **零网络证据**：开关关闭时 updater.log 不产生 `check` 行；市场窗口的 `fetchPluginRegistry`（`main.js:1671-1693`）独立于更新域、只在市场页打开时触发（AC7 括注的市场页除外）。
 
@@ -512,7 +519,7 @@ node make-latest.js [--version <v>] [--note <文本>]
 [ISO] harness activate dsh active path=… version=… （main.js 写：重启前按 dshBinPath() 实际解析结果记——AC9 机器证据；B04 起附版本读数）
 [ISO] harness restart backend ready port=… （main.js 写：重启成功后记；「backend ready」沿用既有 console 行口径 `main.js:2278`）
 [ISO] plugin update spec=… result=ok|fail detail=…
-[ISO] update gate reason=… skipped=dev|toggle-off|in-flight
+[ISO] update gate reason=… face=app skipped=dev （B06 修订：dev 下 App 面跳过；旧「skipped=dev 整面跳过」形态退役，skipped=toggle-off|in-flight 不变）
 ```
 
 **行数口径（逐批累加；D3：计数与枚举同改）**：
@@ -521,6 +528,7 @@ node make-latest.js [--version <v>] [--note <文本>]
 - B04 **新增 3 行**（`harness activate verify`、`harness migrate`、`harness cleanup`）、**就地修改 2 行**（`harness install phase=… detail` 口径化；`harness activate dsh active …` 附 `version=`）。
 - B05 **新增 1 行**（`update cleanup type=app removed=<n> failed=<m>`）——**终态 = 15 行**（14 + 1）。
 - **计数口径（D3，评审 #2）**：本节「行数」只计**主格式行**（主表 `[ISO] …` 起各行及其 `detail` / 取值子行，逐行点算 = 15；`detail` / 取值子行**随所属主行计价、不另计**——机检 = `[ISO]` 前缀行数 = 15）；本节「失败 / 取消变体」段的 **6** 处变体另行计价、**不并入**本数——故本节机检计数唯一为 **15**（不因变体另得第二值）。
+- B06（2026-09-16）**就地修订 1 行**（`update gate`：旧「整面跳过」形态退役 → `face=app skipped=dev` 形态——本节主表该行同步）；**计数不变（终态仍 15 行）**（权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5）。
 
 **失败 / 取消变体（通用口径——B05 补齐漏登记，一致性修正，非新增语义）**：本节主表各行在同一 `[ISO] …` 前缀下另有**实现已产出、而本节枚举此前漏列**的变体——
 `update download type=app fail detail=…`（`updater.js:182`）、`update download type=app canceled`（`updater.js:179`）、
@@ -555,6 +563,7 @@ node make-latest.js [--version <v>] [--note <文本>]
 > 「改动点」列 = **本批（B05）**改动——B02 / B04 已交付文件在本批标「不改」（历史改动点见注 M1（B02）/ 注 M2（B04））；
 > 「末行数」列：**文档行**（本批已落地，即 `docs/requirements/UPDATE.md` 与本档自身行）按**实测**；**代码文件行**为**实施前预估**（实施后由批次档 §5 回填实测）；「不改」文件行数不随批变动；
 > 「预计改动量」列 = 实施前预估（估算方法沿用 B02，曾显著失准）——保留作预估与实测的对照。
+> **B06 as-of 注（2026-09-16）**：B06 立案实测 `main.js` = **2831** / `package.json` = **116**（本表所记 2827 / 113 为 B05 起点 / B04 收口时点值——**历史值不改写**）；差异源 = 测量时点不同 + B03 会话在途未提交改动（`docs/batches/B06-shell-ux.md` §1.7）；B06 设计口径 = `docs/design/SHELL-UX.md` §2.3 表注。
 
 > **注 M1 —— B02 交付时 `main.js` 改动点明细（①–⑩；历史记录，B04 改动点见表内本行）**
 >
@@ -641,13 +650,15 @@ node make-latest.js [--version <v>] [--note <文本>]
 | — | 平台范围 = 核心机制平台无关 | 机制三平台共有；安装包按 `urls[platform]` 取（清单语义非代码分支）；darwin/linux 打开安装包不自动退出（不承诺验证） | 不冲突 |
 | — | 提示词文件属产品代码 | 本批不触碰任何提示词文件 | 不冲突 |
 
+> **B06 口径修订（2026-09-16；类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）**：本表 **C5** 行（「dev 模式不检查 → 手动点击给 dev 提示」）与 **C12（B04）** 行（「dev 分支不变」）的旧口径随 B06 修订——dev 仅 App 面无检查 / 无提示，Harness 面放行、dev 读活跃指针。权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5。
+
 **已知限制（明确不修，随本批留档）**
 
 - **L1**：插件更新徽标的覆盖取决于注册表条目的 `version` 字段——内置本地目录实测仅 3/35 条带 version（`plugins.json` 实测）；远程全量目录由 awesome-dsh-plugin.com 维护，本批不迁移主站。无 version 的条目无徽标（US-7 边界已声明）。
 - **L2**：应用休眠/关机期间 6h 轮询自然暂停，无 missed-check 补偿——启动时总是检查一次，等价兜底。
 - **L3**：App 更新确认后应用即退出，若用户在安装器中取消安装，需手动重启应用。
 - **L4**：NSIS 安装需 UAC 授权（系统标准行为，无法绕开）——更新窗口 ready 态文案明示。
-- **L5**：Harness 更新不可用于 dev 模式（dev 不检查，且 dev 从 `dsh-bundle/` 启动）。
+- **L5（B06 修订，2026-09-16；类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）**：原「Harness 更新不可用于 dev 模式」已修订——dev 的 Harness 检查与更新放行且真生效（dev 读活跃指针，兜底 `dsh-bundle/`）；权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5。
 - **L6（B04）**：启动时的活跃副本校验只有**存在性**（`resolveActiveBin` 查 `bin.js`），不做冒烟——启动路径上跑 62 包冒烟会阻塞启动；深度复核（存在性 + 版本 + 冒烟）只在**激活时**做（DD-17）。若活跃副本在激活后、启动前被外力破坏（杀软 / 手工删文件），后果 = 后端启动失败走既有重试/重置对话（`main.js:2282-2336`），用户可重新更新恢复。
 - **L7（B04）**：版本 GC 是**尽力而为**（best-effort）：单个旧版本目录删除失败（Windows 文件占用）时不阻断启动，下次启动重试。
 - **L8（B04）**：指针（`userData/dsh-active.json`）不可解析时（损坏 / 副本被删），启动清理会**清指针 + 回收该版本目录**——活跃副本随之丢失并回退出厂副本（功能不丢，版本回退；重新更新即可）。设计取舍：宁可状态诚实（不静默挂着悬空指针），不为此引入额外的二次校验状态机。
@@ -683,6 +694,8 @@ node make-latest.js [--version <v>] [--note <文本>]
 | U-13 | 更新窗口生命周期 | 常驻复用（同 marketWindow 模式）；「关闭」按钮只关窗不取消后台操作；取消按钮 → `cancelAppDownload()` / `cancelHarnessInstall()`（中止在途下载/安装 + 清临时文件，回到可重试态）；Harness 提交点（指针写入）之后取消不生效 |
 | U-14（B04） | 激活后复核失败时的窗口文案 | 沿用失败文案「更新失败，旧版不受影响，可重试」（`update.js` 不改）——复核失败与安装失败对用户是同一种结果（本次更新未生效、旧版照常、可重试），不暴露内部 stage（stage 落 `updater.log` 供排查） |
 | U-15（B05） | 安装包回收是否向用户提示 | **不提示**（无弹窗、无气泡、无窗口文案）——回收是静默内务（best-effort）：成功无需告知，占用跳过也不打扰；取证只在 `updater.log`（§2.2.9）。托盘菜单与更新窗口零新增项（`update.html` / `update.js` 不改） |
+
+> **B06 口径修订（2026-09-16；类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）**：**U-12**（「dev 模式手动检查 → 提示『更新检查只在安装版可用』」）已被修订——dev 手动检查不再弹该提示（App 面无 UI、Harness 检查照常；该措辞从代码中消失，grep 判据 = `docs/design/SHELL-UX.md` §3.1 AC5）。权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5。
 
 **open 项**：T3 已裁定（A 删除，2026-09-16，批次档 §4.3），随实施落地——除此之外无未决 UI 决策。
 
@@ -837,3 +850,5 @@ node make-latest.js [--version <v>] [--note <文本>]
 | 2026-09-16 | **B05 评审修正轮**（评审 #1/#2/#3 落地）：§2.2.3「实现形态」「取证行」拆两类（① 目录不存在 `ENOENT` → `removed=0 failed=0` 仍落取证行；② 枚举失败 `EACCES`/`EPERM`/`ENOTDIR` → `… detail=read-fail`，不并入 `failed`）； |
 |  | §2.2.9 主行补 `detail=read-fail` 子形态 + 行数口径注明「15 = 主格式行 / 6 处变体不并入」（两处「上表」相对指针改「本节主表」）；§2.3 按实测对账（需求档 134 → 146 / +12）+ 补本档自身行（748 → **838**）+ 表口径注明「文档行按实测 / 代码行按预估」；§3.1 注 B05-1 ③ 补枚举失败期望行（不入本轮机检集）。 |
 | 2026-09-16 | **B05 评审修正轮 2**（评审 #1/#4 落地）：§2.3 `main.js` 行重测更正（2640 → **2827**，末行数同步）；§2.2.3 / §2.5 O5 / §2.2.9 变体段的 `main.js` 行号指针改符号锚定（现行为准：`upd:install-now` 处理器 `main.js:2781-2787`、`result=skip` 取证行 `main.js:2149`）；§2.2.9 口径行补「`detail` / 取值子行随所属主行计价、不另计」半句；本档行数 838 → **839**。**不改需求档。** |
+| 2026-09-16 | **B06 口径修订注记**（类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4；权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5）：dev 更新门禁旧口径九处加注修订——需求层 C5 / C12 · §2.2.1（`dshBinPath`）· §2.2.7（门禁条）· §2.2.9（gate 行）· §2.5（C5 / C12 / L5）· §2.6（U-12）； |
+|  | §2.2.9 gate 行就地换新形态（计数不变 = 15）；§2.3 补 as-of 行数注（2831 / 116——历史值不改写）。 |
