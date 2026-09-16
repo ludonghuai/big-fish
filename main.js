@@ -38,6 +38,8 @@ const updater = require('./updater.js');
 const harnessStore = require('./harness-store.js');
 const settings = require('./shell-settings.js');
 const assets = require('./shell-assets.js');
+const notifier = require('./shell-notify.js');
+const backend = require('./shell-backend.js');
 
 const APP_NAME = 'Bigfish';
 const HOST = '127.0.0.1';
@@ -53,171 +55,25 @@ let quitting = false;
 function isQuitting() { return quitting; }
 function setQuitting(v) { quitting = v; }
 
+/** 主窗口访问器（组合根中间态：window 模块迁移前由 main 提供）。 */
+function getMainWindow() { return mainWindow; }
+
+// ---- 模块接线（依赖注入；设计档 docs/design/SHELL-UX.md §2.2.6 依赖方向规则）----
+notifier.init({ getDshHome: backend.dshHome, petSay: petSay, IDLE_NOTIFY_MS });
+backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: sanitizeProfileBundles, getMainWindow: getMainWindow });
+
 // 检查更新：从 Gitee 仓库 raw 拉取 latest.json（唯一清单源；AC6）。
 // 测试钩子：BIGFISH_UPDATE_URL 可覆盖（设计档 §2.2.2 假清单桩；仅此面允许 http 本地桩）。
 const UPDATE_MANIFEST_URL = process.env.BIGFISH_UPDATE_URL
   || 'https://gitee.com/ludonghuai/big-fish/raw/main/latest.json';
 const UPDATE_POLL_MS = Number(process.env.BIGFISH_UPDATE_INTERVAL_MS) || 21600000; // 6h（AC2 短轮询可覆盖）
 
-/** @type {import('node:child_process').ChildProcess | null} */
-let dshProcess = null;
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 /** @type {BrowserWindow | null} */
 let petWindow = null;
 /** @type {Tray | null} */
 let tray = null;
-/** @type {number | null} */
-let port = null;
-let completionWatcherTimer = null;
-let lastBusyAt = 0;
-let notifiedForCycle = false;
-
-// ---------------------------------------------------------------------------
-// Backend lifecycle
-// ---------------------------------------------------------------------------
-function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.unref();
-    srv.once('error', reject);
-    srv.listen(0, HOST, () => {
-      const addr = srv.address();
-      const p = typeof addr === 'object' && addr ? addr.port : 0;
-      srv.close(() => resolve(p));
-    });
-  });
-}
-
-function dshBinPath() {
-  // Harness 运行时：活跃指针副本优先（userData/dsh-update/versions/<v>；无指针时兼容旧布局
-  // userData/dsh）——dev 与打包同口径（US-6 / DD-8）；无指针兜底出厂副本（打包 = 冻结树
-  // resourcesPath/dsh，dev = dsh-bundle 出厂副本）。
-  const active = harnessStore.resolveActiveBin(app.getPath('userData'));
-  if (active) return active;
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
-  }
-  return path.join(app.getAppPath(), 'dsh-bundle', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
-}
-
-/** Directory of bundled skills shipped with the app (loaded via DSH_BUNDLED_SKILL_DIR). */
-function bundledSkillDir() {
-  return path.join(app.getAppPath(), 'bundled-skills');
-}
-
-function resolveRuntime() {
-  const bin = dshBinPath();
-  const env = { ...process.env, DSH_BUNDLED_SKILL_DIR: bundledSkillDir() };
-  if (!app.isPackaged) {
-    return { command: process.env.DSH_NODE || 'node', args: [bin], env };
-  }
-  const nodeBin = process.platform === 'win32' ? 'node.exe' : 'node';
-  const nodeExe = path.join(process.resourcesPath, 'node-runtime', nodeBin);
-  return { command: nodeExe, args: [bin], env };
-}
-
-function waitForReady(p, timeoutMs = READY_TIMEOUT_MS) {
-  const base = `http://${HOST}:${p}`;
-  const startedAt = Date.now();
-  return new Promise((resolve, reject) => {
-    const attempt = () => {
-      const req = http.get(`${base}/`, (res) => {
-        res.resume();
-        if (res.statusCode && res.statusCode < 500) resolve();
-        else retry();
-      });
-      req.once('error', retry);
-      req.setTimeout(3000, () => { req.destroy(); retry(); });
-    };
-    const retry = () => {
-      if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error(`Timed out waiting for the backend at ${base}`));
-        return;
-      }
-      setTimeout(attempt, 500);
-    };
-    attempt();
-  });
-}
-
-/** Kill any leftover backend processes from a previous session (crash / force quit). */
-function cleanupStaleDsh() {
-  try {
-    if (process.platform === 'win32') {
-      const script = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*dsh/lib/bin.js*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
-      // -WindowStyle Hidden：彻底不弹 PowerShell 黑窗
-      spawn('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', script], { stdio: 'ignore', windowsHide: true });
-    } else {
-      spawn('pkill', ['-f', 'dsh/lib/bin.js'], { stdio: 'ignore' });
-    }
-  } catch { /* best effort */ }
-}
-
-async function startDsh() {
-  cleanupStaleDsh();
-  // 先清理坏 bundle（防止上次误写入 github:xxx 导致后端启动崩）
-  sanitizeProfileBundles();
-  await new Promise((r) => setTimeout(r, 1500)); // 给清理留一点时间
-  port = await findFreePort();
-  const rt = resolveRuntime();
-  const args = [...rt.args, '--profile', 'web', '--host', HOST, '--port', String(port)];
-  console.log(`[bigfish] starting backend on http://${HOST}:${port}`);
-
-  // 后端日志写文件，便于排查黑屏/启动失败；打不开时降级为 inherit，不让整个后端崩
-  let logStream = null;
-  try {
-    const logPath = path.join(app.getPath('userData'), 'bigfish.log');
-    logStream = fs.createWriteStream(logPath, { flags: 'a' });
-    await new Promise((resolve) => {
-      if (logStream.fd !== null) { resolve(); return; }
-      logStream.once('open', resolve);
-      logStream.once('error', () => { logStream = null; resolve(); });
-    });
-    if (logStream && logStream.fd !== null) {
-      logStream.write(`\n\n===== ${new Date().toISOString()} start backend :${port} =====\n`);
-    } else {
-      logStream = null;
-    }
-  } catch { logStream = null; /* 日志写不了就算了 */ }
-
-  const stdioOut = logStream || 'inherit';
-  dshProcess = spawn(rt.command, args, {
-    env: rt.env,
-    stdio: ['ignore', stdioOut, stdioOut],
-    windowsHide: true,
-  });
-  dshProcess.once('error', (err) => console.error('[bigfish] failed to spawn backend:', err));
-  await waitForReady(port);
-}
-
-function stopDsh() {
-  const child = dshProcess;
-  dshProcess = null;
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  try {
-    if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-    } else {
-      child.kill('SIGTERM');
-      setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 3000);
-    }
-  } catch { /* best effort */ }
-}
-
-// ---------------------------------------------------------------------------
-// Notifications
-// ---------------------------------------------------------------------------
-function notify(title, body, onClick) {
-  if (!Notification.isSupported()) return;
-  try {
-    const n = new Notification({ title, body, icon: assets.appIconPath() });
-    if (typeof onClick === 'function') n.on('click', onClick); // 气泡点击（U-2：点击查看 → 弹窗）
-    n.show();
-  } catch (err) {
-    console.error('[bigfish] notification failed:', err);
-  }
-}
 
 const PET_QUOTES = [
   // 人设·打招呼
@@ -314,15 +170,6 @@ function updaterLog(text) {
   } catch { /* best effort */ }
 }
 
-/** 活动 dsh 版本（userData 副本优先，出厂冻结兜底）——AC9 判据。 */
-function getCurrentDshVersion() {
-  try {
-    const bin = dshBinPath();
-    const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(path.dirname(bin)), 'package.json'), 'utf8'));
-    return String(pkg.version || '');
-  } catch { return '0.0.0'; }
-}
-
 function createUpdateWindow() {
   if (updateWindow && !updateWindow.isDestroyed()) { updateWindow.show(); updateWindow.focus(); return; }
   updateWindow = new BrowserWindow({
@@ -388,7 +235,7 @@ function showAppUpdateDialog(info) {
 }
 
 function showAppUpdateBubble(info) {
-  notify(`发现新版本 v${info.version}`, '点击查看', () => showAppUpdateDialog(info));
+  notifier.notify(`发现新版本 v${info.version}`, '点击查看', () => showAppUpdateDialog(info));
 }
 
 function showAppCheckErrorDialog() {
@@ -410,7 +257,7 @@ async function runAppCheck(reason) {
     if (reason === 'poll') showAppUpdateBubble(res.info);
     else showAppUpdateDialog(res.info);
   } else if (res.status === 'up-to-date' && reason === 'manual') {
-    notify(APP_NAME, '已是最新版本');
+    notifier.notify(APP_NAME, '已是最新版本');
   } else if (res.status === 'error' && reason === 'manual') {
     showAppCheckErrorDialog();
   }
@@ -446,7 +293,7 @@ function showHarnessUpdateDialog(res) {
 }
 
 function showHarnessUpdateBubble(res) {
-  notify(`发现 Harness 新版本 v${res.latest}`, '点击查看', () => showHarnessUpdateDialog(res));
+  notifier.notify(`发现 Harness 新版本 v${res.latest}`, '点击查看', () => showHarnessUpdateDialog(res));
 }
 
 function showHarnessCheckErrorDialog() {
@@ -489,7 +336,7 @@ async function startHarnessUpdate(res) {
     if (p.phase === 'stop-backend') {
       // 激活前停后端（updater 等待本回调完成才写活跃指针）
       sendUpdateStatus({ mode: 'harness', phase: 'switching' });
-      stopDsh();
+      backend.stopDsh();
       await new Promise((r) => setTimeout(r, 1500));
     } else if (p.phase === 'smoke') {
       sendUpdateStatus({ mode: 'harness', phase: 'verifying' });
@@ -502,7 +349,7 @@ async function startHarnessUpdate(res) {
     // 取消时若后端已被停（stop-backend 已完成）须重启；其余失败一律重启回旧版
     const needRestart = outcome.error !== 'canceled' || !!outcome.backendStopped;
     if (needRestart) {
-      try { await restartBackend(); } catch { /* 旧版仍在，尽力重启 */ }
+      try { await backend.restartBackend(); } catch { /* 旧版仍在，尽力重启 */ }
     }
     const message = outcome.error === 'canceled'
       ? outcome.error
@@ -512,22 +359,22 @@ async function startHarnessUpdate(res) {
     sendUpdateStatus({ mode: 'harness', phase: outcome.error === 'canceled' ? 'canceled' : 'error', message });
     return;
   }
-  updaterLog(`harness activate dsh active path=${dshBinPath()} version=${getCurrentDshVersion()}`); // 重启前按实际解析结果记（AC9 机器证据）
+  updaterLog(`harness activate dsh active path=${backend.dshBinPath()} version=${backend.getCurrentDshVersion()}`); // 重启前按实际解析结果记（AC9 机器证据）
   try {
-    await restartBackend();
-    updaterLog(`harness restart backend ready port=${port}`);
+    await backend.restartBackend();
+    updaterLog(`harness restart backend ready port=${backend.getPort()}`);
     updater.cleanupHarnessStale();
     sendUpdateStatus({ mode: 'harness', phase: 'done' });
   } catch (err) {
     updater.rollbackHarness();
-    try { await restartBackend(); } catch { /* 尽力 */ }
+    try { await backend.restartBackend(); } catch { /* 尽力 */ }
     sendUpdateStatus({ mode: 'harness', phase: 'error', message: '更新失败，已回退旧版，可重试' });
   }
 }
 
 // ---- 门禁 + 调度（§2.2.7） ----
 async function manualCheckUpdates() {
-  if (updateGateBlocked('manual')) { notify(APP_NAME, '检查/更新正在进行'); return; }
+  if (updateGateBlocked('manual')) { notifier.notify(APP_NAME, '检查/更新正在进行'); return; }
   // App 面：dev 下不执行、无 UI，仅记 gate 行（US-6 / DD-9）；Harness 面两态同路径
   if (app.isPackaged) await runAppCheck('manual');
   else updaterLog('update gate reason=manual face=app skipped=dev');
@@ -551,73 +398,15 @@ function scheduleUpdateChecks() {
       process.env.BIGFISH_DSH_REGISTRY_URL || NPMIRROR_DSH_META,
       process.env.BIGFISH_DSH_REGISTRY_FALLBACK_URL || NPMJS_DSH_META,
     ],
-    dirs: { userData: app.getPath('userData'), dshHome: dshHome() },
+    dirs: { userData: app.getPath('userData'), dshHome: backend.dshHome() },
     runtime: { nodeExe: runtimeNodeExe(), pnpm: bundledPnpmPath() },
     log: updaterLog,
     getCurrentVersion: () => app.getVersion(),
-    getCurrentDshVersion,
+    getCurrentDshVersion: backend.getCurrentDshVersion,
   });
   updater.startupCleanup();
   setTimeout(() => { runAutoChecks('startup'); }, 5000);
   setInterval(() => { runAutoChecks('poll'); }, UPDATE_POLL_MS);
-}
-
-// Heuristic "task completed" detector: watch DSH_HOME (excluding the static
-// profiles/ tree) for writes; after a burst of activity followed by idle, notify.
-function dshHome() {
-  return process.env.DSH_HOME && process.env.DSH_HOME.trim() !== ''
-    ? process.env.DSH_HOME
-    : path.join(os.homedir(), '.dsh');
-}
-
-function latestMtime(dir, skipNames, out) {
-  out = out || { t: 0 };
-  let entries;
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const e of entries) {
-    if (skipNames && skipNames.has(e.name)) continue;
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      latestMtime(full, skipNames, out);
-    } else if (e.isFile()) {
-      try {
-        const t = fs.statSync(full).mtimeMs;
-        if (t > out.t) out.t = t;
-      } catch { /* ignore */ }
-    }
-  }
-  return out;
-}
-
-function startCompletionWatcher() {
-  stopCompletionWatcher();
-  const skip = new Set(['profiles', 'node_modules']);
-  completionWatcherTimer = setInterval(() => {
-    if (!settings.get().notifyOnComplete) return;
-    const { t } = latestMtime(dshHome(), skip);
-    const now = Date.now();
-    if (t > lastBusyAt + 2000 && now - t < 2000) {
-      // fresh write => busy
-      lastBusyAt = now;
-      notifiedForCycle = false;
-    } else if (lastBusyAt > 0 && now - lastBusyAt > IDLE_NOTIFY_MS && !notifiedForCycle) {
-      notifiedForCycle = true;
-      const msg = 'Bigfish 任务已完成';
-      notify(msg, '后端已空闲，可以回来看看结果了');
-      petSay('任务完成啦！');
-    }
-  }, 5000);
-}
-
-function stopCompletionWatcher() {
-  if (completionWatcherTimer) {
-    clearInterval(completionWatcherTimer);
-    completionWatcherTimer = null;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -653,7 +442,7 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     let origin;
     try { origin = new URL(url).origin; } catch { event.preventDefault(); return; }
-    if (origin !== `http://${HOST}:${port}`) {
+    if (origin !== `http://${HOST}:${backend.getPort()}`) {
       event.preventDefault();
       if (url.startsWith('http://') || url.startsWith('https://')) shell.openExternal(url);
     }
@@ -662,7 +451,7 @@ function createWindow() {
   // 页面加载完成后注入半透明背景
   mainWindow.webContents.on('did-finish-load', () => applyBackground());
 
-  mainWindow.loadURL(`http://${HOST}:${port}`);
+  mainWindow.loadURL(`http://${HOST}:${backend.getPort()}`);
 }
 
 /** 显示并聚焦主界面（US-1「只开不隐」；F4 起为唯一显示入口）。 */
@@ -1469,7 +1258,7 @@ function saveAffinity() {
 /** 从 dsh 会话缓存汇总已消耗 token（真实信号）。读不到返回 null。 */
 function sumSessionTokens() {
   try {
-    const file = path.join(dshHome(), 'storages', 'session_projcache.json');
+    const file = path.join(backend.dshHome(), 'storages', 'session_projcache.json');
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
     const sessions = (j.tables && j.tables.sessions) || {};
     let sum = 0;
@@ -1599,7 +1388,7 @@ function openExchangeWindow() {
 
 /** 重置所有数据（删掉 .dsh 目录），用于解决"配置改坏/黑屏/无法回复"等问题。 */
 async function resetAllData() {
-  const home = dshHome();
+  const home = backend.dshHome();
   const choice = dialog.showMessageBoxSync({
     type: 'warning',
     title: APP_NAME,
@@ -1617,10 +1406,10 @@ async function resetAllData() {
   });
   if (choice !== 0) return;
   try {
-    stopDsh();
+    backend.stopDsh();
     await new Promise((r) => setTimeout(r, 1500));
     fs.rmSync(home, { recursive: true, force: true });
-    notify(APP_NAME, '数据已重置，即将退出，请重新打开');
+    notifier.notify(APP_NAME, '数据已重置，即将退出，请重新打开');
   } catch (err) {
     console.error('[bigfish] 重置数据失败:', err);
     dialog.showErrorBox(APP_NAME, '重置失败，请手动删除 ' + home);
@@ -1631,7 +1420,7 @@ async function resetAllData() {
 
 /** 重置配置但保留会话和工程（用于"AI 删插件改坏配置导致后端超时"等场景）。 */
 async function resetConfigKeepSessions() {
-  const home = dshHome();
+  const home = backend.dshHome();
   const choice = dialog.showMessageBoxSync({
     type: 'warning',
     title: APP_NAME,
@@ -1649,10 +1438,10 @@ async function resetConfigKeepSessions() {
   });
   if (choice !== 0) return;
   try {
-    stopDsh();
+    backend.stopDsh();
     await new Promise((r) => setTimeout(r, 1500));
     fs.rmSync(path.join(home, 'profiles'), { recursive: true, force: true });
-    notify(APP_NAME, '插件配置已重置，API Key、会话和工程已保留。即将退出，请重新打开');
+    notifier.notify(APP_NAME, '插件配置已重置，API Key、会话和工程已保留。即将退出，请重新打开');
   } catch (err) {
     console.error('[bigfish] 重置配置失败:', err);
     dialog.showErrorBox(APP_NAME, '重置失败，请手动删除 ' + path.join(home, 'profiles'));
@@ -1779,7 +1568,7 @@ async function chooseBackground() {
   try {
     fs.copyFileSync(result.filePaths[0], path.join(app.getPath('userData'), 'custom-background.jpg'));
     applyBackground();
-    notify(APP_NAME, '背景已更换');
+    notifier.notify(APP_NAME, '背景已更换');
   } catch (err) {
     console.error('[bigfish] 更换背景失败:', err);
   }
@@ -1789,7 +1578,7 @@ async function chooseBackground() {
 function resetBackground() {
   try { fs.unlinkSync(path.join(app.getPath('userData'), 'custom-background.jpg')); } catch { /* 没有自定义背景 */ }
   applyBackground();
-  notify(APP_NAME, '已恢复默认背景');
+  notifier.notify(APP_NAME, '已恢复默认背景');
 }
 
 function rebuildTrayMenu() {
@@ -1842,7 +1631,7 @@ function rebuildTrayMenu() {
 function setNotify(enabled) {
   settings.get().notifyOnComplete = enabled;
   settings.saveSettings();
-  if (!enabled) { lastBusyAt = 0; notifiedForCycle = false; }
+  if (!enabled) { notifier.setLastBusyAt(0); notifier.setNotifiedForCycle(false); }
 }
 
 function setAutoStart(enabled) {
@@ -1894,13 +1683,13 @@ async function installContextMenu() {
     await runReg(['add', `${r}\\command`, '/ve', '/t', 'REG_SZ', '/d', cmd, '/f']);
     await runReg(['add', r, '/v', 'Icon', '/t', 'REG_SZ', '/d', `${exe},0`, '/f']);
   }
-  notify(APP_NAME, '已添加右键「用 Bigfish 打开」');
+  notifier.notify(APP_NAME, '已添加右键「用 Bigfish 打开」');
 }
 
 async function uninstallContextMenu() {
   await runReg(['delete', 'HKCU\\Software\\Classes\\*\\shell\\Bigfish', '/f']);
   await runReg(['delete', 'HKCU\\Software\\Classes\\Directory\\shell\\Bigfish', '/f']);
-  notify(APP_NAME, '已移除右键菜单');
+  notifier.notify(APP_NAME, '已移除右键菜单');
 }
 
 // ---------------------------------------------------------------------------
@@ -1911,7 +1700,7 @@ function handleOpenArg(argv) {
   if (i === -1 || !argv[i + 1]) return;
   const target = argv[i + 1];
   showMainWindow();
-  notify(APP_NAME, `已打开: ${target}`);
+  notifier.notify(APP_NAME, `已打开: ${target}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1923,7 +1712,7 @@ const PLUGIN_REGISTRY_FALLBACK = 'https://gitee.com/ludonghuai/big-fish/raw/main
 const NPM_REGISTRY = 'https://registry.npmmirror.com/';
 
 function profileDir() {
-  return path.join(dshHome(), 'profiles', 'web');
+  return path.join(backend.dshHome(), 'profiles', 'web');
 }
 function bundledPluginsDir() {
   return app.isPackaged
@@ -2180,7 +1969,7 @@ function pnpmArgs(action, spec) {
   // 用 --config.registry 而不是 --registry：pnpm remove 不识别 --registry
   args.push('--config.registry=' + NPM_REGISTRY);
   // store 固定到 DSH_HOME 下，避免写入程序安装目录（Program Files 只读）或系统盘
-  args.push('--store-dir', path.join(dshHome(), 'pnpm-store'));
+  args.push('--store-dir', path.join(backend.dshHome(), 'pnpm-store'));
   if (action === 'add' && spec) args.push(spec);
   if (action === 'remove' && spec) args.push(spec);
   return args;
@@ -2272,26 +2061,6 @@ async function uninstallPlugin(pkgName) {
   return { ok: true, message: `已卸载 ${pkgName}` };
 }
 
-/** 重启后端并让主窗口重新加载（插件生效必须重启）。 */
-async function restartBackend() {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    stopDsh();
-    await new Promise((r) => setTimeout(r, 1500));
-    await startDsh();
-    return true;
-  }
-  const oldPort = port;
-  stopDsh();
-  await new Promise((r) => setTimeout(r, 1500));
-  await startDsh();
-  if (port !== oldPort) {
-    mainWindow.loadURL(`http://${HOST}:${port}`);
-  } else {
-    mainWindow.reload();
-  }
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // 插件市场窗口（market.html）
 // ---------------------------------------------------------------------------
@@ -2373,19 +2142,19 @@ if (!gotLock) {
     settings.loadSettings();
     let booted = false;
     try {
-      await startDsh();
-      console.log(`[bigfish] backend ready at http://${HOST}:${port}`);
+      await backend.startDsh();
+      console.log(`[bigfish] backend ready at http://${HOST}:${backend.getPort()}`);
       createWindow();
       console.log('[bigfish] window created');
       booted = true;
     } catch (err) {
       // 第一次失败：清理残留后重试一次（常见于上次异常退出导致端口/进程残留）
       try {
-        stopDsh();
-        cleanupStaleDsh();
+        backend.stopDsh();
+        backend.cleanupStaleDsh();
         await new Promise((r) => setTimeout(r, 1500));
-        await startDsh();
-        console.log(`[bigfish] backend ready (retry) at http://${HOST}:${port}`);
+        await backend.startDsh();
+        console.log(`[bigfish] backend ready (retry) at http://${HOST}:${backend.getPort()}`);
         createWindow();
         console.log('[bigfish] window created (retry)');
         booted = true;
@@ -2410,17 +2179,17 @@ if (!gotLock) {
         });
         if (choice === 0 || choice === 1) {
           try {
-            const home = dshHome();
-            stopDsh();
-            cleanupStaleDsh();
+            const home = backend.dshHome();
+            backend.stopDsh();
+            backend.cleanupStaleDsh();
             await new Promise((r) => setTimeout(r, 1500));
             if (choice === 0) {
               fs.rmSync(path.join(home, 'profiles'), { recursive: true, force: true });
             } else {
               fs.rmSync(home, { recursive: true, force: true });
             }
-            await startDsh();
-            console.log(`[bigfish] backend ready (after reset) at http://${HOST}:${port}`);
+            await backend.startDsh();
+            console.log(`[bigfish] backend ready (after reset) at http://${HOST}:${backend.getPort()}`);
             createWindow();
             console.log('[bigfish] window created (after reset)');
             booted = true;
@@ -2439,7 +2208,7 @@ if (!gotLock) {
 
     createTray();
     registerShortcuts();
-    startCompletionWatcher();
+    notifier.startCompletionWatcher();
     loadAffinity();
     startAffinityWatcher();
     scheduleUpdateChecks();
@@ -2476,14 +2245,14 @@ if (!gotLock) {
     petStopDrag('destroyed'); // 退出路径终止拖动（设计档 §2.2.4 的主进程清空点）
     petSavePos();             // 退出前兜底落盘（US-13，§2.3.2 调用时机表）
     globalShortcut.unregisterAll();
-    stopCompletionWatcher();
+    notifier.stopCompletionWatcher();
     stopAffinityWatcher();
     saveAffinity();
-    stopDsh();
+    backend.stopDsh();
   });
 
   app.on('will-quit', () => {
-    stopDsh();
+    backend.stopDsh();
   });
 
   // Pet drag + click（拖动移动由主进程按全局光标绝对定位驱动，设计档 PET-DRAG §2.2）
@@ -2596,7 +2365,7 @@ if (!gotLock) {
       bundledNames.push(...fs.readdirSync(bundledPluginsDir()));
     } catch { /* no bundled dir */ }
     const updates = computePluginUpdates(registry.plugins);
-    return { registry, installed, disabled, bundledNames, updates, profileDir: profileDir(), dshHome: dshHome() };
+    return { registry, installed, disabled, bundledNames, updates, profileDir: profileDir(), dshHome: backend.dshHome() };
   });
   // 快速状态：只读本地已装/已禁用（不拉在线目录），用于操作后即时刷新
   ipcMain.handle('market:state', () => ({
@@ -2633,7 +2402,7 @@ if (!gotLock) {
   });
   ipcMain.handle('market:restart', async () => {
     try {
-      await restartBackend();
+      await backend.restartBackend();
       return { ok: true };
     } catch (err) {
       return { ok: false, message: String((err && err.message) || err) };
@@ -2648,7 +2417,7 @@ if (!gotLock) {
       return res;
     }
     try {
-      await restartBackend();
+      await backend.restartBackend();
     } catch (err) {
       updaterLog(`plugin update spec=${spec} result=fail detail=restart:${String((err && err.message) || err).slice(0, 120)}`);
       return { ok: false, message: '已安装但重启失败：' + ((err && err.message) || err) };
@@ -2666,7 +2435,7 @@ if (!gotLock) {
       updaterLog(`plugin update spec=${u.updateSpec} result=${res.ok ? 'ok' : 'fail'} detail=${String(res.message).replace(/\s+/g, ' ').slice(0, 120)}`);
     }
     try {
-      await restartBackend(); // 全部完成（含部分失败）后一次重启
+      await backend.restartBackend(); // 全部完成（含部分失败）后一次重启
     } catch (err) {
       results.push({ id: '', name: '后端重启', ok: false, message: '插件已更新但重启失败：' + ((err && err.message) || err) });
     }
