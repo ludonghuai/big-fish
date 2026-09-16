@@ -697,10 +697,6 @@ function createWindow() {
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-  });
-
   // Close hides to tray (keeps the backend alive); real quit goes through the tray.
   mainWindow.on('close', (event) => {
     if (!quitting) {
@@ -745,9 +741,8 @@ function showMainWindow() {
 
 function toggleMainWindow() {
   ensurePet();
-  if (!mainWindow) { createWindow(); return; }
-  if (mainWindow.isVisible()) mainWindow.hide();
-  else { mainWindow.show(); mainWindow.focus(); }
+  if (mainWindow && mainWindow.isVisible()) mainWindow.hide();
+  else showMainWindow();
 }
 
 // ---------------------------------------------------------------------------
@@ -1975,7 +1970,7 @@ function handleOpenArg(argv) {
   const i = argv.indexOf('--open');
   if (i === -1 || !argv[i + 1]) return;
   const target = argv[i + 1];
-  if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+  showMainWindow();
   notify(APP_NAME, `已打开: ${target}`);
 }
 
@@ -2430,7 +2425,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
-    if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
+    showMainWindow();
     handleOpenArg(argv);
   });
 
@@ -2526,8 +2521,9 @@ if (!gotLock) {
     handleOpenArg(process.argv);
 
     app.on('activate', () => {
+      // Dock 点击 = 用户主动显示请求：显示 + 聚焦（零窗口时建窗后显示）——macOS 目视项 TC-26
       ensurePet();
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      showMainWindow();
     });
   });
 
