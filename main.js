@@ -45,6 +45,7 @@ const drag = require('./shell-pet-drag.js');
 const pet = require('./shell-pet.js');
 const affinity = require('./shell-affinity.js');
 const mode = require('./shell-mode.js');
+const plugins = require('./shell-plugins.js');
 
 const APP_NAME = 'Bigfish';
 const HOST = '127.0.0.1';
@@ -65,12 +66,13 @@ function getMainWindow() { return mainWindow; }
 
 // ---- 模块接线（依赖注入；设计档 docs/design/SHELL-UX.md §2.2.6 依赖方向规则）----
 notifier.init({ getDshHome: backend.dshHome, petSay: pet.petSay, IDLE_NOTIFY_MS });
-backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: sanitizeProfileBundles, getMainWindow: getMainWindow });
+backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: plugins.sanitizeProfileBundles, getMainWindow: getMainWindow });
 geometry.init({ getPetWindow: pet.getPetWindow, getPetDrag: drag.getPetDrag });
 drag.init({ getPetWindow: pet.getPetWindow, pet });
 pet.init({ showMainWindow: showMainWindow, openExchangeWindow: affinity.openExchangeWindow, broadcastAffinity: affinity.broadcastAffinity });
 affinity.init({ getPetWindow: pet.getPetWindow, pet, setQuitting, APP_NAME });
 mode.init({ getMainWindow: getMainWindow, destroyPetWindow: pet.destroyPetWindow, ensurePet: pet.ensurePet, rebuildTrayMenu: rebuildTrayMenu, notify: notifier.notify, APP_NAME });
+plugins.init({ updaterLog: updaterLog });
 
 // 检查更新：从 Gitee 仓库 raw 拉取 latest.json（唯一清单源；AC6）。
 // 测试钩子：BIGFISH_UPDATE_URL 可覆盖（设计档 §2.2.2 假清单桩；仅此面允许 http 本地桩）。
@@ -350,7 +352,7 @@ function scheduleUpdateChecks() {
       process.env.BIGFISH_DSH_REGISTRY_FALLBACK_URL || NPMJS_DSH_META,
     ],
     dirs: { userData: app.getPath('userData'), dshHome: backend.dshHome() },
-    runtime: { nodeExe: runtimeNodeExe(), pnpm: bundledPnpmPath() },
+    runtime: { nodeExe: plugins.runtimeNodeExe(), pnpm: plugins.bundledPnpmPath() },
     log: updaterLog,
     getCurrentVersion: () => app.getVersion(),
     getCurrentDshVersion: backend.getCurrentDshVersion,
@@ -563,364 +565,6 @@ function handleOpenArg(argv) {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin manager — install/remove DSH plugins in the web profile
-// (~/.dsh/profiles/web) using the bundled pnpm, then restart the backend.
-// ---------------------------------------------------------------------------
-const PLUGIN_REGISTRY_URL = 'https://awesome-dsh-plugin.com/plugins.json';
-const PLUGIN_REGISTRY_FALLBACK = 'https://gitee.com/ludonghuai/big-fish/raw/main/plugins.json';
-const NPM_REGISTRY = 'https://registry.npmmirror.com/';
-
-function profileDir() {
-  return path.join(backend.dshHome(), 'profiles', 'web');
-}
-function bundledPluginsDir() {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'bundled-plugins')
-    : path.join(app.getAppPath(), 'bundled-plugins');
-}
-function bundledPnpmPath() {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'node-runtime', 'pnpm', 'pnpm.mjs')
-    : path.join(app.getAppPath(), 'node-runtime', 'pnpm', 'pnpm.mjs');
-}
-function runtimeNodeExe() {
-  if (app.isPackaged) {
-    const nodeBin = process.platform === 'win32' ? 'node.exe' : 'node';
-    return path.join(process.resourcesPath, 'node-runtime', nodeBin);
-  }
-  return process.env.DSH_NODE || 'node';
-}
-
-function readProfileManifest() {
-  const file = path.join(profileDir(), 'package.json');
-  // 瞬时文件锁/并发写时重试，避免误判为"不存在"
-  for (let i = 0; i < 3; i++) {
-    try {
-      return JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch (err) {
-      if (i === 2) {
-        console.warn('[bigfish] readProfileManifest failed:', err && err.message);
-        return null;
-      }
-      try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 120); } catch { /* ignore */ }
-    }
-  }
-  return null;
-}
-function writeProfileManifest(manifest) {
-  const file = path.join(profileDir(), 'package.json');
-  fs.mkdirSync(profileDir(), { recursive: true });
-  // 原子写：先写临时文件再改名，杜绝读者读到半截 JSON
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmp, file);
-}
-function profileBundles() {
-  const m = readProfileManifest();
-  // 注意：dsh.profile 是对象 { bundles: [...] }，不是数组（勿用 Array.isArray(m.dsh.profile)）
-  if (!m || !m.dsh || !m.dsh.profile || !Array.isArray(m.dsh.profile.bundles)) return [];
-  return m.dsh.profile.bundles;
-}
-function addBundle(pkgName) {
-  if (!isPlainPackageName(pkgName)) {
-    console.warn('[bigfish] 拒绝把非包名写入 bundles:', pkgName);
-    return false;
-  }
-  const m = readProfileManifest();
-  // 防呆：读不到 manifest 直接抛错，绝不拿默认空表覆盖（会清空注册表）
-  if (!m) throw new Error('无法读取 profile manifest，已中止（防止清空插件注册表）');
-  if (!m.dsh) m.dsh = { profile: { bundles: [] } };
-  if (!m.dsh.profile) m.dsh.profile = { bundles: [] };
-  if (!Array.isArray(m.dsh.profile.bundles)) m.dsh.profile.bundles = [];
-  if (!m.dsh.profile.bundles.includes(pkgName)) m.dsh.profile.bundles.push(pkgName);
-  writeProfileManifest(m);
-  return true;
-}
-function removeBundle(pkgName) {
-  const m = readProfileManifest();
-  if (!m || !m.dsh || !m.dsh.profile || !Array.isArray(m.dsh.profile.bundles)) return;
-  m.dsh.profile.bundles = m.dsh.profile.bundles.filter((b) => b !== pkgName);
-  writeProfileManifest(m);
-}
-/** 是否像合法的 npm 包名（拒绝 github:/git+/link: 等原始安装标识）。 */
-function isPlainPackageName(name) {
-  if (typeof name !== 'string' || !name) return false;
-  if (/^(github:|git\+|link:|file:|\.|\/)/.test(name)) return false;
-  if (name.startsWith('@')) {
-    return /^@[a-z0-9-~][a-z0-9-._~]*\/[a-z0-9-~][a-z0-9-._~]*$/.test(name);
-  }
-  return /^[a-z0-9-~][a-z0-9-._~]*$/.test(name);
-}
-
-/** 把安装标识解析成实际安装的包名（github:user/repo → 按仓库名精确匹配 node_modules 里真实包名）。 */
-function resolveInstalledName(spec) {
-  const base = String(spec || '').replace(/^builtin:/, '').split('#')[0];
-  const candidates = listInstalledPlugins();
-  if (candidates.includes(base)) return base;
-  const repo = (base.match(/github:([^/]+\/[^/#@]+)/) || [])[1];
-  if (repo) {
-    const repoName = repo.split('/')[1].toLowerCase();
-    // 精确匹配（绝不能 includes 子串：dsh-pet-remielle 会误匹配 dsh-pet）
-    const hit = candidates.find((n) => n.split('/').pop().toLowerCase() === repoName);
-    if (hit) return hit;
-  }
-  // 兜底：取末尾合法段（去掉版本号）
-  const last = base.split('@').pop();
-  return isPlainPackageName(last) ? last : null;
-}
-
-// ---------------------------------------------------------------------------
-// 已装插件更新（设计档 §2.2.5 / AC10）——版本对比全在主进程，前端只按 id 匹配渲染。
-// ---------------------------------------------------------------------------
-
-/** 注册表条目 → 安装标识（与 market.js normalizePlugin 同口径：npm 优先，install 字段取标识，url 兜底）。 */
-function pluginUpdateSpecOf(p) {
-  let spec = p && p.npm;
-  if (!spec && p && p.install) {
-    const m = String(p.install).match(/add\s+(github:[^\s]+|link:[^\s]+|[^\s]+)/);
-    if (m && m[1].startsWith('github:')) spec = m[1]; // 与 normalizePlugin 同口径：install 字段只采纳 github:
-  }
-  if (!spec && p && p.url) {
-    const m = String(p.url).match(/github\.com\/([^/]+\/[^/]+)/);
-    if (m) spec = 'github:' + m[1];
-  }
-  return spec || '';
-}
-
-/** 已装插件版本：profileDir()/node_modules/{realName}/package.json（读不到 → ''）。 */
-function installedPluginVersion(realName) {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(profileDir(), 'node_modules', realName, 'package.json'), 'utf8'));
-    return pkg && pkg.version ? String(pkg.version) : '';
-  } catch { return ''; }
-}
-
-/** 计算可更新插件清单（AC10）：已装版本 < 注册表 version 才入选；github: 按原 installSpec 重装。 */
-function computePluginUpdates(plugins) {
-  const updates = [];
-  for (const p of plugins || []) {
-    const version = p && typeof p.version === 'string' ? p.version.trim() : '';
-    if (!version) continue; // 注册表条目缺 version → 无徽标（US-7 边界）
-    const spec = pluginUpdateSpecOf(p);
-    if (!spec || spec.startsWith('builtin:') || spec.startsWith('link:')) continue;
-    const realName = resolveInstalledName(spec);
-    if (!realName) continue;
-    if (!isPluginInProfile(realName)) continue; // 未装条目不参与也不记日志（避免 market:list 刷日志）
-    const installedVersion = installedPluginVersion(realName);
-    if (!installedVersion) {
-      updaterLog(`plugin update spec=${spec} result=skip detail=no-installed-version`);
-      continue;
-    }
-    if (compareVersions(version, installedVersion) <= 0) continue;
-    updates.push({
-      id: (p.name || p.npm || spec || '').replace(/\s+/g, '-').toLowerCase(),
-      name: p.name || p.npm || spec,
-      updateSpec: spec.startsWith('github:') ? spec : `${realName}@${version}`,
-      latestVersion: version,
-      installedVersion,
-    });
-  }
-  return updates;
-}
-
-/**
- * 启动前清理 profile 里损坏的 bundle 注册（例如被写进去的 github:xxx 原始标识），
- * 避免后端启动直接崩掉（dsh CLI 遇到不可解析的 bundle 会抛错退出）。
- */
-function sanitizeProfileBundles() {
-  try {
-    const m = readProfileManifest();
-    if (!m || !m.dsh || !m.dsh.profile || !Array.isArray(m.dsh.profile.bundles)) return;
-    const before = m.dsh.profile.bundles;
-    const cleaned = before.filter((b) => {
-      if (!isPlainPackageName(b)) return false; // github:/git+/link: 等非法标识
-      if (b.startsWith('@deepseek-ai/')) return true; // 官方基础包
-      try { return fs.existsSync(path.join(profileDir(), 'node_modules', b)); } // 包必须真的装了
-      catch { return false; }
-    });
-    if (cleaned.length !== before.length) {
-      m.dsh.profile.bundles = cleaned;
-      writeProfileManifest(m);
-      console.warn('[bigfish] 已清理非法 bundle 注册:', before.filter((b) => !cleaned.includes(b)).join(', '));
-    }
-  } catch { /* 读不到就算了 */ }
-}
-function isPluginInProfile(pkgName) {
-  if (profileBundles().includes(pkgName)) return true;
-  try {
-    return fs.existsSync(path.join(profileDir(), 'node_modules', pkgName));
-  } catch {
-    return false;
-  }
-}
-/** Installed plugin names (from bundles + node_modules presence). */
-function listInstalledPlugins() {
-  const names = new Set(profileBundles());
-  try {
-    const nm = path.join(profileDir(), 'node_modules');
-    if (fs.existsSync(nm)) {
-      for (const entry of fs.readdirSync(nm)) {
-        if (entry.startsWith('.') || entry === 'node_modules') continue; // 跳过 .pnpm 等元数据目录
-        if (entry.startsWith('@')) {
-          const scoped = path.join(nm, entry);
-          if (fs.statSync(scoped).isDirectory()) {
-            for (const sub of fs.readdirSync(scoped)) names.add(`${entry}/${sub}`);
-          }
-        } else if (fs.statSync(path.join(nm, entry)).isDirectory()) {
-          names.add(entry);
-        }
-      }
-    }
-  } catch { /* best effort */ }
-  return [...names].sort();
-}
-
-/** 已安装但被禁用的插件（在 node_modules 但不在 bundles 里 = 装了但没加载）。 */
-function listDisabledPlugins() {
-  const bundles = new Set(profileBundles());
-  const out = [];
-  try {
-    const nm = path.join(profileDir(), 'node_modules');
-    if (fs.existsSync(nm)) {
-      for (const entry of fs.readdirSync(nm)) {
-        if (entry.startsWith('.') || entry === 'node_modules') continue;
-        const names = [];
-        if (entry.startsWith('@')) {
-          const scoped = path.join(nm, entry);
-          if (fs.statSync(scoped).isDirectory()) {
-            for (const sub of fs.readdirSync(scoped)) names.push(`${entry}/${sub}`);
-          }
-        } else if (fs.statSync(path.join(nm, entry)).isDirectory()) {
-          names.push(entry);
-        }
-        for (const n of names) {
-          if (n.startsWith('@deepseek-ai/')) continue;
-          if (!bundles.has(n)) out.push(n);
-        }
-      }
-    }
-  } catch { /* best effort */ }
-  return out;
-}
-
-/** Run a command, capturing combined output. */
-function runCmd(command, args, opts = {}) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      windowsHide: true,
-      ...opts,
-    });
-    let out = '';
-    const onData = (c) => { out += String(c); };
-    if (child.stdout) child.stdout.on('data', onData);
-    if (child.stderr) child.stderr.on('data', onData);
-    child.on('error', (err) => resolve({ code: -1, output: out + '\n' + (err && err.message) }));
-    child.on('close', (code) => resolve({ code, output: out }));
-  });
-}
-
-/** pnpm add/remove 在 profile 目录（workspace 根）需要 -w 标志。 */
-function pnpmArgs(action, spec) {
-  const args = [bundledPnpmPath(), action];
-  const ws = path.join(profileDir(), 'pnpm-workspace.yaml');
-  if (fs.existsSync(ws) && (action === 'add' || action === 'remove')) args.push('-w');
-  args.push('--dir', profileDir());
-  // 用 --config.registry 而不是 --registry：pnpm remove 不识别 --registry
-  args.push('--config.registry=' + NPM_REGISTRY);
-  // store 固定到 DSH_HOME 下，避免写入程序安装目录（Program Files 只读）或系统盘
-  args.push('--store-dir', path.join(backend.dshHome(), 'pnpm-store'));
-  if (action === 'add' && spec) args.push(spec);
-  if (action === 'remove' && spec) args.push(spec);
-  return args;
-}
-
-/** profile node_modules 顶层包名集合（跳过 .pnpm 等元数据）。 */
-function topLevelModules() {
-  const nm = path.join(profileDir(), 'node_modules');
-  const out = new Set();
-  try {
-    for (const e of fs.readdirSync(nm)) {
-      if (e.startsWith('.')) continue;
-      if (e.startsWith('@')) {
-        const scoped = path.join(nm, e);
-        if (fs.statSync(scoped).isDirectory()) {
-          for (const sub of fs.readdirSync(scoped)) out.add(`${e}/${sub}`);
-        }
-      } else if (fs.statSync(path.join(nm, e)).isDirectory()) {
-        out.add(e);
-      }
-    }
-  } catch { /* best effort */ }
-  return out;
-}
-
-/** 安装插件：内置插件离线拷贝；npm 插件走 pnpm add。返回 { ok, message } */
-async function installPlugin(spec) {
-  const bundledName = String(spec).replace(/^builtin:/, '');
-  const bundledSource = path.join(bundledPluginsDir(), bundledName);
-  if (fs.existsSync(bundledSource)) {
-    // 内置插件：直接拷贝进 profile 的 node_modules（离线，不依赖网络）
-    const target = path.join(profileDir(), 'node_modules', bundledName);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
-    fs.cpSync(bundledSource, target, { recursive: true });
-    addBundle(bundledName);
-    return { ok: true, message: `已安装内置插件 ${bundledName}` };
-  }
-  // npm / GitHub 插件：用内置 pnpm 安装到 profile
-  const beforeMods = topLevelModules();
-  const beforeDeps = (() => { const b = readProfileManifest(); return b && b.dependencies ? Object.keys(b.dependencies) : []; })();
-  // 更新分支（AC10）：目标已装（依赖键或顶层目录存在）→ 装完跳过 realName 探测与 addBundle
-  //   （realName 探测只识别「新增」包——更新时依赖键与顶层名不变，会误报失败）
-  const knownName = resolveInstalledName(spec);
-  const isUpdate = !!knownName && (beforeDeps.includes(knownName) || beforeMods.has(knownName));
-  const res = await runCmd(runtimeNodeExe(), pnpmArgs('add', spec), { timeout: 15 * 60 * 1000 });
-  if (res.code !== 0) {
-    return { ok: false, message: `安装失败（pnpm exit ${res.code}）：\n${res.output.slice(-800)}` };
-  }
-  if (isUpdate) {
-    return { ok: true, message: `已更新 ${knownName}` };
-  }
-  // 解析【真实包名】注册 bundles（严禁把 github:user/repo 这类原始标识写进 bundles）
-  let realName = null;
-  const m = readProfileManifest();
-  const afterDeps = m && m.dependencies ? Object.keys(m.dependencies) : [];
-  const addedDeps = afterDeps.filter((d) => !beforeDeps.includes(d));
-  if (addedDeps.length > 0) {
-    realName = addedDeps[0]; // pnpm add 会把真实包名写进 dependencies
-  } else {
-    // 兜底：扫描 node_modules 新增的顶层包（pnpm 装好后按 package.json 名落位）
-    const afterMods = topLevelModules();
-    const newMods = [...afterMods].filter((n) => !beforeMods.has(n) && !n.startsWith('@deepseek-ai/'));
-    if (newMods.length > 0) realName = newMods[0];
-  }
-  if (!realName) {
-    return { ok: false, message: `安装没有产生可识别的新插件（pnpm 已退出 0 但未落包）。\n原始标识：${spec}\n若从 GitHub 安装，请确认仓库里有合法的 package.json。` };
-  }
-  addBundle(realName);
-  return { ok: true, message: `已安装 ${realName}` };
-}
-
-/** 卸载插件：内置插件直接删目录；npm 插件走 pnpm remove。 */
-async function uninstallPlugin(pkgName) {
-  const bundledSource = path.join(bundledPluginsDir(), pkgName);
-  if (fs.existsSync(bundledSource)) {
-    const target = path.join(profileDir(), 'node_modules', pkgName);
-    if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
-    removeBundle(pkgName);
-    return { ok: true, message: `已卸载内置插件 ${pkgName}` };
-  }
-  const res = await runCmd(runtimeNodeExe(), pnpmArgs('remove', pkgName), { timeout: 10 * 60 * 1000 });
-  if (res.code !== 0) {
-    // pnpm 可能已经改了一半，无论如何把 bundles 清理掉
-    removeBundle(pkgName);
-    return { ok: true, message: `已卸载 ${pkgName}（pnpm 有警告，已清理注册）` };
-  }
-  removeBundle(pkgName);
-  return { ok: true, message: `已卸载 ${pkgName}` };
-}
-
-// ---------------------------------------------------------------------------
 // 插件市场窗口（market.html）
 // ---------------------------------------------------------------------------
 let marketWindow = null;
@@ -977,9 +621,9 @@ async function fetchPluginRegistry() {
     } catch { /* try next */ } finally { clearTimeout(timer); }
     return null;
   };
-  const online = await tryFetch(PLUGIN_REGISTRY_URL);
+  const online = await tryFetch(plugins.PLUGIN_REGISTRY_URL);
   if (online) return online;
-  const fallback = await tryFetch(PLUGIN_REGISTRY_FALLBACK);
+  const fallback = await tryFetch(plugins.PLUGIN_REGISTRY_FALLBACK);
   if (fallback) return { ...fallback, source: 'mirror' };
   if (local) return { source: 'local', fetchedAt: 0, plugins: local.plugins || [] };
   return { source: 'none', fetchedAt: 0, plugins: [] };
@@ -1126,46 +770,46 @@ if (!gotLock) {
   ipcMain.handle('market:list', async () => {
     const registry = await fetchPluginRegistry();
     marketRegistryCache = registry;
-    const installed = listInstalledPlugins();
-    const disabled = listDisabledPlugins();
+    const installed = plugins.listInstalledPlugins();
+    const disabled = plugins.listDisabledPlugins();
     const bundledNames = [];
     try {
-      bundledNames.push(...fs.readdirSync(bundledPluginsDir()));
+      bundledNames.push(...fs.readdirSync(plugins.bundledPluginsDir()));
     } catch { /* no bundled dir */ }
-    const updates = computePluginUpdates(registry.plugins);
-    return { registry, installed, disabled, bundledNames, updates, profileDir: profileDir(), dshHome: backend.dshHome() };
+    const updates = plugins.computePluginUpdates(registry.plugins);
+    return { registry, installed, disabled, bundledNames, updates, profileDir: plugins.profileDir(), dshHome: backend.dshHome() };
   });
   // 快速状态：只读本地已装/已禁用（不拉在线目录），用于操作后即时刷新
   ipcMain.handle('market:state', () => ({
-    installed: listInstalledPlugins(),
-    disabled: listDisabledPlugins(),
-    bundledNames: (() => { try { return fs.readdirSync(bundledPluginsDir()); } catch { return []; } })(),
-    updates: computePluginUpdates((marketRegistryCache && marketRegistryCache.plugins) || []),
+    installed: plugins.listInstalledPlugins(),
+    disabled: plugins.listDisabledPlugins(),
+    bundledNames: (() => { try { return fs.readdirSync(plugins.bundledPluginsDir()); } catch { return []; } })(),
+    updates: plugins.computePluginUpdates((marketRegistryCache && marketRegistryCache.plugins) || []),
   }));
   ipcMain.handle('market:install', async (_e, spec) => {
     if (typeof spec !== 'string' || !spec) return { ok: false, message: '无效的插件标识' };
-    return await installPlugin(spec);
+    return await plugins.installPlugin(spec);
   });
   ipcMain.handle('market:uninstall', async (_e, pkg) => {
     if (typeof pkg !== 'string' || !pkg) return { ok: false, message: '无效的插件名' };
     // 解析真实包名（防 github:xxx 原始标识）
-    const real = resolveInstalledName(pkg) || pkg;
-    return await uninstallPlugin(real);
+    const real = plugins.resolveInstalledName(pkg) || pkg;
+    return await plugins.uninstallPlugin(real);
   });
   // 禁用 = 从 bundles 移除（保留 node_modules，重启后不再加载）；启用 = 加回 bundles
   ipcMain.handle('market:disable', async (_e, pkg) => {
-    const real = resolveInstalledName(pkg);
+    const real = plugins.resolveInstalledName(pkg);
     if (!real) return { ok: false, message: '无法解析插件包名：' + String(pkg).slice(0, 60) };
-    removeBundle(real);
+    plugins.removeBundle(real);
     return { ok: true, message: `已禁用 ${real}（重启后生效）` };
   });
   ipcMain.handle('market:enable', async (_e, pkg) => {
-    const real = resolveInstalledName(pkg);
-    console.log('[bigfish] market:enable input=', JSON.stringify(pkg), 'resolved=', real, 'disabled=', JSON.stringify(listDisabledPlugins()));
+    const real = plugins.resolveInstalledName(pkg);
+    console.log('[bigfish] market:enable input=', JSON.stringify(pkg), 'resolved=', real, 'disabled=', JSON.stringify(plugins.listDisabledPlugins()));
     if (!real) return { ok: false, message: '无法解析插件包名：' + String(pkg).slice(0, 60) };
-    if (!isPlainPackageName(real)) return { ok: false, message: '非法包名：' + real };
-    const added = addBundle(real);
-    console.log('[bigfish] market:enable added=', added, 'bundles=', JSON.stringify(profileBundles()));
+    if (!plugins.isPlainPackageName(real)) return { ok: false, message: '非法包名：' + real };
+    const added = plugins.addBundle(real);
+    console.log('[bigfish] market:enable added=', added, 'bundles=', JSON.stringify(plugins.profileBundles()));
     return { ok: added, message: added ? `已启用 ${real}（重启后生效）` : `写入失败：${real}` };
   });
   ipcMain.handle('market:restart', async () => {
@@ -1179,7 +823,7 @@ if (!gotLock) {
   // 插件更新（§2.2.5）：单个更新走 installPlugin + 一次 restartBackend；全部更新逐项执行后一次重启
   ipcMain.handle('market:update', async (_e, spec) => {
     if (typeof spec !== 'string' || !spec) return { ok: false, message: '无效的更新标识' };
-    const res = await installPlugin(spec);
+    const res = await plugins.installPlugin(spec);
     if (!res.ok) {
       updaterLog(`plugin update spec=${spec} result=fail detail=${String(res.message).replace(/\s+/g, ' ').slice(0, 120)}`);
       return res;
@@ -1195,10 +839,10 @@ if (!gotLock) {
   });
   ipcMain.handle('market:update-all', async () => {
     const registry = await fetchPluginRegistry();
-    const updates = computePluginUpdates(registry.plugins);
+    const updates = plugins.computePluginUpdates(registry.plugins);
     const results = [];
     for (const u of updates) {
-      const res = await installPlugin(u.updateSpec);
+      const res = await plugins.installPlugin(u.updateSpec);
       results.push({ id: u.id, name: u.name, ok: res.ok, message: res.message });
       updaterLog(`plugin update spec=${u.updateSpec} result=${res.ok ? 'ok' : 'fail'} detail=${String(res.message).replace(/\s+/g, ' ').slice(0, 120)}`);
     }
