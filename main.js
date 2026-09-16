@@ -59,8 +59,6 @@ let dshProcess = null;
 let mainWindow = null;
 /** @type {BrowserWindow | null} */
 let petWindow = null;
-/** @type {BrowserWindow | null} */
-let welcomeWindow = null;
 /** @type {Tray | null} */
 let tray = null;
 /** @type {number | null} */
@@ -78,7 +76,6 @@ const DEFAULT_SETTINGS = {
   launchAtLogin: false,
   autoCheckUpdates: true, // 自动检查更新开关（启动检查 + 6h 轮询；托盘 checkbox，§2.2.7）
   petEnabled: true,
-  onboardingDone: false,
   mode: 'whale',        // 'whale' 鲸鱼模式（桌宠+背景图） | 'focus' 专注模式（无桌宠、纯色背景）
   modeChosen: false,    // 是否已弹过模式选择
   lastModeVersion: '',  // 上次选择模式时的版本号（更新后重新弹窗）
@@ -610,42 +607,6 @@ function dshHome() {
     : path.join(os.homedir(), '.dsh');
 }
 
-// ---------------------------------------------------------------------------
-// Onboarding wizard
-// ---------------------------------------------------------------------------
-function createWelcomeWindow() {
-  if (welcomeWindow && !welcomeWindow.isDestroyed()) {
-    welcomeWindow.show();
-    welcomeWindow.focus();
-    return;
-  }
-  welcomeWindow = new BrowserWindow({
-    width: 520,
-    height: 660,
-    parent: mainWindow || undefined,
-    resizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    title: 'Bigfish 新手向导',
-    autoHideMenuBar: true,
-    icon: appIconPath(),
-    webPreferences: {
-      preload: path.join(__dirname, 'welcome-preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
-  welcomeWindow.once('ready-to-show', () => {
-    if (welcomeWindow && !welcomeWindow.isDestroyed()) {
-      welcomeWindow.show();
-      welcomeWindow.focus();
-    }
-  });
-  welcomeWindow.loadFile(path.join(__dirname, 'welcome.html'));
-  welcomeWindow.on('closed', () => { welcomeWindow = null; });
-}
-
 function latestMtime(dir, skipNames, out) {
   out = out || { t: 0 };
   let entries;
@@ -738,10 +699,6 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
-    if (welcomeWindow && !welcomeWindow.isDestroyed()) {
-      welcomeWindow.show();
-      welcomeWindow.focus();
-    }
   });
 
   // Close hides to tray (keeps the backend alive); real quit goes through the tray.
@@ -1904,7 +1861,6 @@ function rebuildTrayMenu() {
   if (!tray) return;
   const menu = Menu.buildFromTemplate([
     { label: '显示 / 隐藏 Bigfish', click: () => toggleMainWindow() },
-    { label: '新手向导（设置 API Key）', click: () => createWelcomeWindow() },
     { label: '插件市场', click: () => createMarketWindow() },
     { label: '鲸鱼娘兑换屋', click: () => openExchangeWindow() },
     // 找回鲸鱼娘（US-14）：专注模式下桌宠窗口不存在 ⇒ 置灰不可用
@@ -2561,7 +2517,6 @@ if (!gotLock) {
       schedulePetChatter();
     }
     if (settings.launchAtLogin) setAutoStart(true);
-    if (!settings.onboardingDone) createWelcomeWindow();
 
     handleOpenArg(process.argv);
 
@@ -2588,17 +2543,6 @@ if (!gotLock) {
 
   app.on('will-quit', () => {
     stopDsh();
-  });
-
-  // Welcome wizard IPC
-  ipcMain.on('welcome-open-url', (_e, url) => {
-    if (typeof url === 'string' && /^https:\/\//.test(url)) shell.openExternal(url);
-  });
-  ipcMain.on('welcome-done', () => {
-    settings.onboardingDone = true;
-    saveSettings();
-    if (welcomeWindow && !welcomeWindow.isDestroyed()) welcomeWindow.close();
-    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
   });
 
   // Pet drag + click（拖动移动由主进程按全局光标绝对定位驱动，设计档 PET-DRAG §2.2）

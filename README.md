@@ -43,7 +43,7 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
   好感度与兑换屋玩法，动画素材持续更新中
 - **系统托盘 + 全局快捷键**（Ctrl+Shift+D 唤起）
 - **任务完成提醒**：任务跑完气泡 + 系统通知
-- **新手向导**：教普通用户注册、充值、填 API Key
+- **模型设置**：主界面「设置 ▸ 模型」内置 API Key 引导（注册 / 充值步骤见 使用说明.txt）
 - **故障自助**：后端启动失败时引导「重置插件配置（保留 API Key/会话）」「彻底恢复出厂」
 - 背景图（深/浅色适配 + 自定义背景）、开机自启、Windows 右键「用 Bigfish 打开」
 
@@ -122,7 +122,6 @@ Bigfish 遵循 DeepSeek Harness 官方 Cordis 插件体系：
 ## 目录
 
 - `main.js` — Electron 主进程：拉起后端、就绪检测、窗口生命周期、桌宠、插件引擎、进程树清理
-- `welcome.html / welcome.js` — 新手向导窗口
 - `market.html / market.js / market-preload.js` — 插件市场窗口
 - `exchange.html / exchange.js / exchange-preload.js` — 兑换屋窗口
 - `plugins.json` — 插件市场内置精选目录（离线兜底）

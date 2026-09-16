@@ -38,9 +38,6 @@
     "afterPack": "afterPack.js",
     "files": [
       "main.js",
-      "welcome.html",
-      "welcome.js",
-      "welcome-preload.js",
       "pet.html",
       "pet.js",
       "pet-preload.js",
