@@ -2,13 +2,15 @@
 
 Bigfish 整合了以下开源组件，谨此致谢。完整许可证文本见各组件 LICENSE 文件或来源仓库。
 
+> **Bigfish 本体**：源码托管在 Gitee（<https://gitee.com/ludonghuai/big-fish>），MIT 协议，见 [LICENSE](LICENSE)。
+
 ---
 
 ## 桌宠插件方案参考 —— s17179XTY / dsh-BigfishPet
 
 > ⚠️ **该插件不是 Bigfish 官方出品，也不属于 Bigfish Team。**
 > 它由社区开发者 **s17179XTY** 将 Bigfish 的桌宠改造为 DeepSeek Harness 插件
-> （fork 自 Bigfish 仓库），Bigfish 仅在其开发过程中作为方案参考，并向其致谢。
+> （fork 自 Bigfish 项目），Bigfish 仅在其开发过程中作为方案参考，并向其致谢。
 
 - **作者**：s17179XTY（第三方社区开发者，非 Bigfish Team 成员）
 - **作者 GitHub**：https://github.com/s17179XTY

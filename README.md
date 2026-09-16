@@ -6,9 +6,7 @@
 
 免去手动开终端、记端口、开浏览器。装完双击即用。
 
-[下载最新版本](https://github.com/turtle2209/Bigfish/releases) · [版本说明](版本说明.txt) · [使用说明](使用说明.txt) · [已知问题与排查](已知问题与排查.md) · [致谢与合规](THIRD-PARTY-NOTICES.md)
-
-[![GitHub Release](https://img.shields.io/github/v/release/turtle2209/Bigfish?label=Release)](https://github.com/turtle2209/Bigfish/releases) · [![Stars](https://img.shields.io/github/stars/turtle2209/Bigfish?label=Stars)](https://github.com/turtle2209/Bigfish) · [![Downloads](https://img.shields.io/github/downloads/turtle2209/Bigfish/total?label=Downloads)](https://github.com/turtle2209/Bigfish/releases) · [![License](https://img.shields.io/github/license/turtle2209/Bigfish?label=License)](LICENSE)
+[下载安装包](https://github.com/turtle2209/Bigfish/releases) · [版本说明](版本说明.txt) · [使用说明](使用说明.txt) · [已知问题与排查](已知问题与排查.md) · [致谢与合规](THIRD-PARTY-NOTICES.md)
 
 </div>
 
@@ -18,7 +16,22 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 
 把 `dsh web` 的本地后端 + React UI 包进一个原生桌面窗口，免去手动开终端、记端口、开浏览器。
 
-> 当前版本：`0.1.2` · Windows / macOS / Linux
+> **当前版本：`0.1.2`** · 已发布 Windows 安装包；macOS / Linux 目前需自行打包（见下文「打包」）
+>
+> **源码、文档与问题反馈**：<https://gitee.com/ludonghuai/big-fish>
+
+## 下载与安装
+
+| 平台 | 文件 | 说明 |
+| --- | --- | --- |
+| Windows 10 / 11 | [`Bigfish.Setup.0.1.2.exe`](https://github.com/turtle2209/Bigfish/releases/download/v0.1.2/Bigfish.Setup.0.1.2.exe) | 约 276 MB，双击按向导安装 |
+
+安装包没有做代码签名：Windows 若弹「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」
+（不是病毒，是没买签名证书）。
+
+> 为什么下载不在 Gitee：Gitee 发行版的单个附件上限是 100 MB，而安装包约 276 MB（自带 Node.js
+> 运行时与后端依赖），传不上去，所以安装包托管在 GitHub Releases；Gitee 这边放源码、文档与更新清单。
+> GitHub 在国内部分网络下访问不稳定，若打不开可换网络或使用加速工具。
 
 ## 功能亮点
 
@@ -27,7 +40,7 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 - **插件市场**：托盘菜单 →「插件市场」，连接社区最大插件平台
   （awesome-dsh-plugin，1000+ 插件），支持搜索/分类、一键安装/卸载，安装后自动重启生效
 - **桌面萌宠（鲸鱼娘）**：透明悬浮窗，可拖动、点击互动、随机散步/睡觉/说话，
-  动画素材持续更新中
+  好感度与兑换屋玩法，动画素材持续更新中
 - **系统托盘 + 全局快捷键**（Ctrl+Shift+D 唤起）
 - **任务完成提醒**：任务跑完气泡 + 系统通知
 - **新手向导**：教普通用户注册、充值、填 API Key
@@ -36,13 +49,13 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 
 ## 截图
 
-| 鲸鱼娘桌宠 | 兑换屋 |
+| 鲸鱼娘桌宠 + 兑换屋 | 托盘菜单（插件市场 / 兑换屋 / 模式 / 重置） |
 | --- | --- |
-| ![鲸鱼娘桌宠](https://github.com/user-attachments/assets/529ff426-faab-4919-a031-6299927bf6dd) | ![兑换屋](https://github.com/user-attachments/assets/e2cb1fa1-fb06-4d1c-b084-81014b4d1fef) |
+| ![鲸鱼娘桌宠与兑换屋](assets/screenshots/pet.png) | ![托盘菜单](assets/screenshots/tray-menu.png) |
 
-| 模式选择 |
+| 专注模式 / 鲸鱼模式 |
 | --- |
-| ![专注模式/鲸鱼模式](https://github.com/user-attachments/assets/90efad2e-c325-49b2-9ff3-abcc3dce3d85) |
+| ![专注模式/鲸鱼模式](assets/screenshots/mode-select.png) |
 
 ## 工作原理
 
@@ -62,9 +75,15 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 ## 开发运行
 
 ```bash
+git clone https://gitee.com/ludonghuai/big-fish.git
+cd big-fish
 npm install
 npm start
 ```
+
+> 需要 Node.js >= 22。首次运行还要装后端依赖：`cd dsh-bundle && npm install --omit=dev`；
+> 国内网络建议先 `npm config set registry https://registry.npmmirror.com/`。
+> 详细排查见 [已知问题与排查](已知问题与排查.md)。
 
 ## 打包
 
@@ -76,7 +95,7 @@ npm run dist:linux    # Linux AppImage + deb（需在 Linux 上构建）
 
 产物输出到 `dist/`。
 
-> 注意：原生依赖（node-pty / sharp / koffi 等）需在各自目标平台上构建；跨平台产物请用对应平台的 CI 或机器打包。
+> 注意：原生依赖（node-pty / sharp / koffi 等）需在各自目标平台上构建；跨平台产物请用对应平台的 CI 或机器打包。仓库里的 GitHub Actions 工作流（`.github/workflows/build.yml`）是按 tag 触发三平台构建的模板，迁到 Gitee 后需换成 Gitee Go 或本地打包。
 
 ## 运行时选择
 
@@ -98,13 +117,32 @@ Bigfish 遵循 DeepSeek Harness 官方 Cordis 插件体系：
 ## 目录
 
 - `main.js` — Electron 主进程：拉起后端、就绪检测、窗口生命周期、桌宠、插件引擎、进程树清理
+- `welcome.html / welcome.js` — 新手向导窗口
 - `market.html / market.js / market-preload.js` — 插件市场窗口
+- `exchange.html / exchange.js / exchange-preload.js` — 兑换屋窗口
 - `plugins.json` — 插件市场内置精选目录（离线兜底）
 - `bundled-plugins/` — 随软件内置的插件（离线安装）
+- `bundled-skills/` — 随软件预装的技能提示词
 - `pet.html / pet.js / pet-preload.js` — 桌宠透明悬浮窗
 - `assets/pet-new/` — 桌宠动画素材（分帧目录，持续更新）
 - `node-runtime/pnpm/` — 内置 pnpm（插件安装引擎）
 - `package.json` — 依赖与 electron-builder 打包配置
+
+## 文档
+
+| 文档 | 面向 | 内容 |
+| --- | --- | --- |
+| [使用说明](使用说明.txt) | 普通用户 | 下载、安装、首次使用、插件市场怎么用 |
+| [版本说明](版本说明.txt) | 普通用户 | 当前版本新增了什么、安装包清单 |
+| [已知问题与排查](已知问题与排查.md) | 用户 + 开发者 | 启动失败、杀毒拦截、本地运行等故障自助 |
+| [致谢与合规](THIRD-PARTY-NOTICES.md) | 所有人 | 第三方组件来源与许可证 |
+| [docs/](docs/README.md) | 开发者 | 需求档 / 设计档 / 批次档（桌宠等板块） |
+
+## 反馈
+
+问题、建议、需求都可以提在 Gitee 仓库的 Issues 里：<https://gitee.com/ludonghuai/big-fish>
+
+提 Issue 时附上系统版本、Bigfish 版本号，以及 `%USERPROFILE%\.dsh` 下的报错日志会更快定位。
 
 ## 致谢与合规
 
