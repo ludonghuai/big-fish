@@ -40,6 +40,9 @@ const settings = require('./shell-settings.js');
 const assets = require('./shell-assets.js');
 const notifier = require('./shell-notify.js');
 const backend = require('./shell-backend.js');
+const geometry = require('./shell-pet-geometry.js');
+const drag = require('./shell-pet-drag.js');
+const pet = require('./shell-pet.js');
 
 const APP_NAME = 'Bigfish';
 const HOST = '127.0.0.1';
@@ -59,8 +62,11 @@ function setQuitting(v) { quitting = v; }
 function getMainWindow() { return mainWindow; }
 
 // ---- 模块接线（依赖注入；设计档 docs/design/SHELL-UX.md §2.2.6 依赖方向规则）----
-notifier.init({ getDshHome: backend.dshHome, petSay: petSay, IDLE_NOTIFY_MS });
+notifier.init({ getDshHome: backend.dshHome, petSay: pet.petSay, IDLE_NOTIFY_MS });
 backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: sanitizeProfileBundles, getMainWindow: getMainWindow });
+geometry.init({ getPetWindow: pet.getPetWindow, getPetDrag: drag.getPetDrag });
+drag.init({ getPetWindow: pet.getPetWindow, pet });
+pet.init({ showMainWindow: showMainWindow, openExchangeWindow: openExchangeWindow, broadcastAffinity: broadcastAffinity });
 
 // 检查更新：从 Gitee 仓库 raw 拉取 latest.json（唯一清单源；AC6）。
 // 测试钩子：BIGFISH_UPDATE_URL 可覆盖（设计档 §2.2.2 假清单桩；仅此面允许 http 本地桩）。
@@ -70,67 +76,8 @@ const UPDATE_POLL_MS = Number(process.env.BIGFISH_UPDATE_INTERVAL_MS) || 2160000
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
-/** @type {BrowserWindow | null} */
-let petWindow = null;
 /** @type {Tray | null} */
 let tray = null;
-
-const PET_QUOTES = [
-  // 人设·打招呼
-  '我是深海里的鲸鱼公主，很高兴见到你~',
-  '欢迎回来，我的小伙伴！',
-  '鲸鱼公主来啦，今天也要一起加油哦！',
-  '深海那么大，但我只想陪你~',
-  // 人设·撒娇/互动
-  '哼，都不理我，我要吐泡泡了~',
-  '抱抱我嘛，我可是会喷水的公主！',
-  '你忙的时候，我会乖乖在旁边看着你~',
-  '我的尾巴会发光，但只有你才看得到哦~',
-  // 趣味·小知识（鲸鱼相关）
-  '小知识：蓝鲸的心跳每分钟只有 6 次哦~',
-  '你知道吗？鲸鱼其实是哺乳动物，不是鱼！',
-  '鲸鱼唱歌能传 1600 公里远，我的歌声呢~',
-  '座头鲸会跳出海面，像是在跳芭蕾~',
-  '小知识：抹香鲸可以潜水 90 分钟不上来！',
-  // 趣味·日常生活
-  '要不要我帮你把今天的任务列个清单？',
-  '查资料、写报告、做 PPT，说一声就行~',
-  '记得喝口水休息一下，别太累啦！',
-  '作业写完记得检查一遍哦~',
-  // 加油打气
-  '今天也要元气满满！',
-  '你已经很棒了，剩下的事交给我！',
-  '别怕麻烦，我一直都在~',
-];
-
-function petSay(msg) {
-  if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.webContents.send('pet-say', msg);
-  }
-}
-
-/** 待机时随机表演一段小动作（看书/星星眼/惊吓/开心），随后回到待机。 */
-function playIdleVariant() {
-  if (!petWindow || petWindow.isDestroyed() || petState !== 'idle') return;
-  const variants = ['read', 'starry', 'scared', 'happy'];
-  const v = variants[Math.floor(Math.random() * variants.length)];
-  setPetState(v);
-  setTimeout(() => {
-    if (petState === v) setPetState('idle');
-  }, 2400);
-}
-
-function schedulePetChatter() {
-  clearTimeout(chatterTimer);
-  chatterTimer = setTimeout(() => {
-    if (petWindow && !petWindow.isDestroyed() && petState === 'idle') {
-      // 40% 概率先表演一段小动作，再说话
-      if (Math.random() < 0.4) playIdleVariant();
-      petSay(PET_QUOTES[Math.floor(Math.random() * PET_QUOTES.length)]);
-    }
-    schedulePetChatter();
-  }, 90000); // 固定 1.5 分钟说一句
-}
 
 function uninstall() {
   if (!app.isPackaged) {
@@ -469,748 +416,9 @@ function showMainWindow() {
 }
 
 function toggleMainWindow() {
-  ensurePet();
+  pet.ensurePet();
   if (mainWindow && mainWindow.isVisible()) mainWindow.hide();
   else showMainWindow();
-}
-
-// ---------------------------------------------------------------------------
-// Desktop pet — transparent floating window（鲸鱼娘）
-// ---------------------------------------------------------------------------
-// Pet geometry — 多屏几何与可见性（设计档 docs/design/PET-MULTIMONITOR.md §2.3.1）
-//   全部几何判定收敛为下列 helper（单一来源，NFR-8）；取屏唯一入口 = petDisplayOf()，
-//   其余调用点不得内联第二份实现。坐标口径 = DIP（证据 E1/E2）；窗口自身位置与尺寸的
-//   坐标空间在上游未声明（证据 E6）——本组「仅在 DIP 假设成立时自洽」（设计档 §2.2）。
-//   统一短路口径：返回 null 不等于「位置为零」，调用方拿到 null 必须跳过写入。
-//   尺寸策略（§2.3.5）：petCalibrateSize() 是**唯一尺寸写入路径**（锚点 + 容差 + 不可判定门，DD-20）；
-//   尺寸**写入** = setBounds（**尺寸专用形态**：不提供 x / y，第 13 轮改写，DD-25 / E8）· **读回** = getSize()（DD-21 / §2.2 Q7）；
-//   **位置保护** = 写入前后各读一次位置、差异 > 1 DIP 才条件回写（§2.3.5-F）。
-// ---------------------------------------------------------------------------
-const PET_SIZE_DIP = { w: 250, h: 270 };  // 窗口逻辑尺寸（DIP），跨屏不变（US-11）；与建窗 / pet.html 同源
-const PET_DEFAULT_MARGIN_DIP = 24;        // petDefaultPos() 的右下角边距（设计档 DD-6）
-const PET_WALL_EPS = 4;                   // 贴墙判定阈值（px；B01 AC7 不回退，只改判定基准）
-const PET_SIZE_TOLERANCE_DIP = 8;         // 尺寸判据容差（DIP，§2.3.5-A）：覆盖 R3 的 +2~+6 量化并留余量；禁用精确判等
-const PET_WANDER_SIZE_CHECK_MS = 30000;   // 散步 / 跑步**段起点**兜底校准的最小间隔（ms；§2.1 H 组 H-3 / §2.3.5-B 第 4 条 / DD-22）⇒ 该路径频率 ≤2 次/分
-const PET_GEOM_DEBUG = process.env.BIGFISH_PET_DEBUG === '1'; // 几何诊断日志开关（默认关闭，关闭时零开销）
-
-/**
- * 尺寸锚点内存态（§2.3.5-A）：`{ w, h, scaleFactor } | null`——上次成功**写入尺寸（`setBounds`）**后**立即读回**的值
- * + **设锚点时的所在屏 scaleFactor**（后者与锚点同行登记，供 petCalibrateSize() 的 reason 判据句使用）。
- * `null` = 尚无锚点（仅出现在建窗后首次校准前）。
- */
-let petSizeBaseline = null;
-
-/**
- * 散步 / 跑步段起点兜底校准的时间戳（§2.3.5-B 第 4 条 / DD-22）：`0` = 从未校准过 ⇒ **首段起点必放行**。
- * 设置点 = 被门控放行的那一次兜底（`petCalibrateSize()` 之后）；建窗时随 `petSizeBaseline = null`
- * **同批置 0**（见 `createPetWindow()`）。无窗口时不必清空——`petCalibrateSize()` 自身短路。
- */
-let petWanderSizeCheckedAt = 0;
-
-/** 追加一行几何诊断日志（尽力而为，先例：pet-drag.log / exchange.log）。 */
-function petGeomLog(text) {
-  try {
-    const file = path.join(app.getPath('userData'), 'pet-geometry.log');
-    fs.appendFileSync(file, `[${new Date().toISOString()}] ${text}\n`);
-  } catch { /* best effort */ }
-}
-
-/** 取屏唯一入口：DIP 点 → Display（证据 E3）。不读窗口，ready 之后恒有返回（E7）。 */
-function petDisplayOf(point) {
-  return screen.getDisplayNearestPoint({ x: point[0], y: point[1] });
-}
-
-/** 桌宠窗口中心点（DIP 位置）；无窗口 / 已销毁 → null（E6 依赖项）。 */
-function petCenterDIP() {
-  if (!petWindow || petWindow.isDestroyed()) return null;
-  const [x, y] = petWindow.getPosition();
-  return [x + PET_SIZE_DIP.w / 2, y + PET_SIZE_DIP.h / 2];
-}
-
-/** 桌宠中心点所在屏；无窗口 / 已销毁 → null。 */
-function petCurrentDisplay() {
-  const center = petCenterDIP();
-  return center ? petDisplayOf(center) : null;
-}
-
-/** 某屏上窗口位置的合法区间（workArea 减去窗口尺寸）；入参 null → null（纯函数）。 */
-function petWorkAreaBounds(display) {
-  if (!display) return null;
-  const wa = display.workArea;
-  return {
-    minX: wa.x,
-    maxX: wa.x + wa.width - PET_SIZE_DIP.w,
-    minY: wa.y,
-    maxY: wa.y + wa.height - PET_SIZE_DIP.h,
-  };
-}
-
-/**
- * 贴墙（挣脱）判定的基准（设计档 §2.1 E 组 E1 / DD-13 / §2.3.6）：**整个桌面** = 全部显示器
- * bounds（E2）的并集 x 极值；maxX = 并集右沿 − PET_SIZE_DIP.w（窗口沿恰好贴住桌面右缘）。
- * 与「散步边界 = 所在屏工作区」（petWorkAreaBounds）是**两套用途**，不得互换。
- * 纯函数、不读窗口、不取屏；getAllDisplays() 为空 → null（调用方短路，不判贴墙）。
- */
-function petDesktopBounds() {
-  let minX = Infinity;
-  let right = -Infinity;
-  for (const display of screen.getAllDisplays()) {
-    const b = display.bounds;
-    if (b.x < minX) minX = b.x;
-    if (b.x + b.width > right) right = b.x + b.width;
-  }
-  if (minX === Infinity) return null; // 无显示器（实际不可达）⇒ 判定短路
-  return { minX, maxX: right - PET_SIZE_DIP.w };
-}
-
-/** 「可见」的唯一口径（NFR-5）：中心点落在任一屏 workArea 内。入参 null → false（纯函数）。 */
-function petIsVisible(pos) {
-  if (!pos) return false;
-  const cx = pos[0] + PET_SIZE_DIP.w / 2;
-  const cy = pos[1] + PET_SIZE_DIP.h / 2;
-  return screen.getAllDisplays().some((display) => {
-    const wa = display.workArea;
-    return cx >= wa.x && cx < wa.x + wa.width && cy >= wa.y && cy < wa.y + wa.height;
-  });
-}
-
-/** 按「中心点最近的屏」把不可见位置钳回该屏区间；已可见则恒等返回（幂等、零写入）。 */
-function petNearestVisiblePos(pos) {
-  if (!pos) return null;
-  if (petIsVisible(pos)) return pos;
-  const anchor = [pos[0] + PET_SIZE_DIP.w / 2, pos[1] + PET_SIZE_DIP.h / 2];
-  const bounds = petWorkAreaBounds(petDisplayOf(anchor));
-  if (!bounds) return null;
-  return [
-    Math.round(Math.min(Math.max(pos[0], bounds.minX), bounds.maxX)),
-    Math.round(Math.min(Math.max(pos[1], bounds.minY), bounds.maxY)),
-  ];
-}
-
-/** 默认落点（DD-6）：主屏工作区右下角，留 PET_DEFAULT_MARGIN_DIP 边距。 */
-function petDefaultPos() {
-  const bounds = petWorkAreaBounds(screen.getPrimaryDisplay());
-  if (!bounds) return [0, 0]; // 防御：screen 不可用时不让调用方拿到 null（实际不可达）
-  return [bounds.maxX - PET_DEFAULT_MARGIN_DIP, bounds.maxY - PET_DEFAULT_MARGIN_DIP];
-}
-
-/**
- * 启动位置解析（US-13，建窗前调用）：无存档 → null（不带 x/y 建窗，保持现状，TC-18）；
- * 存档可见 → 存档值（TC-10）；存档非法（非整数 / 缺字段）、不可见或存档文件损坏
- * → petDefaultPos()（§2.3.4 后三种情形，TC-12 / TC-19），均记 pos-restore valid=0。
- * 启动位置解析（含其回落改写）只记 1 行（设计档 §3.3 发射规则）。
- */
-let petStartPosLogged = false;
-function petResolveStartPos() {
-  const first = !petStartPosLogged;
-  petStartPosLogged = true;
-  const saved = settings.get().petPos;
-  const hasArchive = !(saved === null || saved === undefined);
-  const pos = (hasArchive && Number.isInteger(saved.x) && Number.isInteger(saved.y))
-    ? [saved.x, saved.y] : null;
-  if (pos && petIsVisible(pos)) {
-    if (PET_GEOM_DEBUG && first) petGeomLog(`pos-restore pos=${petPosText(pos)} valid=1`);
-    return pos;
-  }
-  if (!hasArchive && !settings.isFileCorrupt()) {
-    // 真正无存档（首次运行 / 旧档缺键）⇒ 不带坐标建窗
-    if (PET_GEOM_DEBUG && first) petGeomLog('pos-restore pos=n/a valid=0 note=no-archive');
-    return null;
-  }
-  const fallback = petDefaultPos();
-  if (PET_GEOM_DEBUG && first) {
-    petGeomLog(`pos-restore pos=${petPosText(fallback)} valid=0`);
-    petGeomLog(`geom-fix reason=start from=${pos ? petPosText(pos) : 'n/a'} to=${petPosText(fallback)}`);
-  }
-  return fallback;
-}
-
-/**
- * 位置持久化（US-13）：写 settings.get().petPos（DIP 整数）+ settings.saveSettings()；与上次写入值相同则跳过。
- * 只在离散停泊事件调用（松手 / 散步段末 / 显示器事件 / 找回 / 退出前），不得在 tick 内调用。
- * 无窗口 / 已销毁 → 直接返回（不写盘、不报错）。
- */
-function petSavePos() {
-  if (!petWindow || petWindow.isDestroyed()) return;
-  const [x, y] = petWindow.getPosition();
-  const px = Math.round(x);
-  const py = Math.round(y);
-  const last = settings.get().petPos;
-  if (last && last.x === px && last.y === py) return; // 去重：与前次写入值相同则跳过
-  settings.get().petPos = { x: px, y: py };
-  settings.saveSettings();
-  if (PET_GEOM_DEBUG) petGeomLog(`pos-save pos=${petPosText([px, py])}`);
-}
-
-/** 几何快照 1 行（AC2 / AC7 的取证点）：位置 / 尺寸 / 中心点 / 所在屏 / 工作区 / 可见性。 */
-function petGeomSnapshot(tag) {
-  if (!PET_GEOM_DEBUG) return;
-  const center = petCenterDIP();
-  if (!center) return;
-  const pos = petWindow.getPosition();
-  const display = petDisplayOf(center);
-  const wa = display.workArea;
-  petGeomLog(
-    `geom tag=${tag} pos=${petPosText(pos)} size=${petPosText(petWindow.getSize())}`
-    + ` center=${petPosText(center)} display=${display.id} scale=${display.scaleFactor}`
-    + ` wa=(${wa.x},${wa.y},${wa.width},${wa.height}) visible=${petIsVisible(pos) ? 1 : 0}`,
-  );
-}
-
-/**
- * 位置改写记 1 行（仅在真的发生改写时；幂等 no-op 时零行）。
- * 位置型行在 `reason ∈ {drop, straddle}` 时**另带** `display` / `bounds`（§3.3 列义（五））——
- *   这两类正是 petSettlePos 落点解析的产物，S5 / AC2（B03）的骑线部分要判「标称矩形 ⊆ 该屏 bounds」，
- *   故必须给出**目标屏**（该校正的中心点所在屏）与其 `bounds`；`start` / `display` / `summon` 不带。
- */
-function petLogFix(reason, from, to) {
-  if (!PET_GEOM_DEBUG) return;
-  let extra = '';
-  if (reason === 'drop' || reason === 'straddle') {
-    const display = petDisplayOf([to[0] + PET_SIZE_DIP.w / 2, to[1] + PET_SIZE_DIP.h / 2]);
-    if (display) {
-      const b = display.bounds;
-      extra = ` display=${display.id} bounds=(${b.x},${b.y},${b.width},${b.height})`;
-    }
-  }
-  petGeomLog(`geom-fix reason=${reason} from=${petPosText(from)} to=${petPosText(to)}${extra}`);
-}
-
-/** 位置改写：目标与当前不同才写窗口并记 1 行 geom-fix（幂等时零写入零日志）。 */
-function petApplyPos(target, reason) {
-  if (!target || !petWindow || petWindow.isDestroyed()) return;
-  const before = petWindow.getPosition();
-  if (before[0] === target[0] && before[1] === target[1]) return;
-  petWindow.setPosition(target[0], target[1]);
-  petLogFix(reason, before, target);
-}
-
-/** 拖动起点刷新「上一 tick 所在屏」缓存（§2.3.3；显示器事件路径已改为置失效标记，见 handleDisplayChange）。 */
-function petSyncDragDisplayCache(cursor) {
-  if (!petDrag) return;
-  const point = cursor || screen.getCursorScreenPoint();
-  const display = petDisplayOf([point.x, point.y]);
-  petDrag.displayBounds = display ? display.bounds : null;
-  petDrag.displayId = display ? display.id : null;
-}
-
-/** 纯算术：DIP 点是否落在矩形内（拖动热路径用，无 API 调用）；入参任一为 null → false（纯函数，§2.3.1）。 */
-function petPointInRect(point, rect) {
-  if (!point || !rect) return false;
-  return point.x >= rect.x && point.x < rect.x + rect.width
-    && point.y >= rect.y && point.y < rect.y + rect.height;
-}
-
-/**
- * 纯算术：**标称矩形**（`pos` + `PET_SIZE_DIP`）是否完全落在矩形 `rect` 内（四角 ⊆）。
- * 右 / 下取**闭**区间（`rect` 为凸集 ⇒ 校验左上 / 右下两角即等价于四角 ⊆）——本判据问的是
- * 「**完全进入**」，与 `petPointInRect` 的**半开**区间用途不同，**不得互换**（§2.3.1）。
- * 入参任一为 null → false（纯函数；无 API 调用）。
- */
-function petRectInside(pos, rect) {
-  if (!pos || !rect) return false;
-  return pos[0] >= rect.x && pos[0] + PET_SIZE_DIP.w <= rect.x + rect.width
-    && pos[1] >= rect.y && pos[1] + PET_SIZE_DIP.h <= rect.y + rect.height;
-}
-
-/**
- * 混合 DPI 重叠判定（**单一来源**，承 NFR-8 / 设计档 §2.3.1）：标称矩形（`pos` +
- * `PET_SIZE_DIP`）是否与 `display` **以外**的、`scaleFactor` **不同**的屏重叠（区间相交，纯算术）。
- * **唯一消费方 = `petStraddleFix()`（骑线推离）**——第 10 轮起 `petCalibrateSize()` 第 ④ 步改为
- * **不可判定门**（DD-20），不再消费本判定；保留定义 = 单一来源，不得写第二份拷贝。
- * 入参任一为 null → false；每次调用一次 `getAllDisplays()` 遍历（E3）——调用方负责执行时点
- * （只该在写入判定时执行，不在每 tick 推导路径上）。纯函数、不读窗口。
- */
-function petMixedScaleOverlap(pos, display) {
-  if (!pos || !display || !display.bounds) return false;
-  return screen.getAllDisplays().some((d) => {
-    if (!d || !d.bounds || d.id === display.id || d.scaleFactor === display.scaleFactor) return false;
-    const b = d.bounds;
-    return pos[0] < b.x + b.width && pos[0] + PET_SIZE_DIP.w > b.x
-      && pos[1] < b.y + b.height && pos[1] + PET_SIZE_DIP.h > b.y;
-  });
-}
-
-/**
- * 骑线推离（§2.3.7 / 契约 §2.3.1）：标称矩形未完全落在**中心点所在屏** `bounds` 内、**且**与之
- * 重叠的其它屏中存在 `scaleFactor` **不同**者 ⇒ 钳入该屏 `bounds`（最小位移 = 逐轴钳入）；
- * 否则**恒等返回**（同 `scaleFactor` 的骑线无合成差异 ⇒ 不做无由的位置改写）。
- * 混合 DPI 判定 = `petMixedScaleOverlap`（单一来源；第 10 轮起本处为其**唯一消费方**，设计档 §2.3.1）。
- * 入参 null → null；无屏可取（screen 不可用）→ 恒等返回。纯函数、不读窗口。
- */
-function petStraddleFix(pos) {
-  if (!pos) return null;
-  const center = [pos[0] + PET_SIZE_DIP.w / 2, pos[1] + PET_SIZE_DIP.h / 2];
-  const display = petDisplayOf(center);
-  if (!display) return pos;
-  if (petRectInside(pos, display.bounds)) return pos; // 已完全落在该屏 ⇒ 不骑线
-  if (!petMixedScaleOverlap(pos, display)) return pos; // 同 scaleFactor 的骑线无合成差异 ⇒ 不推
-  const b = display.bounds;
-  return [
-    Math.round(Math.min(Math.max(pos[0], b.x), b.x + b.width - PET_SIZE_DIP.w)),
-    Math.round(Math.min(Math.max(pos[1], b.y), b.y + b.height - PET_SIZE_DIP.h)),
-  ];
-}
-
-/**
- * 落点解析组合（松手 / 显示器事件 / 建窗后**共用**，§2.3.6 / §2.3.7）：
- *   ① 可见性校正（`petNearestVisiblePos` ⇒ `kind='visible'`）② 骑线推离（`petStraddleFix` ⇒ `kind='straddle'`）。
- * 两条规则合并为**一次**位置写入（调用方当且仅当 `kind === 'none'` 时**零写入**）——
- * 前者成立时后者恒等返回（`workArea ⊆ bounds` ⇒ 标称矩形已在 `bounds` 内），故不会产生第二次跳。
- * 入参 null → `{ pos: null, kind: 'none' }`（调用方必须跳过写入，§2.3.1 短路口径）。纯函数、不读窗口。
- */
-function petSettlePos(pos) {
-  if (!pos) return { pos: null, kind: 'none' };
-  let out = pos;
-  let kind = 'none';
-  const visible = petNearestVisiblePos(out);
-  if (visible && (visible[0] !== out[0] || visible[1] !== out[1])) { out = visible; kind = 'visible'; }
-  const straddle = petStraddleFix(out);
-  if (straddle && (straddle[0] !== out[0] || straddle[1] !== out[1])) { out = straddle; kind = 'straddle'; }
-  return { pos: out, kind };
-}
-
-/**
- * 显示器配置变化（E5 三事件，DD-8）：日志 1 行 →（非拖动时）回落可见区 → 尺寸校准 → 落盘。
- * **拖动中**（`petDrag !== null`）：只置缓存失效标记**并清除跨屏尺寸标记**（§2.3.2「拖动中」行 /
- *   §2.3.3 / DD-19）——不校正、不落盘、不做尺寸校准：拖动期间位置由用户手指支配（US-2），且
- *   此处推进 displayId 会吞掉该次跨屏尺寸标记；失效标记由下一次拖动 tick 消费（§2.3.3），校正与落盘
- *   交给松手路径兜底。
- *   清除 `pendingSizeAnchor` 的理由（DD-19）：该标记承载的是「**新屏 bounds**」，屏几何已变 ⇒
- *   陈旧值不可信（可能指向一块已不存在的屏）；清除后由下一次切换检测按新屏重新置。
- * 专注模式（无窗口）时 helper 按短路口径返回 null ⇒ 不写入、不落盘。
- */
-function handleDisplayChange(kind, display, metrics) {
-  if (PET_GEOM_DEBUG) {
-    petGeomLog(
-      `display-change kind=${kind} id=${display ? display.id : 'n/a'}`
-      + ` scale=${display ? display.scaleFactor : 'n/a'}`
-      + ` metrics=${metrics && metrics.length ? metrics.join('|') : 'n/a'}`,
-    );
-  }
-  if (petDrag) {
-    petDrag.displayBounds = null;      // 失效标记（此处不取屏；取屏留给下一 tick，§2.3.3）
-    petDrag.pendingSizeAnchor = null;  // 同一失效一并清除（DD-19）：屏几何已变 ⇒「新屏 bounds」陈旧不可信
-    petGeomSnapshot('display');   // 发射规则③：每个 screen 事件处理完成后 1 行
-    return;
-  }
-  if (petWindow && !petWindow.isDestroyed()) {
-    // 落点解析与松手路径**共用** petSettlePos（§2.3.1 / §2.3.2）：拔屏后回落可见区 + 骑线推离，
-    //   至多一次位置写入（kind='none' ⇒ 零写入）；缩放比变化后重新锚定尺寸。
-    const settled = petSettlePos(petWindow.getPosition());
-    if (settled.kind !== 'none') petApplyPos(settled.pos, 'display');
-    petCalibrateSize();
-    petSavePos();
-  }
-  petGeomSnapshot('display');
-}
-
-/** 找回鲸鱼娘（US-14）：拉回主屏默认落点并落盘；专注模式下入口置灰、此处分外守卫。 */
-function summonPet() {
-  if (settings.get().mode === 'focus') return;
-  ensurePet();
-  if (!petWindow || petWindow.isDestroyed()) return;
-  petApplyPos(petDefaultPos(), 'summon');
-  petCalibrateSize();
-  petSavePos();
-}
-
-function createPetWindow(startPos) {
-  if (petWindow && !petWindow.isDestroyed()) { petWindow.show(); return; }
-  petWindow = new BrowserWindow({
-    width: PET_SIZE_DIP.w,
-    height: PET_SIZE_DIP.h,
-    ...(startPos ? { x: startPos[0], y: startPos[1] } : {}),
-    transparent: true,
-    frame: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    movable: true,
-    hasShadow: false,
-    fullscreenable: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'pet-preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
-  petWindow.setAlwaysOnTop(true, 'floating');
-  // 点击穿透只在 Windows 上可靠；Linux 上开启会导致桌宠点不到
-  if (process.platform === 'win32') {
-    petWindow.setIgnoreMouseEvents(true, { forward: true });
-  }
-  petWindow.loadFile(path.join(__dirname, 'pet.html'));
-  petWindow.webContents.on('did-finish-load', () => {
-    // 新窗口加载完成立刻推送好感度，避免切换模式后条子显示 0
-    broadcastAffinity();
-  });
-  // 渲染进程异常退出 → 跟随循环终止（设计档 §2.2.6）
-  petWindow.webContents.on('render-process-gone', () => petStopDrag('destroyed'));
-  petWindow.on('closed', () => {
-    petStopDrag('destroyed'); // 窗口关闭路径终止拖动（设计档 §2.2.6）
-    petWindow = null;
-  });
-  // 建窗后一次（§2.3.2 建窗后行 / §2.3.5-C 调用点①）：先做一次**骑线推离**（仅在真的发生推离时
-  //   记 geom-fix reason=straddle），再建立 / 重定尺寸锚点——次序与松手行同源（先定位置、再定尺寸锚点）。
-  //   第 10 轮起校准的门 = **不可判定门**（§2.3.5-C 第 4 步 / DD-20）⇒ 推离**不再是过门的前提**；
-  //   推离本身按 §2.3.7 独立发生（唯一理由 = 不让「一半大一半小」停留）。
-  //   该路径本不执行贴墙判定 ⇒ wall 行照常缺席（豁免规则照用，§2.3.6 / §2.3.7）。
-  // 新建窗口 ⇒ 锚点作废（§2.3.5-A：「null」仅出现在建窗后首次校准前）——不得复用上一窗口的锚点与其 scaleFactor
-  petSizeBaseline = null;
-  petWanderSizeCheckedAt = 0; // 散步段起点兜底的门控时间戳同批复位（§2.3.5-B 第 4 条的状态生命周期）
-  const bootSettle = petSettlePos(petWindow.getPosition());
-  if (bootSettle.kind === 'straddle') petApplyPos(bootSettle.pos, 'straddle');
-  petCalibrateSize();
-}
-
-/** 桌宠启用但窗口没了时，重建它（解决关窗后桌宠消失）。 */
-function ensurePet() {
-  if (settings.get().petEnabled && (!petWindow || petWindow.isDestroyed())) {
-    // 重建也走启动位置解析（US-13：模式切回鲸鱼时不回到系统默认落点）
-    createPetWindow(petResolveStartPos());
-  }
-}
-
-function destroyPetWindow() {
-  clearPetTimers();
-  petWanderDir = null;
-  petBounceLeft = 0;
-  if (petWindow && !petWindow.isDestroyed()) petWindow.destroy();
-  petWindow = null;
-  petStopDrag('destroyed'); // 拖动跟随循环一并终止（幂等：clearPetTimers 已停过则此处 no-op）
-}
-
-// ---------------------------------------------------------------------------
-// Pet drag-follow — 主进程按全局光标绝对定位驱动窗口（设计档 docs/design/PET-DRAG.md §2.2）
-//   拖动开始时记抓取偏移 grabOffset = 光标 − 窗口位置（**全程恒定**：跨屏不重锚，§2.3.3 / DD-23）；
-//   随后每 PET_DRAG_TICK_MS 读一次全局光标，按「光标 − grabOffset」推导目标位置，同目标去重后才写入（不做工作区钳制）。
-// ---------------------------------------------------------------------------
-const PET_DRAG_TICK_MS = 8;            // 标称跟随周期 ≈125Hz（JS 定时器粒度只会 ≥8ms，允许 +2ms 偏差）
-const PET_DRAG_STALE_MS = 1800;        // 心跳失联阈值（NFR-2 的 2s 上限内留 200ms 余量）
-const PET_DRAG_PROBE_MS = 250;         // drag-end 后的静态探针延迟（> NFR-2 的 200ms 上限）
-const PET_DRAG_LOG_SAMPLE_TICKS = 16;  // 诊断日志采样频率：每 16 tick（≈128ms）一行
-const PET_DRAG_DEBUG = process.env.BIGFISH_PET_DEBUG === '1'; // 日志开关，默认关闭且关闭时零开销
-
-/** 追加一行拖拽诊断日志（尽力而为，先例：exchange.log）。 */
-function petDragLog(text) {
-  try {
-    const file = path.join(app.getPath('userData'), 'pet-drag.log');
-    fs.appendFileSync(file, `[${new Date().toISOString()}] ${text}\n`);
-  } catch { /* best effort */ }
-}
-
-/** 位置元组 → 日志文本 (x,y)。 */
-function petPosText(pos) { return `(${pos[0]},${pos[1]})`; }
-
-/**
- * 拖动跟随状态（null = 未在拖动）。
- * 设置点：pet-drag-start（先停旧再建新，幂等）；清空点：petStopDrag（唯一出口，全路径覆盖）。
- * tick = 本次拖动的 tick 计数（仅用于日志采样节流，服务设计档 §3.3 的 16-tick 采样）。
- */
-let petDrag = null;
-
-/**
- * 尺寸校准（**唯一尺寸写入路径**，取代原「期望值判等」式尺寸断言，设计档 §2.3.5-A / C）——五步判定次序：
- *   ① 窗口守卫（`!petWindow || isDestroyed()` → 返回）② `getSize()` 1 次 ③ 锚点非空 ∧ 逐分量
- *   `|cur − 锚点| ≤ 容差` → 返回（**零写入零日志**：同屏静止 / 量化误差的常见路径）
- *   ④ **不可判定门**（第 10 轮更名 / 改写，DD-20；原「混合 DPI 门」的**骑线拦截子句已删**——
- *   其前提经 §2.2 Q6 证伪）：`petCurrentDisplay()` 为 null（窗口中心点不在任何屏上）→ 返回
- *   （**推迟**写入——第 ⑤ 步需该屏 `scaleFactor` 入锚点，中心点不在任何屏上时无从取得）。
- *   **这是唯一的推迟条件**：与其它屏（含 `scaleFactor` **不同**者）重叠、与桌面外（无屏覆盖处）重叠 ⇒ **一律过门**（照第 ⑤ 步写入）。
- *   ⑤ **尺寸写入 + 位置保护**（第 13 轮改写，DD-25 / §2.3.5-F；三步 + 一次复核）：Ⅰ 写入前读数 →
- *   Ⅱ **尺寸专用写入** = `setBounds({ width, height })`（**不提供 `x` / `y`**：E8 ⇒ 调用方不传位置，
- *   旧「读位置 → 原样传回」形态已废）→ Ⅲ 写入后读数校验：任一分量之差 **> 1 DIP** ⇒ `setPosition`
- *   **条件回写**一次（值 = 写入前读数）并**复核** ⇒ `note=pos-restored` / `note=pos-unfixed`（复核仍不
- *   一致 ⇒ **判失败**，F15）；回写写的是同一位置值 ⇒ 非位置钳制、不发位置型行（§2.3.5-B 第 5 条）
- *   → Ⅳ `getSize()` 读回 → 更新锚点 → 记 1 行（发射时点 = 写入与复核**之后** ⇒ `pos-after` = 终值）。
- * `reason` 判据句（**唯一形态**，与 §2.3.5-B2 / §3.3 列义（四）同源，纯算术）：
- *   锚点为空 **∨** 当前所在屏 scaleFactor ≠ 设锚点时的 scaleFactor ⇒ `size-anchor`；否则 `size-drift`。
- *   不得写成「锚点为空 ⇒ size-anchor；否则 size-drift」——那会把拖动期跨屏的那一次记成 `size-drift`。
- * 无参（不得加 `reason` 入参）；无窗口 / 已销毁 → 直接返回。
- */
-function petCalibrateSize() {
-  if (!petWindow || petWindow.isDestroyed()) return;                 // ①
-  const [cw, ch] = petWindow.getSize();                              // ②
-  if (petSizeBaseline                                                 // ③
-    && Math.abs(cw - petSizeBaseline.w) <= PET_SIZE_TOLERANCE_DIP
-    && Math.abs(ch - petSizeBaseline.h) <= PET_SIZE_TOLERANCE_DIP) return;
-  const display = petCurrentDisplay();                                // ④ 不可判定门（DD-20）
-  if (!display) return;                                                // 无屏（中心点不在任何屏上）⇒ 不可判定 ⇒ 推迟
-  // ⑤ 位置读数点（**单一定义**）：写入前读数与**回写后复核**共用同一处 `getPosition()` ⇒ 本函数内
-  //   `getPosition()` 文本 2 处（§3.3 位置保护判别面的计数面）；回写路径上该读数点执行 2 次。
-  const readPos = () => petWindow.getPosition();
-  const pos = readPos();                                              // Ⅰ 写入前位置（pos 列 / 回写值共用）
-  petWindow.setBounds({ width: PET_SIZE_DIP.w, height: PET_SIZE_DIP.h }); // Ⅱ 尺寸专用写入（不提供 x / y，E8）
-  let posAfter = petWindow.getPosition(), note = '';                  // Ⅲ 写入后读数（校验）+ 回写留痕位
-  if (Math.abs(posAfter[0] - pos[0]) > 1 || Math.abs(posAfter[1] - pos[1]) > 1) { // 容差 1 DIP（§2.2 位置侧实证 A 组：(−1,−1)）
-    petWindow.setPosition(pos[0], pos[1]);                            // 条件回写（唯一一处；值 = 写入前读数）
-    posAfter = readPos();                                             // 回写后复核
-    note = (Math.abs(posAfter[0] - pos[0]) <= 1 && Math.abs(posAfter[1] - pos[1]) <= 1)
-      ? 'pos-restored' : 'pos-unfixed';
-  }
-  const [aw, ah] = petWindow.getSize();                               // Ⅳ 读回尺寸
-  const scale = display.scaleFactor;
-  const reason = (!petSizeBaseline || petSizeBaseline.scaleFactor !== scale) ? 'size-anchor' : 'size-drift';
-  petSizeBaseline = { w: aw, h: ah, scaleFactor: scale };             // 先更新锚点、后记 1 行（§2.3.5-C 第 ⑤ 步 ④ 的次序）
-  if (PET_GEOM_DEBUG) {
-    const b = display.bounds;
-    petGeomLog(
-      `geom-fix reason=${reason} size-from=${petPosText([cw, ch])} size-to=${petPosText([aw, ah])}`
-      + ` display=${display.id} scale=${scale} bounds=(${b.x},${b.y},${b.width},${b.height})`
-      + ` pos=${petPosText(pos)} pos-after=${petPosText(posAfter)}${note ? ` note=${note}` : ''}`,
-    );
-  }
-}
-
-/** 终止拖动跟随（唯一清空点）：停循环 → 最终位置同步 + 尺寸回拉 → 日志/探针 → 兜底通知渲染层。 */
-function petStopDrag(reason) {
-  if (!petDrag) return;
-  const drag = petDrag;
-  petDrag = null;
-  clearInterval(drag.timer);
-  const alive = !!petWindow && !petWindow.isDestroyed();
-  if (alive) {
-    // 最终位置同步 + 尺寸回拉（AC8 的取证点＝拖动结束时刻的尺寸）
-    const cursor = screen.getCursorScreenPoint();
-    const target = [Math.round(cursor.x - drag.grabOffset.x), Math.round(cursor.y - drag.grabOffset.y)];
-    if (target[0] !== drag.lastApplied[0] || target[1] !== drag.lastApplied[1]) {
-      petWindow.setPosition(target[0], target[1]);
-      drag.lastApplied = target;
-    }
-    petCalibrateSize(); // 终止即校准（§2.3.2 松手行注：与松手路径那一次不重复写——锚点已刷 ⇒ 落在容差内）
-  }
-  if (PET_DRAG_DEBUG) {
-    petDragLog(alive
-      ? `drag-end reason=${reason} pos=${petPosText(petWindow.getPosition())} size=${petPosText(petWindow.getSize())}`
-      : `drag-end reason=${reason} pos=n/a size=n/a note=window-destroyed probe=skipped`);
-    // 静态探针：drag-end 后 250ms（> NFR-2 的 200ms 上限）再采一次，使 AC3 可伪证
-    if (alive && reason !== 'destroyed') {
-      setTimeout(() => {
-        if (!petWindow || petWindow.isDestroyed()) return;
-        petDragLog(`probe pos=${petPosText(petWindow.getPosition())} size=${petPosText(petWindow.getSize())}`);
-      }, PET_DRAG_PROBE_MS);
-    }
-  }
-  // 兜底终止（看门狗）时通知渲染层清拖动标志
-  if (reason === 'stale' && alive) petWindow.webContents.send('pet-drag-cancel');
-}
-
-/**
- * 跟随循环的一个 tick：看门狗 → 读全局光标 → 显示器切换检测（US-12） → 推导目标
- *   → 同目标去重写入 → 跨屏尺寸标记（标称矩形完全进入新屏的首个 tick 校准一次）→ 采样日志。
- *   切换检测**不重锚抓取偏移**（`grabOffset` 全程恒定，§2.3.3 / DD-23）；热路径无新增 API 调用：
- *   切换检测与标记的消费判据均为纯算术比较。
- */
-function petDragTick() {
-  if (!petDrag) return;
-  if (!petWindow || petWindow.isDestroyed()) { petStopDrag('destroyed'); return; }
-  const drag = petDrag;
-  if (Date.now() - drag.lastMessageAt > PET_DRAG_STALE_MS) { petStopDrag('stale'); return; }
-  const cursor = screen.getCursorScreenPoint();
-  // 显示器切换检测（§2.3.3）：判定 = 「缓存失效 ∨ 光标越出缓存矩形 ⇒ 取屏一次」——
-  //   缓存失效（displayBounds 为 null，来自拖动起点或拖动中收到的 E5 事件）必须在此消费；
-  //   同屏内该判定只是一次纯算术矩形包含比较（零 API 调用，不触碰 NFR-1 开销判据）。
-  if (!drag.displayBounds || !petPointInRect(cursor, drag.displayBounds)) {
-    const next = petDisplayOf([cursor.x, cursor.y]);
-    drag.displayBounds = next ? next.bounds : null;
-    if (next && next.id !== drag.displayId) {
-      // 切换检测（身份比较，§2.3.3）：**不重锚抓取偏移**（第 12 轮删除，DD-23）——位置 API 的坐标空间
-      //   与所在屏 scaleFactor 无关且可逆（§2.2 R6）⇒ 跨屏无需换参考系；原重锚公式
-      //   `grabOffset ← 光标 − getPosition()` 会把「光标自上一 tick 起的位移」吃进抓取偏移（R7）
-      //   ⇒ 每跨一次屏偏一次、往返不可逆（= 用户报告症状）。
-      const fromId = drag.displayId;
-      drag.displayId = next.id;
-      if (PET_GEOM_DEBUG) {
-        petGeomLog(
-          `geom-switch from=${fromId} display=${next.id} scale=${next.scaleFactor}`
-          + ` size=${petPosText(petWindow.getSize())} pos=${petPosText(petWindow.getPosition())}`,
-        );
-      }
-      // 跨屏的尺寸标记（§2.3.3 简化一 / §2.3.5-B2）：**无条件**置标记——不再比较 `scaleFactor`
-      //   （原「上一 tick 所在屏 scaleFactor」字段与其刷新已删）：同 `scaleFactor` 的跨屏由校准第 ③ 步
-      //   的容差自锁吸收（R1 的比值 = 1 ⇒ 读回不漂移 ⇒ 零写入零日志）；光标折返时按当前切换结果重算。
-      drag.pendingSizeAnchor = { bounds: next.bounds };
-    }
-    // 同 id / 取屏失败（next 为 null）：§2.3.3「相同 ⇒ 仅刷新缓存」——缓存即上面的 displayBounds
-  }
-  const target = [Math.round(cursor.x - drag.grabOffset.x), Math.round(cursor.y - drag.grabOffset.y)];
-  let wrote = 0;
-  if (target[0] !== drag.lastApplied[0] || target[1] !== drag.lastApplied[1]) {  // 同目标去重
-    petWindow.setPosition(target[0], target[1]);
-    drag.lastApplied = target;
-    wrote = 1;
-  }
-  // 跨屏尺寸标记的消费判据（2026-09-16 修正；原判据 = §2.3.3 简化二 / §2.1 F5 ② 的「窗口中心点
-  //   进入新屏的首个 tick」）：每 tick 用**纯算术**判「**标称矩形完全进入新屏 `bounds`**」
-  //   （petRectInside = 四角 ⊆，与 petStraddleFix 共用同一 helper），成立的**首个** tick 校准一次并清标记。
-  //   改判据的理由（实机报告：位置处于屏交界临界点时持续抖动且位置偏移）：中心点进入时窗口仍骑线，
-  //   混合 DPI 下 Windows 在骑线点附近持续按多数屏重整尺寸 ⇒ 校准第 ③ 步的容差短路失效 ⇒
-  //   光标每次晃过交界都重新武装标记并被立即消费 = 一次真实 setBounds（= 抖动源）；且尺寸写入会
-  //   静默改位置（§2.3.5-F-1 已登记：Δy 突变全部落在尺寸写入行；F16：拖动循环按写入意图去重、
-  //   被改动的位置不会自愈）——骑线（临界）期改为**零写入**，窗口完全进入新屏才校准；停在骑线处
-  //   松手由松手路径兜底（§2.3.7 推离 + 调用点⑦校准），功能无缺口。
-  //   判据仍读本 tick 已推导的 target（写入之后调用，使校准读到的即目标位置）；无 getSize /
-  //   无取屏调用——每跨屏事件至多一次尺寸写入、同屏内全程零次（写入纪律不变）。
-  if (drag.pendingSizeAnchor && petRectInside(target, drag.pendingSizeAnchor.bounds)) {
-    drag.pendingSizeAnchor = null;
-    petCalibrateSize();
-  }
-  drag.tick++;
-  if (PET_DRAG_DEBUG && drag.tick % PET_DRAG_LOG_SAMPLE_TICKS === 0) {
-    const applied = petWindow.getPosition();
-    const delta = [target[0] - applied[0], target[1] - applied[1]];
-    const off = [Math.round(cursor.x - (applied[0] + drag.grabOffset.x)), Math.round(cursor.y - (applied[1] + drag.grabOffset.y))];
-    petDragLog(`tick cursor=${petPosText([cursor.x, cursor.y])} target=${petPosText(target)} applied=${petPosText(applied)} delta=${petPosText(delta)} off=${petPosText(off)} wrote=${wrote} size=${petPosText(petWindow.getSize())}`);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Pet state machine (idle / eat / sleep / walk / run + happy/read/scared/starry)
-// ---------------------------------------------------------------------------
-let petState = 'idle';
-let wanderTimer = null;
-let sleepTimer = null;
-let eatTimer = null;
-let moveTimer = null;
-let chatterTimer = null;
-let petWanderDir = null;   // null=未在散步；'left'/'right' 当前移动方向
-let petBounceLeft = 0;     // 撞墙后还剩几次折返
-let petForceRun = false;   // 脱手逃跑等场景强制跑步
-
-function clearPetTimers() {
-  clearTimeout(wanderTimer);
-  clearTimeout(sleepTimer);
-  clearTimeout(eatTimer);
-  clearTimeout(chatterTimer);
-  clearInterval(moveTimer);
-  wanderTimer = sleepTimer = eatTimer = moveTimer = chatterTimer = null;
-  petStopDrag('destroyed'); // 拖动跟随循环同样是桌宠定时器，一并终止（NFR-2：异常路径也清空）
-}
-
-function setPetState(state) {
-  petState = state;
-  if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.webContents.send('pet-state', state);
-  }
-}
-
-function scheduleSleep() {
-  clearTimeout(sleepTimer);
-  sleepTimer = setTimeout(() => {
-    if (petState === 'idle') setPetState('sleep');
-  }, 120 * 1000); // 2 min idle -> sleep
-}
-
-function wakePet() {
-  clearTimeout(sleepTimer);
-  if (petState === 'sleep') setPetState('idle');
-  scheduleSleep();
-}
-
-function scheduleWander() {
-  clearTimeout(wanderTimer);
-  wanderTimer = setTimeout(() => {
-    if (petState === 'idle') doWander();
-    else scheduleWander();
-  }, 15000 + Math.random() * 20000);
-}
-
-/**
- * 散步/跑步：随机走一段距离就停下休息（不必走完全程）。
- * 只有中途碰到墙壁才折返，折返 petBounceLeft 次后歇着。
- * 20% 概率跑步（更快更远）；脱手逃跑（petForceRun）强制跑步。
- * 边界 = 桌宠当前所在屏的工作区（US-9，不跨屏）；y 写前归位（根因 2）。
- */
-function doWander() {
-  // 拖动态守卫：任何来源的散步都不得在拖动中移动窗口（根因 D）
-  if (!petWindow || petWindow.isDestroyed() || petState !== 'idle' || petDrag !== null) {
-    scheduleWander();
-    return;
-  }
-  // 段起点算一次边界（所在屏口径），段内不重算
-  const bounds = petWorkAreaBounds(petCurrentDisplay());
-  if (!bounds) {
-    scheduleWander();
-    return;
-  }
-  if (!petWanderDir) petWanderDir = Math.random() < 0.5 ? 'left' : 'right';
-  if (petBounceLeft <= 0) petBounceLeft = 1 + Math.floor(Math.random() * 2); // 撞墙后折返 1~2 次
-  const [x, y] = petWindow.getPosition();
-  // y 归位：写入前钳入所在屏工作区，消除「纵向失踪」（根因 2 / TC-9）
-  const targetY = Math.round(Math.min(Math.max(y, bounds.minY), bounds.maxY));
-  const run = petForceRun || Math.random() < 0.2;
-  petForceRun = false;
-  // 随机走一段（不一定到墙）
-  const distance = run ? 200 + Math.random() * 300 : 80 + Math.random() * 200;
-  let targetX = petWanderDir === 'left' ? x - distance : x + distance;
-  const hitWall = petWanderDir === 'left' ? targetX <= bounds.minX : targetX >= bounds.maxX;
-  if (hitWall) {
-    // 撞墙：走到墙为止，之后折返（墙 = 所在屏工作区边缘，US-9）
-    targetX = petWanderDir === 'left' ? bounds.minX : bounds.maxX;
-  }
-  const dist = Math.abs(targetX - x);
-  if (dist < 4) {
-    // 已经在墙边且方向朝墙 → 直接折返
-    petWanderDir = petWanderDir === 'left' ? 'right' : 'left';
-    setPetState('idle');
-    doWander();
-    return;
-  }
-  const speed = run ? 0.34 : 0.17; // px/ms
-  const duration = Math.max(250, dist / speed);
-  setPetState((run ? 'run-' : 'walk-') + petWanderDir);
-  const startX = x;
-  const startTime = Date.now();
-  let segStartLogged = false;
-  // 段起点低频兜底校准（§2.3.5-B 第 4 条 / DD-22 / H-3）：本时点在 setInterval(moveTimer, 16) **之前**
-  //   ⇒ 运动尚未开始、窗口静止 ⇒ 读回不进「移动中的噪声带」（§2.3.5-A 第 5 点），
-  //   且即使触发 setBounds 也不与任何移动循环争窗口（本缺陷的机制即「setBounds 同时设位置与尺寸」）。
-  //   频率上界 = ≤1 次 / PET_WANDER_SIZE_CHECK_MS（30 s；现状逐帧调用约 3750 次/分 ⇒ 本轮删除）。
-  //   禁止形态（§2.3.5-B 第 4 条）：不得恢复逐帧调用；不得改为「每 N 个 tick」（= 段内、运动在途）；不得挪到段末。
-  if (Date.now() - petWanderSizeCheckedAt >= PET_WANDER_SIZE_CHECK_MS) {
-    petCalibrateSize();
-    petWanderSizeCheckedAt = Date.now();
-  }
-  clearInterval(moveTimer);
-  moveTimer = setInterval(() => {
-    const t = Math.min(1, (Date.now() - startTime) / duration);
-    const nx = Math.round(startX + (targetX - startX) * t);
-    petWindow.setPosition(nx, targetY); // y = 归位后的值（写入前钳制，根因 2）
-    // 段起点（y 归位后）1 行 geom——AC7 取证点
-    if (!segStartLogged) { segStartLogged = true; petGeomSnapshot('seg-start'); }
-    // 运动在途（本回调内）**零尺寸判定、零尺寸写入**（§2.3.5-B 第 4 条 / DD-22）：原逐帧的尺寸校准
-    //   调用已删——移动中的读回噪声带（+0…+34 DIP）跨过容差 8 ⇒ 每帧判「漂移」⇒ 每帧尺寸写入
-    //   （同时设位置与尺寸）⇒ 与移动循环互相打断。本路径唯一的校准时点 = 段起点兜底（见上方门控块）。
-    if (t >= 1) {
-      clearInterval(moveTimer);
-      moveTimer = null;
-      // 段末 1 行 geom（AC7 取证点）+ 离散停泊事件落盘（US-13，不在 tick 内写盘）
-      petGeomSnapshot('seg-end');
-      petSavePos();
-      if (hitWall) {
-        // 撞墙 → 折返（1~2 次后停下休息）
-        petBounceLeft--;
-        if (petBounceLeft > 0) {
-          petWanderDir = petWanderDir === 'left' ? 'right' : 'left';
-          setPetState('idle');
-          doWander();
-        } else {
-          petWanderDir = null;
-          petBounceLeft = 0;
-          setPetState('idle');
-          scheduleWander();
-        }
-      } else {
-        // 正常走完一段 → 停下休息
-        petWanderDir = null;
-        petBounceLeft = 0;
-        setPetState('idle');
-        scheduleWander();
-      }
-    }
-  }, 16);
 }
 
 // ---------------------------------------------------------------------------
@@ -1299,8 +507,8 @@ function affinityView() {
   };
 }
 function broadcastAffinity() {
-  if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.webContents.send('pet-affinity', affinityView());
+  if (pet.getPetWindow() && !pet.getPetWindow().isDestroyed()) {
+    pet.getPetWindow().webContents.send('pet-affinity', affinityView());
   }
 }
 
@@ -1326,7 +534,7 @@ function startAffinityWatcher() {
         // 每攒够 1 点好感才提示（避免刷屏）
         if (Math.floor(affinity.usage / AFFINITY_RATE) > Math.floor((affinity.usage - delta) / AFFINITY_RATE)) {
           const v = affinityView();
-          petSay(`好感 +1，现在是 Lv.${v.level} 啦~`);
+          pet.petSay(`好感 +1，现在是 Lv.${v.level} 啦~`);
         }
       } else if (s2 < lastTokenSum) {
         lastTokenSum = s2; // 会话被清理/重建，重新基线
@@ -1366,9 +574,9 @@ function openExchangeWindow() {
     },
   });
   // 放在鲸鱼娘右侧（放不下就放左边）
-  if (petWindow && !petWindow.isDestroyed()) {
-    const [px, py] = petWindow.getPosition();
-    const [pw] = petWindow.getSize();
+  if (pet.getPetWindow() && !pet.getPetWindow().isDestroyed()) {
+    const [px, py] = pet.getPetWindow().getPosition();
+    const [pw] = pet.getPetWindow().getSize();
     const { workAreaSize } = screen.getPrimaryDisplay();
     let x = px + pw + 6;
     if (x + 320 > workAreaSize.width) x = Math.max(0, px - 326);
@@ -1527,9 +735,9 @@ function setMode(mode) {
   settings.get().lastModeVersion = app.getVersion();
   settings.saveSettings();
   if (m === 'focus') {
-    destroyPetWindow();
+    pet.destroyPetWindow();
   } else {
-    ensurePet();
+    pet.ensurePet();
   }
   applyBackground();
   rebuildTrayMenu();
@@ -1616,7 +824,7 @@ function rebuildTrayMenu() {
       label: '高级',
       submenu: [
         // 找回鲸鱼娘（US-14）：专注模式下桌宠窗口不存在 ⇒ 置灰不可用；低频救援动作归「高级 ▸」（DD-16）
-        { label: '找回鲸鱼娘', enabled: settings.get().mode !== 'focus', click: () => summonPet() },
+        { label: '找回鲸鱼娘', enabled: settings.get().mode !== 'focus', click: () => pet.summonPet() },
         { label: '重置插件配置（保留 API Key 和会话）', click: () => resetConfigKeepSessions() },
         { label: '彻底恢复出厂（清空所有）', click: () => resetAllData() },
         { label: '卸载 Bigfish', click: () => uninstall() },
@@ -2213,17 +1421,17 @@ if (!gotLock) {
     startAffinityWatcher();
     scheduleUpdateChecks();
     // 显示器配置变化（E5 三事件，DD-8）：失效拖动缓存 + 校正到可见区 + 落盘
-    screen.on('display-added', (_e, display) => handleDisplayChange('added', display));
-    screen.on('display-removed', (_e, display) => handleDisplayChange('removed', display));
-    screen.on('display-metrics-changed', (_e, display, changedMetrics) => handleDisplayChange('metrics', display, changedMetrics));
+    screen.on('display-added', (_e, display) => geometry.handleDisplayChange('added', display));
+    screen.on('display-removed', (_e, display) => geometry.handleDisplayChange('removed', display));
+    screen.on('display-metrics-changed', (_e, display, changedMetrics) => geometry.handleDisplayChange('metrics', display, changedMetrics));
     // 首次安装 / 更新后：弹窗让用户选择模式（鲸鱼 / 专注）
     maybeShowModeDialog();
     if (settings.get().petEnabled) {
-      createPetWindow(petResolveStartPos());
-      petGeomSnapshot('start'); // 启动建窗后 1 行 geom（发射规则①）
-      scheduleWander();
-      scheduleSleep();
-      schedulePetChatter();
+      pet.createPetWindow(geometry.petResolveStartPos());
+      geometry.petGeomSnapshot('start'); // 启动建窗后 1 行 geom（发射规则①）
+      pet.scheduleWander();
+      pet.scheduleSleep();
+      pet.schedulePetChatter();
     }
     if (settings.get().launchAtLogin) setAutoStart(true);
 
@@ -2231,7 +1439,7 @@ if (!gotLock) {
 
     app.on('activate', () => {
       // Dock 点击 = 用户主动显示请求：显示 + 聚焦（零窗口时建窗后显示）——macOS 目视项 TC-26
-      ensurePet();
+      pet.ensurePet();
       showMainWindow();
     });
   });
@@ -2242,8 +1450,8 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     quitting = true;
-    petStopDrag('destroyed'); // 退出路径终止拖动（设计档 §2.2.4 的主进程清空点）
-    petSavePos();             // 退出前兜底落盘（US-13，§2.3.2 调用时机表）
+    drag.petStopDrag('destroyed'); // 退出路径终止拖动（设计档 §2.2.4 的主进程清空点）
+    geometry.petSavePos();             // 退出前兜底落盘（US-13，§2.3.2 调用时机表）
     globalShortcut.unregisterAll();
     notifier.stopCompletionWatcher();
     stopAffinityWatcher();
@@ -2256,103 +1464,12 @@ if (!gotLock) {
   });
 
   // Pet drag + click（拖动移动由主进程按全局光标绝对定位驱动，设计档 PET-DRAG §2.2）
-  ipcMain.on('pet-drag-start', () => {
-    if (!petWindow || petWindow.isDestroyed()) return;
-    // 用户开始拖动：立即停掉走动动画，避免瞬移
-    if (moveTimer) { clearInterval(moveTimer); moveTimer = null; }
-    if (petState === 'walk-left' || petState === 'walk-right' || petState === 'run-left' || petState === 'run-right') setPetState('idle');
-    // 清除待发的散步（根因 D：原实现在此处调 scheduleWander()，拖动中会被自主走动抢占窗口）
-    clearTimeout(wanderTimer);
-    wanderTimer = null;
-    if (petDrag) { clearInterval(petDrag.timer); petDrag = null; } // 幂等：先停旧再建新
-    const cursor = screen.getCursorScreenPoint();
-    const pos = petWindow.getPosition();
-    petDrag = {
-      grabOffset: { x: cursor.x - pos[0], y: cursor.y - pos[1] },
-      timer: setInterval(petDragTick, PET_DRAG_TICK_MS),
-      lastApplied: [pos[0], pos[1]],
-      tick: 0,
-      lastMessageAt: Date.now(),
-      displayBounds: null,       // 上一 tick 所在屏的 DIP 矩形（切换检测用，零 API 调用）
-      displayId: null,           // 上一 tick 所在屏 id（唯一职责 = 切换检测的身份比较，§2.3.3）
-      pendingSizeAnchor: null,   // 跨屏尺寸标记 { bounds }：标称矩形完全进入新屏的首个 tick 校准一次（2026-09-16 修正；原 = 中心点进入）
-    };
-    petSyncDragDisplayCache(cursor); // 拖动起点刷新缓存（§2.3.3）
-    if (PET_DRAG_DEBUG) petDragLog(`drag-start grabOffset=${petPosText([petDrag.grabOffset.x, petDrag.grabOffset.y])} pos=${petPosText(pos)}`);
-  });
-  ipcMain.on('pet-drag-heartbeat', () => {
-    // 心跳由渲染层定时器驱动：事件驱动的心跳会在长按不动时静默 → 被看门狗误判失联
-    if (petDrag) petDrag.lastMessageAt = Date.now();
-  });
-  ipcMain.on('pet-drag-end', (_e, reason) => {
-    // reason 由渲染层给出（pointerup / pointercancel / lostcapture）；缺省按 pointerup
-    petStopDrag(/^(pointerup|pointercancel|lostcapture)$/.test(reason) ? reason : 'pointerup');
-    if (!petWindow || petWindow.isDestroyed()) return;
-    // 松手落点解析（US-10 + 骑线处置 §2.3.7）：唯一调用点 = 此处（petStopDrag 返回之后）——
-    //   stale / destroyed 不校正不落盘（§2.3.2 注）；reason 已归一化，无需白名单过滤。
-    //   两条校正规则由 petSettlePos 合并为**一次**位置写入（kind='visible' ⇒ drop；kind='straddle' ⇒ straddle）。
-    const dropPos = petWindow.getPosition();
-    const settled = petSettlePos(dropPos);
-    const wasCorrected = settled.kind !== 'none';
-    if (wasCorrected) petApplyPos(settled.pos, settled.kind === 'straddle' ? 'straddle' : 'drop');
-    petCalibrateSize(); // 松手收口（§2.3.5-C 调用点⑦）：覆盖「停在骑线后松手」
-    petSavePos();
-    // 校正与挣脱必须离散（§2.3.6 / DD-14）：校正把窗口钳到边缘 ⇒ 若照常判贴墙则每次校正必误触发；
-    //   骑线推离同规则豁免（推离落点正是某屏 bounds 缘，§2.3.7）。
-    if (wasCorrected) {
-      // 本次发生位置校正 ⇒ 豁免贴墙判定、不发 wall 行
-      //   （AC1 判据 = geom-fix reason ∈ {drop, straddle} 在场 + wall 缺席）
-      scheduleWander();
-    } else {
-      // 脱手：如果鲸鱼娘被拖到**整个桌面**的外缘，她会挣脱并往反方向跑
-      //   （基准 = 全部显示器 bounds 的并集，§2.1 E 组 E1；不是所在屏工作区——两者用途不同）
-      const bounds = petDesktopBounds();
-      const [x] = petWindow.getPosition();
-      const escaped = !!bounds && (x <= bounds.minX + PET_WALL_EPS || x >= bounds.maxX - PET_WALL_EPS);
-      if (PET_GEOM_DEBUG) {
-        petGeomLog(`wall x=${x} minX=${bounds ? bounds.minX : 'n/a'} maxX=${bounds ? bounds.maxX : 'n/a'} escaped=${escaped ? 1 : 0}`);
-      }
-      if (escaped) {
-        petWanderDir = x <= bounds.minX + PET_WALL_EPS ? 'right' : 'left';
-        petBounceLeft = 2;
-        petForceRun = true;
-        petSay('哇！被你拖到墙角啦，我跑！');
-        setPetState('idle');
-        doWander();
-      } else {
-        scheduleWander();
-      }
-    }
-    petGeomSnapshot('drag-end'); // AC2 / AC8（B01）取证点：落点解析与尺寸校准**全部完成之后**（§2.3.2 注）
-  });
-  ipcMain.on('pet-clicked', () => {
-    // 原地点击也起过跟随循环（按下即起）——点完即止，保证拖动状态在所有路径下清空
-    petStopDrag('pointerup');
-    wakePet();
-    showMainWindow(); // 只开不隐（US-1 / R3）；隐藏只走托盘项
-    petSay('要我帮忙吗？');
-    // 点击 → 开心动画（新素材）
-    setPetState('happy');
-    clearTimeout(eatTimer);
-    eatTimer = setTimeout(() => {
-      if (petState === 'happy') setPetState('idle');
-    }, 1600);
-  });
-  ipcMain.on('pet-right-clicked', () => {
-    // 右键：打开鲸鱼娘兑换屋
-    wakePet();
-    petSay('要兑换点什么吗~');
-    openExchangeWindow();
-  });
-  ipcMain.on('pet-set-ignore-mouse', (_e, ignore) => {
-    // 点击穿透只在 Windows 上可靠；Linux 上一旦开启整条鱼都点不到
-    if (process.platform !== 'win32') return;
-    // 拖动期间拒绝「开启穿透」：穿透会切断事件流（根因 A 的主进程侧防守，设计档 §2.2.7）
-    if (ignore && petDrag) return;
-    if (petWindow && !petWindow.isDestroyed()) {
-      petWindow.setIgnoreMouseEvents(ignore, { forward: true });
-    }
-  });
+  ipcMain.on('pet-drag-start', drag.handlePetDragStart);
+  ipcMain.on('pet-drag-heartbeat', drag.handlePetDragHeartbeat);
+  ipcMain.on('pet-drag-end', drag.handlePetDragEnd);
+  ipcMain.on('pet-clicked', pet.handlePetClicked);
+  ipcMain.on('pet-right-clicked', pet.handlePetRightClicked);
+  ipcMain.on('pet-set-ignore-mouse', drag.handlePetSetIgnoreMouse);
 
   // 插件市场 IPC
   ipcMain.handle('market:list', async () => {
@@ -2489,10 +1606,10 @@ if (!gotLock) {
     affinity.bonus += Math.round(food.bonusTokens / AFFINITY_RATE);
     saveAffinity();
     // 鲸鱼吃播
-    petSay(food.msg);
-    setPetState('eat');
-    clearTimeout(eatTimer);
-    eatTimer = setTimeout(() => { if (petState === 'eat') setPetState('idle'); }, 2000);
+    pet.petSay(food.msg);
+    pet.setPetState('eat');
+    clearTimeout(pet.getEatTimer());
+    pet.setEatTimer(setTimeout(() => { if (pet.getPetState() === 'eat') pet.setPetState('idle'); }, 2000));
     broadcastAffinity();
     return { ok: true, message: food.msg, view: affinityView() };
   });
