@@ -21,23 +21,15 @@
  *   - plugin ecosystem: bundled pnpm installs/removes DSH plugins in the web
  *     profile, and a native "插件市场" window browses/installs/uninstalls them
  *   - launch at login, and a Windows "Open with Bigfish" context menu
+ *
+ * B06 F6（设计档 docs/design/SHELL-UX.md §2.2.6）：本文件 = 组合根——常量 / userData 覆盖 / 单实例锁 /
+ * whenReady 引导 / 退出钩子 / 模块接线（init(deps)）；各域实现分居 15 个 shell-*.js 平铺模块。
  */
 
-const {
-  app, BrowserWindow, shell, dialog, Tray, Menu, globalShortcut,
-  nativeImage, Notification, ipcMain, screen,
-} = require('electron');
-const { spawn } = require('node:child_process');
-const net = require('node:net');
+const { app, dialog, screen, globalShortcut } = require('electron');
 const path = require('node:path');
-const http = require('node:http');
 const fs = require('node:fs');
-const os = require('node:os');
-const { compareVersions } = require('./update-lib.js');
-const updater = require('./updater.js');
-const harnessStore = require('./harness-store.js');
 const settings = require('./shell-settings.js');
-const assets = require('./shell-assets.js');
 const notifier = require('./shell-notify.js');
 const backend = require('./shell-backend.js');
 const geometry = require('./shell-pet-geometry.js');
@@ -47,7 +39,6 @@ const affinity = require('./shell-affinity.js');
 const mode = require('./shell-mode.js');
 const plugins = require('./shell-plugins.js');
 const win = require('./shell-window.js');
-const market = require('./shell-market.js');
 const tray = require('./shell-tray.js');
 const update = require('./shell-update.js');
 const ipc = require('./shell-ipc.js');
