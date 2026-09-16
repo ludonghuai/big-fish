@@ -31,9 +31,11 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
 const http = require('node:http');
-const https = require('node:https');
 const fs = require('node:fs');
 const os = require('node:os');
+const { compareVersions } = require('./update-lib.js');
+const updater = require('./updater.js');
+const harnessStore = require('./harness-store.js');
 
 const APP_NAME = 'Bigfish';
 const HOST = '127.0.0.1';
@@ -45,12 +47,11 @@ if (process.env.BIGFISH_USER_DATA && String(process.env.BIGFISH_USER_DATA).trim(
   try { app.setPath('userData', String(process.env.BIGFISH_USER_DATA).trim()); } catch { /* ignore */ }
 }
 
-// 检查更新：从 latest.json 读取最新版本（方法二，启动时查一次）
-// jsdelivr 优先（国内可访问），raw.githubusercontent 兜底
-const UPDATE_JSON_URLS = [
-  'https://cdn.jsdelivr.net/gh/turtle2209/Bigfish@main/latest.json',
-  'https://raw.githubusercontent.com/turtle2209/Bigfish/main/latest.json',
-];
+// 检查更新：从 Gitee 仓库 raw 拉取 latest.json（唯一清单源；AC6）。
+// 测试钩子：BIGFISH_UPDATE_URL 可覆盖（设计档 §2.2.2 假清单桩；仅此面允许 http 本地桩）。
+const UPDATE_MANIFEST_URL = process.env.BIGFISH_UPDATE_URL
+  || 'https://gitee.com/ludonghuai/big-fish/raw/main/latest.json';
+const UPDATE_POLL_MS = Number(process.env.BIGFISH_UPDATE_INTERVAL_MS) || 21600000; // 6h（AC2 短轮询可覆盖）
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let dshProcess = null;
@@ -75,13 +76,19 @@ let notifiedForCycle = false;
 const DEFAULT_SETTINGS = {
   notifyOnComplete: true,
   launchAtLogin: false,
+  autoCheckUpdates: true, // 自动检查更新开关（启动检查 + 6h 轮询；托盘 checkbox，§2.2.7）
   petEnabled: true,
   onboardingDone: false,
   mode: 'whale',        // 'whale' 鲸鱼模式（桌宠+背景图） | 'focus' 专注模式（无桌宠、纯色背景）
   modeChosen: false,    // 是否已弹过模式选择
   lastModeVersion: '',  // 上次选择模式时的版本号（更新后重新弹窗）
+  petPos: null,         // 桌宠上次位置（DIP 整数 { x, y }；null = 无存档）——US-13
 };
 let settings = { ...DEFAULT_SETTINGS };
+
+// settings.json 存在但无法解析（整个 JSON 损坏）——与「无存档」区分：
+//   无存档（首次运行）⇒ 不带 x/y 建窗（TC-18）；损坏 ⇒ 回落 petDefaultPos()（TC-19）。
+let settingsFileCorrupt = false;
 
 function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -89,7 +96,10 @@ function settingsPath() {
 function loadSettings() {
   try {
     settings = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) };
-  } catch {
+    settingsFileCorrupt = false;
+  } catch (err) {
+    // ENOENT = 文件不存在（首次运行，无存档）；其余（解析失败 / 不可读）= 存档损坏
+    settingsFileCorrupt = !!err && err.code !== 'ENOENT';
     settings = { ...DEFAULT_SETTINGS };
   }
 }
@@ -120,7 +130,10 @@ function findFreePort() {
 
 function dshBinPath() {
   if (app.isPackaged) {
-    // The production-only dsh node_modules are bundled via extraResources.
+    // Harness 运行时：活跃指针副本优先（userData/dsh-update/versions/<v>；无指针时兼容旧布局
+    // userData/dsh），出厂冻结树（extraResources）兜底（§2.2.1 / AC9）。dev 分支见下，口径不变。
+    const active = harnessStore.resolveActiveBin(app.getPath('userData'));
+    if (active) return active;
     return path.join(process.resourcesPath, 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
   }
   return path.join(app.getAppPath(), 'dsh-bundle', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
@@ -233,10 +246,12 @@ function stopDsh() {
 // ---------------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------------
-function notify(title, body) {
+function notify(title, body, onClick) {
   if (!Notification.isSupported()) return;
   try {
-    new Notification({ title, body, icon: appIconPath() }).show();
+    const n = new Notification({ title, body, icon: appIconPath() });
+    if (typeof onClick === 'function') n.on('click', onClick); // 气泡点击（U-2：点击查看 → 弹窗）
+    n.show();
   } catch (err) {
     console.error('[bigfish] notification failed:', err);
   }
@@ -315,63 +330,276 @@ function uninstall() {
 }
 
 // ---------------------------------------------------------------------------
-// 检查更新（方法二）：启动时拉取 latest.json，发现新版本就提示下载
+// 自动更新编排（设计档 docs/design/AUTO-UPDATE.md §2.2）——
+//   updater.js：检查/下载/校验/安装器/Harness 安装激活回滚；
+//   main.js：门禁、弹窗/气泡、更新窗口生命周期、6h 轮询、Harness 停-切-启编排。
 // ---------------------------------------------------------------------------
-function compareVersions(a, b) {
-  const pa = String(a).split('.').map(Number);
-  const pb = String(b).split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] || 0;
-    const y = pb[i] || 0;
-    if (x > y) return 1;
-    if (x < y) return -1;
-  }
-  return 0;
+const NPMIRROR_DSH_META = 'https://registry.npmmirror.com/@deepseek-ai/dsh';
+const NPMJS_DSH_META = 'https://registry.npmjs.org/@deepseek-ai/dsh';
+
+let updateWindow = null;
+let updateMode = 'app';        // 'app' | 'harness'
+let pendingAppInfo = null;     // 待下载/可重试的 App 清单 info
+let pendingAppFile = null;     // 已下载校验通过、待安装的文件
+let pendingHarnessInfo = null; // 待安装/可重试的 Harness 元数据 { latest, current }
+let lastUpdateStatus = null;   // 最近一条状态——建窗首帧竞态修复：did-finish-load 时重发
+
+/** updater.log 常开写入（设计档 §2.2.9；updater.js 的日志经 init(ctx).log 也走这里）。 */
+function updaterLog(text) {
+  try {
+    const file = path.join(app.getPath('userData'), 'updater.log');
+    fs.appendFileSync(file, `[${new Date().toISOString()}] ${text}\n`);
+  } catch { /* best effort */ }
 }
 
-function checkForUpdates() {
-  if (!app.isPackaged) return; // 开发模式不检查
-  // 依次尝试多个镜像源（jsdelivr → raw.githubusercontent）
-  const tryUrl = (url, onDone) => {
-    const req = https.get(url, { timeout: 10000 }, (res) => {
-      if (res.statusCode !== 200) {
-        res.resume();
-        onDone(null);
-        return;
-      }
-      let body = '';
-      res.on('data', (c) => { body += c; });
-      res.on('end', () => onDone(body));
-    });
-    req.on('error', () => onDone(null));
-    req.setTimeout(10000, () => { req.destroy(); onDone(null); });
-  };
-  let idx = 0;
-  const next = (body) => {
-    if (body) {
-      try {
-        const info = JSON.parse(body);
-        const latest = String(info.version || '');
-        const current = app.getVersion();
-        if (latest && compareVersions(latest, current) > 0) {
-          const url = (info.urls && info.urls[process.platform]) || info.url;
-          const choice = dialog.showMessageBoxSync({
-            type: 'info',
-            title: APP_NAME,
-            message: `发现新版本 v${latest}`,
-            detail: info.note || '有新版本可用，是否去下载？',
-            buttons: ['去下载', '以后再说'],
-            defaultId: 0,
-          });
-          if (choice === 0 && url) shell.openExternal(url);
-        }
-        return;
-      } catch { /* JSON 解析失败就忽略 */ }
+/** 活动 dsh 版本（userData 副本优先，出厂冻结兜底）——AC9 判据。 */
+function getCurrentDshVersion() {
+  try {
+    const bin = dshBinPath();
+    const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(path.dirname(bin)), 'package.json'), 'utf8'));
+    return String(pkg.version || '');
+  } catch { return '0.0.0'; }
+}
+
+function createUpdateWindow() {
+  if (updateWindow && !updateWindow.isDestroyed()) { updateWindow.show(); updateWindow.focus(); return; }
+  updateWindow = new BrowserWindow({
+    width: 440,
+    height: 260,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: '更新 Bigfish',
+    autoHideMenuBar: true,
+    backgroundColor: '#0f1115',
+    icon: appIconPath(),
+    webPreferences: {
+      preload: path.join(__dirname, 'update-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  updateWindow.loadFile(path.join(__dirname, 'update.html'), { query: { v: Date.now() } });
+  // 首帧竞态：渲染层 onStatus 监听在页面脚本执行后才注册，建窗后同 tick 发状态会丢——
+  // did-finish-load 时重发最近一条（否则 Harness 安装数分钟内窗口停在「正在准备…」且无取消按钮）
+  updateWindow.webContents.once('did-finish-load', () => {
+    if (lastUpdateStatus && updateWindow && !updateWindow.isDestroyed()) {
+      updateWindow.webContents.send('upd:status', lastUpdateStatus);
     }
-    idx++;
-    if (idx < UPDATE_JSON_URLS.length) tryUrl(UPDATE_JSON_URLS[idx], next);
+  });
+  updateWindow.on('closed', () => { updateWindow = null; });
+}
+
+function sendUpdateStatus(payload) {
+  lastUpdateStatus = payload;
+  if (updateWindow && !updateWindow.isDestroyed()) updateWindow.webContents.send('upd:status', payload);
+}
+
+/** 在途守卫（§2.2.7）：检查/下载/Harness 安装任一在途 → 跳过本轮（记 gate 行）。 */
+function updateGateBlocked(reason) {
+  const busy = updater.busyState();
+  if (busy.check || busy.download || busy.harness) {
+    updaterLog(`update gate reason=${reason} skipped=in-flight`);
+    return true;
+  }
+  return false;
+}
+
+// ---- App 更新呈现（U-1/U-2/U-3） ----
+function showAppUpdateDialog(info) {
+  const choice = dialog.showMessageBoxSync({
+    type: 'info',
+    title: APP_NAME,
+    message: `发现新版本 v${info.version}`,
+    detail: `${info.note || '有新版本可用'}\n\n当前版本：v${app.getVersion()}`,
+    buttons: ['立即更新', '稍后再说'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (choice === 0) {
+    pendingAppInfo = info;
+    updateMode = 'app';
+    createUpdateWindow();
+    startAppDownload(info);
+  }
+}
+
+function showAppUpdateBubble(info) {
+  notify(`发现新版本 v${info.version}`, '点击查看', () => showAppUpdateDialog(info));
+}
+
+function showAppCheckErrorDialog() {
+  const choice = dialog.showMessageBoxSync({
+    type: 'warning',
+    title: APP_NAME,
+    message: '检查更新失败',
+    detail: '网络可能不可用，请稍后重试。',
+    buttons: ['重试', '取消'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (choice === 0) runAppCheck('manual');
+}
+
+async function runAppCheck(reason) {
+  const res = await updater.checkAppUpdate({ reason });
+  if (res.status === 'update-available') {
+    if (reason === 'poll') showAppUpdateBubble(res.info);
+    else showAppUpdateDialog(res.info);
+  } else if (res.status === 'up-to-date' && reason === 'manual') {
+    notify(APP_NAME, '已是最新版本');
+  } else if (res.status === 'error' && reason === 'manual') {
+    showAppCheckErrorDialog();
+  }
+  return res;
+}
+
+async function startAppDownload(info) {
+  sendUpdateStatus({ mode: 'app', phase: 'downloading', percent: 0 });
+  const res = await updater.downloadApp(info, (p) => {
+    if (p && p.phase === 'verify') sendUpdateStatus({ mode: 'app', phase: 'verifying' });
+    else if (p && typeof p.percent === 'number') sendUpdateStatus({ mode: 'app', phase: 'downloading', percent: p.percent });
+  });
+  if (!res.ok) {
+    sendUpdateStatus({ mode: 'app', phase: res.error === 'canceled' ? 'canceled' : 'error', message: res.error });
+    return;
+  }
+  pendingAppFile = res.file;
+  sendUpdateStatus({ mode: 'app', phase: 'ready' });
+}
+
+// ---- Harness 更新呈现与停-切-启编排（U-6 / §2.2.4） ----
+function showHarnessUpdateDialog(res) {
+  const choice = dialog.showMessageBoxSync({
+    type: 'info',
+    title: APP_NAME,
+    message: `发现 Harness 新版本 v${res.latest}（当前 v${res.current}）`,
+    detail: '更新需数分钟，期间后端会重启。',
+    buttons: ['立即更新', '稍后再说'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (choice === 0) startHarnessUpdate(res);
+}
+
+function showHarnessUpdateBubble(res) {
+  notify(`发现 Harness 新版本 v${res.latest}`, '点击查看', () => showHarnessUpdateDialog(res));
+}
+
+function showHarnessCheckErrorDialog() {
+  const choice = dialog.showMessageBoxSync({
+    type: 'warning',
+    title: APP_NAME,
+    message: '检查 Harness 更新失败',
+    detail: '网络可能不可用，请稍后重试。',
+    buttons: ['重试', '取消'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (choice === 0) runHarnessCheck('manual');
+}
+
+async function runHarnessCheck(reason) {
+  const res = await updater.checkHarnessUpdate({ reason });
+  if (res.status === 'update-available') {
+    if (reason === 'manual') showHarnessUpdateDialog(res);
+    else showHarnessUpdateBubble(res);
+  } else if (res.status === 'error' && reason === 'manual') {
+    showHarnessCheckErrorDialog();
+  }
+  return res;
+}
+
+/**
+ * Harness 更新编排（§2.2.4 ④⑤⑥⑦ + 停-切-启）：
+ * installHarness 在冒烟通过后回调 { phase:'stop-backend' } 并等待其完成——main.js 在该回调停后端
+ * （对齐 C1「停 dsh → 切 → 启 dsh」，依赖安装/冒烟不触碰现行副本，停机窗口最小化）；
+ * 成功后重启后端并写两条编排域日志（AC9 机器证据，§2.2.9）。
+ */
+async function startHarnessUpdate(res) {
+  pendingHarnessInfo = res;
+  updateMode = 'harness';
+  createUpdateWindow();
+  sendUpdateStatus({ mode: 'harness', phase: 'installing' });
+  const onPhase = async (p) => {
+    if (!p) return;
+    if (p.phase === 'stop-backend') {
+      // 激活前停后端（updater 等待本回调完成才写活跃指针）
+      sendUpdateStatus({ mode: 'harness', phase: 'switching' });
+      stopDsh();
+      await new Promise((r) => setTimeout(r, 1500));
+    } else if (p.phase === 'smoke') {
+      sendUpdateStatus({ mode: 'harness', phase: 'verifying' });
+    } else if (p.phase === 'activate') {
+      sendUpdateStatus({ mode: 'harness', phase: 'switching' });
+    }
   };
-  tryUrl(UPDATE_JSON_URLS[0], next);
+  const outcome = await updater.installHarness(res.latest, onPhase);
+  if (!outcome.ok) {
+    // 取消时若后端已被停（stop-backend 已完成）须重启；其余失败一律重启回旧版
+    const needRestart = outcome.error !== 'canceled' || !!outcome.backendStopped;
+    if (needRestart) {
+      try { await restartBackend(); } catch { /* 旧版仍在，尽力重启 */ }
+    }
+    const message = outcome.error === 'canceled'
+      ? outcome.error
+      : /^(activate-fail|pointer-fail|verify-fail|guard-active-dir)/.test(String(outcome.error))
+        ? '更新失败，旧版不受影响，可重试' // 设计档 §2.2.4 ①⑤⑥ 指定文案
+        : outcome.error;
+    sendUpdateStatus({ mode: 'harness', phase: outcome.error === 'canceled' ? 'canceled' : 'error', message });
+    return;
+  }
+  updaterLog(`harness activate dsh active path=${dshBinPath()} version=${getCurrentDshVersion()}`); // 重启前按实际解析结果记（AC9 机器证据）
+  try {
+    await restartBackend();
+    updaterLog(`harness restart backend ready port=${port}`);
+    updater.cleanupHarnessStale();
+    sendUpdateStatus({ mode: 'harness', phase: 'done' });
+  } catch (err) {
+    updater.rollbackHarness();
+    try { await restartBackend(); } catch { /* 尽力 */ }
+    sendUpdateStatus({ mode: 'harness', phase: 'error', message: '更新失败，已回退旧版，可重试' });
+  }
+}
+
+// ---- 门禁 + 调度（§2.2.7） ----
+async function manualCheckUpdates() {
+  if (!app.isPackaged) {
+    dialog.showMessageBox({ type: 'info', title: APP_NAME, message: '更新检查只在安装版可用', detail: '请安装打包好的 Bigfish 后使用更新检查。' });
+    updaterLog('update gate reason=manual skipped=dev');
+    return;
+  }
+  if (updateGateBlocked('manual')) { notify(APP_NAME, '检查/更新正在进行'); return; }
+  await runAppCheck('manual');
+  await runHarnessCheck('manual');
+}
+
+async function runAutoChecks(reason) {
+  if (!app.isPackaged) { updaterLog(`update gate reason=${reason} skipped=dev`); return; }
+  if (!settings.autoCheckUpdates) { updaterLog(`update gate reason=${reason} skipped=toggle-off`); return; }
+  if (updateGateBlocked(reason)) return;
+  await runAppCheck(reason);
+  await runHarnessCheck(reason);
+}
+
+/** 启动检查（5s）+ 6h 轮询（§2.2.7；BIGFISH_UPDATE_INTERVAL_MS 可覆盖）。 */
+function scheduleUpdateChecks() {
+  updater.init({
+    manifestUrl: UPDATE_MANIFEST_URL,
+    registryUrls: [
+      process.env.BIGFISH_DSH_REGISTRY_URL || NPMIRROR_DSH_META,
+      process.env.BIGFISH_DSH_REGISTRY_FALLBACK_URL || NPMJS_DSH_META,
+    ],
+    dirs: { userData: app.getPath('userData'), dshHome: dshHome() },
+    runtime: { nodeExe: runtimeNodeExe(), pnpm: bundledPnpmPath() },
+    log: updaterLog,
+    getCurrentVersion: () => app.getVersion(),
+    getCurrentDshVersion,
+  });
+  updater.startupCleanup();
+  setTimeout(() => { runAutoChecks('startup'); }, 5000);
+  setInterval(() => { runAutoChecks('poll'); }, UPDATE_POLL_MS);
 }
 
 // Heuristic "task completed" detector: watch DSH_HOME (excluding the static
@@ -554,11 +782,349 @@ function toggleMainWindow() {
 // ---------------------------------------------------------------------------
 // Desktop pet — transparent floating window（鲸鱼娘）
 // ---------------------------------------------------------------------------
-function createPetWindow() {
+// Pet geometry — 多屏几何与可见性（设计档 docs/design/PET-MULTIMONITOR.md §2.3.1）
+//   全部几何判定收敛为下列 helper（单一来源，NFR-8）；取屏唯一入口 = petDisplayOf()，
+//   其余调用点不得内联第二份实现。坐标口径 = DIP（证据 E1/E2）；窗口自身位置与尺寸的
+//   坐标空间在上游未声明（证据 E6）——本组「仅在 DIP 假设成立时自洽」（设计档 §2.2）。
+//   统一短路口径：返回 null 不等于「位置为零」，调用方拿到 null 必须跳过写入。
+//   尺寸策略（§2.3.5）：petCalibrateSize() 是**唯一尺寸写入路径**（锚点 + 容差 + 不可判定门，DD-20）；
+//   尺寸**写入** = setBounds（位置原样传回）、**读回** = getSize()（DD-21 / §2.2 Q7）。
+// ---------------------------------------------------------------------------
+const PET_SIZE_DIP = { w: 250, h: 270 };  // 窗口逻辑尺寸（DIP），跨屏不变（US-11）；与建窗 / pet.html 同源
+const PET_DEFAULT_MARGIN_DIP = 24;        // petDefaultPos() 的右下角边距（设计档 DD-6）
+const PET_WALL_EPS = 4;                   // 贴墙判定阈值（px；B01 AC7 不回退，只改判定基准）
+const PET_SIZE_TOLERANCE_DIP = 8;         // 尺寸判据容差（DIP，§2.3.5-A）：覆盖 R3 的 +2~+6 量化并留余量；禁用精确判等
+const PET_WANDER_SIZE_CHECK_MS = 30000;   // 散步 / 跑步**段起点**兜底校准的最小间隔（ms；§2.1 H 组 H-3 / §2.3.5-B 第 4 条 / DD-22）⇒ 该路径频率 ≤2 次/分
+const PET_GEOM_DEBUG = process.env.BIGFISH_PET_DEBUG === '1'; // 几何诊断日志开关（默认关闭，关闭时零开销）
+
+/**
+ * 尺寸锚点内存态（§2.3.5-A）：`{ w, h, scaleFactor } | null`——上次成功**写入尺寸（`setBounds`）**后**立即读回**的值
+ * + **设锚点时的所在屏 scaleFactor**（后者与锚点同行登记，供 petCalibrateSize() 的 reason 判据句使用）。
+ * `null` = 尚无锚点（仅出现在建窗后首次校准前）。
+ */
+let petSizeBaseline = null;
+
+/**
+ * 散步 / 跑步段起点兜底校准的时间戳（§2.3.5-B 第 4 条 / DD-22）：`0` = 从未校准过 ⇒ **首段起点必放行**。
+ * 设置点 = 被门控放行的那一次兜底（`petCalibrateSize()` 之后）；建窗时随 `petSizeBaseline = null`
+ * **同批置 0**（见 `createPetWindow()`）。无窗口时不必清空——`petCalibrateSize()` 自身短路。
+ */
+let petWanderSizeCheckedAt = 0;
+
+/** 追加一行几何诊断日志（尽力而为，先例：pet-drag.log / exchange.log）。 */
+function petGeomLog(text) {
+  try {
+    const file = path.join(app.getPath('userData'), 'pet-geometry.log');
+    fs.appendFileSync(file, `[${new Date().toISOString()}] ${text}\n`);
+  } catch { /* best effort */ }
+}
+
+/** 取屏唯一入口：DIP 点 → Display（证据 E3）。不读窗口，ready 之后恒有返回（E7）。 */
+function petDisplayOf(point) {
+  return screen.getDisplayNearestPoint({ x: point[0], y: point[1] });
+}
+
+/** 桌宠窗口中心点（DIP 位置）；无窗口 / 已销毁 → null（E6 依赖项）。 */
+function petCenterDIP() {
+  if (!petWindow || petWindow.isDestroyed()) return null;
+  const [x, y] = petWindow.getPosition();
+  return [x + PET_SIZE_DIP.w / 2, y + PET_SIZE_DIP.h / 2];
+}
+
+/** 桌宠中心点所在屏；无窗口 / 已销毁 → null。 */
+function petCurrentDisplay() {
+  const center = petCenterDIP();
+  return center ? petDisplayOf(center) : null;
+}
+
+/** 某屏上窗口位置的合法区间（workArea 减去窗口尺寸）；入参 null → null（纯函数）。 */
+function petWorkAreaBounds(display) {
+  if (!display) return null;
+  const wa = display.workArea;
+  return {
+    minX: wa.x,
+    maxX: wa.x + wa.width - PET_SIZE_DIP.w,
+    minY: wa.y,
+    maxY: wa.y + wa.height - PET_SIZE_DIP.h,
+  };
+}
+
+/**
+ * 贴墙（挣脱）判定的基准（设计档 §2.1 E 组 E1 / DD-13 / §2.3.6）：**整个桌面** = 全部显示器
+ * bounds（E2）的并集 x 极值；maxX = 并集右沿 − PET_SIZE_DIP.w（窗口沿恰好贴住桌面右缘）。
+ * 与「散步边界 = 所在屏工作区」（petWorkAreaBounds）是**两套用途**，不得互换。
+ * 纯函数、不读窗口、不取屏；getAllDisplays() 为空 → null（调用方短路，不判贴墙）。
+ */
+function petDesktopBounds() {
+  let minX = Infinity;
+  let right = -Infinity;
+  for (const display of screen.getAllDisplays()) {
+    const b = display.bounds;
+    if (b.x < minX) minX = b.x;
+    if (b.x + b.width > right) right = b.x + b.width;
+  }
+  if (minX === Infinity) return null; // 无显示器（实际不可达）⇒ 判定短路
+  return { minX, maxX: right - PET_SIZE_DIP.w };
+}
+
+/** 「可见」的唯一口径（NFR-5）：中心点落在任一屏 workArea 内。入参 null → false（纯函数）。 */
+function petIsVisible(pos) {
+  if (!pos) return false;
+  const cx = pos[0] + PET_SIZE_DIP.w / 2;
+  const cy = pos[1] + PET_SIZE_DIP.h / 2;
+  return screen.getAllDisplays().some((display) => {
+    const wa = display.workArea;
+    return cx >= wa.x && cx < wa.x + wa.width && cy >= wa.y && cy < wa.y + wa.height;
+  });
+}
+
+/** 按「中心点最近的屏」把不可见位置钳回该屏区间；已可见则恒等返回（幂等、零写入）。 */
+function petNearestVisiblePos(pos) {
+  if (!pos) return null;
+  if (petIsVisible(pos)) return pos;
+  const anchor = [pos[0] + PET_SIZE_DIP.w / 2, pos[1] + PET_SIZE_DIP.h / 2];
+  const bounds = petWorkAreaBounds(petDisplayOf(anchor));
+  if (!bounds) return null;
+  return [
+    Math.round(Math.min(Math.max(pos[0], bounds.minX), bounds.maxX)),
+    Math.round(Math.min(Math.max(pos[1], bounds.minY), bounds.maxY)),
+  ];
+}
+
+/** 默认落点（DD-6）：主屏工作区右下角，留 PET_DEFAULT_MARGIN_DIP 边距。 */
+function petDefaultPos() {
+  const bounds = petWorkAreaBounds(screen.getPrimaryDisplay());
+  if (!bounds) return [0, 0]; // 防御：screen 不可用时不让调用方拿到 null（实际不可达）
+  return [bounds.maxX - PET_DEFAULT_MARGIN_DIP, bounds.maxY - PET_DEFAULT_MARGIN_DIP];
+}
+
+/**
+ * 启动位置解析（US-13，建窗前调用）：无存档 → null（不带 x/y 建窗，保持现状，TC-18）；
+ * 存档可见 → 存档值（TC-10）；存档非法（非整数 / 缺字段）、不可见或存档文件损坏
+ * → petDefaultPos()（§2.3.4 后三种情形，TC-12 / TC-19），均记 pos-restore valid=0。
+ * 启动位置解析（含其回落改写）只记 1 行（设计档 §3.3 发射规则）。
+ */
+let petStartPosLogged = false;
+function petResolveStartPos() {
+  const first = !petStartPosLogged;
+  petStartPosLogged = true;
+  const saved = settings.petPos;
+  const hasArchive = !(saved === null || saved === undefined);
+  const pos = (hasArchive && Number.isInteger(saved.x) && Number.isInteger(saved.y))
+    ? [saved.x, saved.y] : null;
+  if (pos && petIsVisible(pos)) {
+    if (PET_GEOM_DEBUG && first) petGeomLog(`pos-restore pos=${petPosText(pos)} valid=1`);
+    return pos;
+  }
+  if (!hasArchive && !settingsFileCorrupt) {
+    // 真正无存档（首次运行 / 旧档缺键）⇒ 不带坐标建窗
+    if (PET_GEOM_DEBUG && first) petGeomLog('pos-restore pos=n/a valid=0 note=no-archive');
+    return null;
+  }
+  const fallback = petDefaultPos();
+  if (PET_GEOM_DEBUG && first) {
+    petGeomLog(`pos-restore pos=${petPosText(fallback)} valid=0`);
+    petGeomLog(`geom-fix reason=start from=${pos ? petPosText(pos) : 'n/a'} to=${petPosText(fallback)}`);
+  }
+  return fallback;
+}
+
+/**
+ * 位置持久化（US-13）：写 settings.petPos（DIP 整数）+ saveSettings()；与上次写入值相同则跳过。
+ * 只在离散停泊事件调用（松手 / 散步段末 / 显示器事件 / 找回 / 退出前），不得在 tick 内调用。
+ * 无窗口 / 已销毁 → 直接返回（不写盘、不报错）。
+ */
+function petSavePos() {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const [x, y] = petWindow.getPosition();
+  const px = Math.round(x);
+  const py = Math.round(y);
+  const last = settings.petPos;
+  if (last && last.x === px && last.y === py) return; // 去重：与前次写入值相同则跳过
+  settings.petPos = { x: px, y: py };
+  saveSettings();
+  if (PET_GEOM_DEBUG) petGeomLog(`pos-save pos=${petPosText([px, py])}`);
+}
+
+/** 几何快照 1 行（AC2 / AC7 的取证点）：位置 / 尺寸 / 中心点 / 所在屏 / 工作区 / 可见性。 */
+function petGeomSnapshot(tag) {
+  if (!PET_GEOM_DEBUG) return;
+  const center = petCenterDIP();
+  if (!center) return;
+  const pos = petWindow.getPosition();
+  const display = petDisplayOf(center);
+  const wa = display.workArea;
+  petGeomLog(
+    `geom tag=${tag} pos=${petPosText(pos)} size=${petPosText(petWindow.getSize())}`
+    + ` center=${petPosText(center)} display=${display.id} scale=${display.scaleFactor}`
+    + ` wa=(${wa.x},${wa.y},${wa.width},${wa.height}) visible=${petIsVisible(pos) ? 1 : 0}`,
+  );
+}
+
+/**
+ * 位置改写记 1 行（仅在真的发生改写时；幂等 no-op 时零行）。
+ * 位置型行在 `reason ∈ {drop, straddle}` 时**另带** `display` / `bounds`（§3.3 列义（五））——
+ *   这两类正是 petSettlePos 落点解析的产物，S5 / AC2（B03）的骑线部分要判「标称矩形 ⊆ 该屏 bounds」，
+ *   故必须给出**目标屏**（该校正的中心点所在屏）与其 `bounds`；`start` / `display` / `summon` 不带。
+ */
+function petLogFix(reason, from, to) {
+  if (!PET_GEOM_DEBUG) return;
+  let extra = '';
+  if (reason === 'drop' || reason === 'straddle') {
+    const display = petDisplayOf([to[0] + PET_SIZE_DIP.w / 2, to[1] + PET_SIZE_DIP.h / 2]);
+    if (display) {
+      const b = display.bounds;
+      extra = ` display=${display.id} bounds=(${b.x},${b.y},${b.width},${b.height})`;
+    }
+  }
+  petGeomLog(`geom-fix reason=${reason} from=${petPosText(from)} to=${petPosText(to)}${extra}`);
+}
+
+/** 位置改写：目标与当前不同才写窗口并记 1 行 geom-fix（幂等时零写入零日志）。 */
+function petApplyPos(target, reason) {
+  if (!target || !petWindow || petWindow.isDestroyed()) return;
+  const before = petWindow.getPosition();
+  if (before[0] === target[0] && before[1] === target[1]) return;
+  petWindow.setPosition(target[0], target[1]);
+  petLogFix(reason, before, target);
+}
+
+/** 拖动起点刷新「上一 tick 所在屏」缓存（§2.3.3；显示器事件路径已改为置失效标记，见 handleDisplayChange）。 */
+function petSyncDragDisplayCache(cursor) {
+  if (!petDrag) return;
+  const point = cursor || screen.getCursorScreenPoint();
+  const display = petDisplayOf([point.x, point.y]);
+  petDrag.displayBounds = display ? display.bounds : null;
+  petDrag.displayId = display ? display.id : null;
+}
+
+/** 纯算术：DIP 点是否落在矩形内（拖动热路径用，无 API 调用）；入参任一为 null → false（纯函数，§2.3.1）。 */
+function petPointInRect(point, rect) {
+  if (!point || !rect) return false;
+  return point.x >= rect.x && point.x < rect.x + rect.width
+    && point.y >= rect.y && point.y < rect.y + rect.height;
+}
+
+/**
+ * 纯算术：**标称矩形**（`pos` + `PET_SIZE_DIP`）是否完全落在矩形 `rect` 内（四角 ⊆）。
+ * 右 / 下取**闭**区间（`rect` 为凸集 ⇒ 校验左上 / 右下两角即等价于四角 ⊆）——本判据问的是
+ * 「**完全进入**」，与 `petPointInRect` 的**半开**区间用途不同，**不得互换**（§2.3.1）。
+ * 入参任一为 null → false（纯函数；无 API 调用）。
+ */
+function petRectInside(pos, rect) {
+  if (!pos || !rect) return false;
+  return pos[0] >= rect.x && pos[0] + PET_SIZE_DIP.w <= rect.x + rect.width
+    && pos[1] >= rect.y && pos[1] + PET_SIZE_DIP.h <= rect.y + rect.height;
+}
+
+/**
+ * 混合 DPI 重叠判定（**单一来源**，承 NFR-8 / 设计档 §2.3.1）：标称矩形（`pos` +
+ * `PET_SIZE_DIP`）是否与 `display` **以外**的、`scaleFactor` **不同**的屏重叠（区间相交，纯算术）。
+ * **唯一消费方 = `petStraddleFix()`（骑线推离）**——第 10 轮起 `petCalibrateSize()` 第 ④ 步改为
+ * **不可判定门**（DD-20），不再消费本判定；保留定义 = 单一来源，不得写第二份拷贝。
+ * 入参任一为 null → false；每次调用一次 `getAllDisplays()` 遍历（E3）——调用方负责执行时点
+ * （只该在写入判定时执行，不在每 tick 推导路径上）。纯函数、不读窗口。
+ */
+function petMixedScaleOverlap(pos, display) {
+  if (!pos || !display || !display.bounds) return false;
+  return screen.getAllDisplays().some((d) => {
+    if (!d || !d.bounds || d.id === display.id || d.scaleFactor === display.scaleFactor) return false;
+    const b = d.bounds;
+    return pos[0] < b.x + b.width && pos[0] + PET_SIZE_DIP.w > b.x
+      && pos[1] < b.y + b.height && pos[1] + PET_SIZE_DIP.h > b.y;
+  });
+}
+
+/**
+ * 骑线推离（§2.3.7 / 契约 §2.3.1）：标称矩形未完全落在**中心点所在屏** `bounds` 内、**且**与之
+ * 重叠的其它屏中存在 `scaleFactor` **不同**者 ⇒ 钳入该屏 `bounds`（最小位移 = 逐轴钳入）；
+ * 否则**恒等返回**（同 `scaleFactor` 的骑线无合成差异 ⇒ 不做无由的位置改写）。
+ * 混合 DPI 判定 = `petMixedScaleOverlap`（单一来源；第 10 轮起本处为其**唯一消费方**，设计档 §2.3.1）。
+ * 入参 null → null；无屏可取（screen 不可用）→ 恒等返回。纯函数、不读窗口。
+ */
+function petStraddleFix(pos) {
+  if (!pos) return null;
+  const center = [pos[0] + PET_SIZE_DIP.w / 2, pos[1] + PET_SIZE_DIP.h / 2];
+  const display = petDisplayOf(center);
+  if (!display) return pos;
+  if (petRectInside(pos, display.bounds)) return pos; // 已完全落在该屏 ⇒ 不骑线
+  if (!petMixedScaleOverlap(pos, display)) return pos; // 同 scaleFactor 的骑线无合成差异 ⇒ 不推
+  const b = display.bounds;
+  return [
+    Math.round(Math.min(Math.max(pos[0], b.x), b.x + b.width - PET_SIZE_DIP.w)),
+    Math.round(Math.min(Math.max(pos[1], b.y), b.y + b.height - PET_SIZE_DIP.h)),
+  ];
+}
+
+/**
+ * 落点解析组合（松手 / 显示器事件 / 建窗后**共用**，§2.3.6 / §2.3.7）：
+ *   ① 可见性校正（`petNearestVisiblePos` ⇒ `kind='visible'`）② 骑线推离（`petStraddleFix` ⇒ `kind='straddle'`）。
+ * 两条规则合并为**一次**位置写入（调用方当且仅当 `kind === 'none'` 时**零写入**）——
+ * 前者成立时后者恒等返回（`workArea ⊆ bounds` ⇒ 标称矩形已在 `bounds` 内），故不会产生第二次跳。
+ * 入参 null → `{ pos: null, kind: 'none' }`（调用方必须跳过写入，§2.3.1 短路口径）。纯函数、不读窗口。
+ */
+function petSettlePos(pos) {
+  if (!pos) return { pos: null, kind: 'none' };
+  let out = pos;
+  let kind = 'none';
+  const visible = petNearestVisiblePos(out);
+  if (visible && (visible[0] !== out[0] || visible[1] !== out[1])) { out = visible; kind = 'visible'; }
+  const straddle = petStraddleFix(out);
+  if (straddle && (straddle[0] !== out[0] || straddle[1] !== out[1])) { out = straddle; kind = 'straddle'; }
+  return { pos: out, kind };
+}
+
+/**
+ * 显示器配置变化（E5 三事件，DD-8）：日志 1 行 →（非拖动时）回落可见区 → 尺寸校准 → 落盘。
+ * **拖动中**（`petDrag !== null`）：只置缓存失效标记**并清除跨屏尺寸标记**（§2.3.2「拖动中」行 /
+ *   §2.3.3 / DD-19）——不校正、不落盘、不做尺寸校准：拖动期间位置由用户手指支配（US-2），且
+ *   此处推进 displayId 会吞掉该次跨屏尺寸标记；失效标记由下一次拖动 tick 消费（§2.3.3），校正与落盘
+ *   交给松手路径兜底。
+ *   清除 `pendingSizeAnchor` 的理由（DD-19）：该标记承载的是「**新屏 bounds**」，屏几何已变 ⇒
+ *   陈旧值不可信（可能指向一块已不存在的屏）；清除后由下一次切换检测按新屏重新置。
+ * 专注模式（无窗口）时 helper 按短路口径返回 null ⇒ 不写入、不落盘。
+ */
+function handleDisplayChange(kind, display, metrics) {
+  if (PET_GEOM_DEBUG) {
+    petGeomLog(
+      `display-change kind=${kind} id=${display ? display.id : 'n/a'}`
+      + ` scale=${display ? display.scaleFactor : 'n/a'}`
+      + ` metrics=${metrics && metrics.length ? metrics.join('|') : 'n/a'}`,
+    );
+  }
+  if (petDrag) {
+    petDrag.displayBounds = null;      // 失效标记（此处不取屏；取屏留给下一 tick，§2.3.3）
+    petDrag.pendingSizeAnchor = null;  // 同一失效一并清除（DD-19）：屏几何已变 ⇒「新屏 bounds」陈旧不可信
+    petGeomSnapshot('display');   // 发射规则③：每个 screen 事件处理完成后 1 行
+    return;
+  }
+  if (petWindow && !petWindow.isDestroyed()) {
+    // 落点解析与松手路径**共用** petSettlePos（§2.3.1 / §2.3.2）：拔屏后回落可见区 + 骑线推离，
+    //   至多一次位置写入（kind='none' ⇒ 零写入）；缩放比变化后重新锚定尺寸。
+    const settled = petSettlePos(petWindow.getPosition());
+    if (settled.kind !== 'none') petApplyPos(settled.pos, 'display');
+    petCalibrateSize();
+    petSavePos();
+  }
+  petGeomSnapshot('display');
+}
+
+/** 找回鲸鱼娘（US-14）：拉回主屏默认落点并落盘；专注模式下入口置灰、此处分外守卫。 */
+function summonPet() {
+  if (settings.mode === 'focus') return;
+  ensurePet();
+  if (!petWindow || petWindow.isDestroyed()) return;
+  petApplyPos(petDefaultPos(), 'summon');
+  petCalibrateSize();
+  petSavePos();
+}
+
+function createPetWindow(startPos) {
   if (petWindow && !petWindow.isDestroyed()) { petWindow.show(); return; }
   petWindow = new BrowserWindow({
-    width: 250,
-    height: 270,
+    width: PET_SIZE_DIP.w,
+    height: PET_SIZE_DIP.h,
+    ...(startPos ? { x: startPos[0], y: startPos[1] } : {}),
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -590,12 +1156,24 @@ function createPetWindow() {
     petStopDrag('destroyed'); // 窗口关闭路径终止拖动（设计档 §2.2.6）
     petWindow = null;
   });
+  // 建窗后一次（§2.3.2 建窗后行 / §2.3.5-C 调用点①）：先做一次**骑线推离**（仅在真的发生推离时
+  //   记 geom-fix reason=straddle），再建立 / 重定尺寸锚点——次序与松手行同源（先定位置、再定尺寸锚点）。
+  //   第 10 轮起校准的门 = **不可判定门**（§2.3.5-C 第 4 步 / DD-20）⇒ 推离**不再是过门的前提**；
+  //   推离本身按 §2.3.7 独立发生（唯一理由 = 不让「一半大一半小」停留）。
+  //   该路径本不执行贴墙判定 ⇒ wall 行照常缺席（豁免规则照用，§2.3.6 / §2.3.7）。
+  // 新建窗口 ⇒ 锚点作废（§2.3.5-A：「null」仅出现在建窗后首次校准前）——不得复用上一窗口的锚点与其 scaleFactor
+  petSizeBaseline = null;
+  petWanderSizeCheckedAt = 0; // 散步段起点兜底的门控时间戳同批复位（§2.3.5-B 第 4 条的状态生命周期）
+  const bootSettle = petSettlePos(petWindow.getPosition());
+  if (bootSettle.kind === 'straddle') petApplyPos(bootSettle.pos, 'straddle');
+  petCalibrateSize();
 }
 
 /** 桌宠启用但窗口没了时，重建它（解决关窗后桌宠消失）。 */
 function ensurePet() {
   if (settings.petEnabled && (!petWindow || petWindow.isDestroyed())) {
-    createPetWindow();
+    // 重建也走启动位置解析（US-13：模式切回鲸鱼时不回到系统默认落点）
+    createPetWindow(petResolveStartPos());
   }
 }
 
@@ -610,11 +1188,10 @@ function destroyPetWindow() {
 
 // ---------------------------------------------------------------------------
 // Pet drag-follow — 主进程按全局光标绝对定位驱动窗口（设计档 docs/design/PET-DRAG.md §2.2）
-//   拖动开始时记抓取偏移 grabOffset = 光标 − 窗口位置；随后每 PET_DRAG_TICK_MS 读一次
-//   全局光标，按「光标 − grabOffset」推导目标位置，同目标去重后才写入（不做工作区钳制）。
+//   拖动开始时记抓取偏移 grabOffset = 光标 − 窗口位置（**全程恒定**：跨屏不重锚，§2.3.3 / DD-23）；
+//   随后每 PET_DRAG_TICK_MS 读一次全局光标，按「光标 − grabOffset」推导目标位置，同目标去重后才写入（不做工作区钳制）。
 // ---------------------------------------------------------------------------
 const PET_DRAG_TICK_MS = 8;            // 标称跟随周期 ≈125Hz（JS 定时器粒度只会 ≥8ms，允许 +2ms 偏差）
-const PET_DRAG_SIZE_CHECK_TICKS = 8;   // 尺寸回拉频率：每 8 tick（≈64ms）一次
 const PET_DRAG_STALE_MS = 1800;        // 心跳失联阈值（NFR-2 的 2s 上限内留 200ms 余量）
 const PET_DRAG_PROBE_MS = 250;         // drag-end 后的静态探针延迟（> NFR-2 的 200ms 上限）
 const PET_DRAG_LOG_SAMPLE_TICKS = 16;  // 诊断日志采样频率：每 16 tick（≈128ms）一行
@@ -638,11 +1215,44 @@ function petPosText(pos) { return `(${pos[0]},${pos[1]})`; }
  */
 let petDrag = null;
 
-/** 尺寸回拉（Windows 偶发漂移的 workaround，单一实现）：不符即拉回 250×270。 */
-function fixPetWindowSize() {
-  if (!petWindow || petWindow.isDestroyed()) return;
-  const [cw, ch] = petWindow.getSize();
-  if (cw !== 250 || ch !== 270) petWindow.setSize(250, 270);
+/**
+ * 尺寸校准（**唯一尺寸写入路径**，取代原「期望值判等」式尺寸断言，设计档 §2.3.5-A / C）——五步判定次序：
+ *   ① 窗口守卫（`!petWindow || isDestroyed()` → 返回）② `getSize()` 1 次 ③ 锚点非空 ∧ 逐分量
+ *   `|cur − 锚点| ≤ 容差` → 返回（**零写入零日志**：同屏静止 / 量化误差的常见路径）
+ *   ④ **不可判定门**（第 10 轮更名 / 改写，DD-20；原「混合 DPI 门」的**骑线拦截子句已删**——
+ *   其前提经 §2.2 Q6 证伪）：`petCurrentDisplay()` 为 null（窗口中心点不在任何屏上）→ 返回
+ *   （**推迟**写入——第 ⑤ 步需该屏 `scaleFactor` 入锚点，中心点不在任何屏上时无从取得）。
+ *   **这是唯一的推迟条件**：与其它屏（含 `scaleFactor` **不同**者）重叠、与桌面外（无屏覆盖处）
+ *   重叠 ⇒ **一律过门**（照第 ⑤ 步写入）。
+ *   ⑤ 尺寸写入 = `setBounds`（位置 = 第 ④ 步后的 `getPosition()` **原样传回**，不改位置；
+ *   第 10 轮由 `setSize` 改写，DD-21 / §2.2 Q7）→ `getSize()` 读回 → 更新锚点（含该屏 scaleFactor）→ 记 1 行。
+ * `reason` 判据句（**唯一形态**，与 §2.3.5-B2 / §3.3 列义（四）同源，纯算术）：
+ *   锚点为空 **∨** 当前所在屏 scaleFactor ≠ 设锚点时的 scaleFactor ⇒ `size-anchor`；否则 `size-drift`。
+ *   不得写成「锚点为空 ⇒ size-anchor；否则 size-drift」——那会把拖动期跨屏的那一次记成 `size-drift`。
+ * 无参（不得加 `reason` 入参）；无窗口 / 已销毁 → 直接返回。
+ */
+function petCalibrateSize() {
+  if (!petWindow || petWindow.isDestroyed()) return;                 // ①
+  const [cw, ch] = petWindow.getSize();                              // ②
+  if (petSizeBaseline                                                 // ③
+    && Math.abs(cw - petSizeBaseline.w) <= PET_SIZE_TOLERANCE_DIP
+    && Math.abs(ch - petSizeBaseline.h) <= PET_SIZE_TOLERANCE_DIP) return;
+  const display = petCurrentDisplay();                                // ④ 不可判定门（DD-20）
+  if (!display) return;                                                // 无屏（中心点不在任何屏上）⇒ 不可判定 ⇒ 推迟
+  const pos = petWindow.getPosition();                                 // 第 ⑤ 步与日志行共用同一次位置读数
+  const [x, y] = pos;
+  petWindow.setBounds({ x, y, width: PET_SIZE_DIP.w, height: PET_SIZE_DIP.h }); // ⑤ 位置原样传回（DD-21）
+  const [aw, ah] = petWindow.getSize();
+  const scale = display.scaleFactor;
+  const reason = (!petSizeBaseline || petSizeBaseline.scaleFactor !== scale) ? 'size-anchor' : 'size-drift';
+  if (PET_GEOM_DEBUG) {
+    const b = display.bounds;
+    petGeomLog(
+      `geom-fix reason=${reason} size-from=${petPosText([cw, ch])} size-to=${petPosText([aw, ah])}`
+      + ` display=${display.id} scale=${scale} bounds=(${b.x},${b.y},${b.width},${b.height}) pos=${petPosText(pos)}`,
+    );
+  }
+  petSizeBaseline = { w: aw, h: ah, scaleFactor: scale };
 }
 
 /** 终止拖动跟随（唯一清空点）：停循环 → 最终位置同步 + 尺寸回拉 → 日志/探针 → 兜底通知渲染层。 */
@@ -660,7 +1270,7 @@ function petStopDrag(reason) {
       petWindow.setPosition(target[0], target[1]);
       drag.lastApplied = target;
     }
-    fixPetWindowSize();
+    petCalibrateSize(); // 终止即校准（§2.3.2 松手行注：与松手路径那一次不重复写——锚点已刷 ⇒ 落在容差内）
   }
   if (PET_DRAG_DEBUG) {
     petDragLog(alive
@@ -678,13 +1288,44 @@ function petStopDrag(reason) {
   if (reason === 'stale' && alive) petWindow.webContents.send('pet-drag-cancel');
 }
 
-/** 跟随循环的一个 tick：看门狗 → 读全局光标 → 推导目标 → 同目标去重写入 → 尺寸回拉 → 采样日志。 */
+/**
+ * 跟随循环的一个 tick：看门狗 → 读全局光标 → 显示器切换检测（US-12） → 推导目标
+ *   → 同目标去重写入 → 跨屏尺寸标记（中心点进入新屏的首个 tick 校准一次）→ 采样日志。
+ *   切换检测**不重锚抓取偏移**（`grabOffset` 全程恒定，§2.3.3 / DD-23）；热路径无新增 API 调用：
+ *   切换检测与标记的消费判据均为纯算术比较。
+ */
 function petDragTick() {
   if (!petDrag) return;
   if (!petWindow || petWindow.isDestroyed()) { petStopDrag('destroyed'); return; }
   const drag = petDrag;
   if (Date.now() - drag.lastMessageAt > PET_DRAG_STALE_MS) { petStopDrag('stale'); return; }
   const cursor = screen.getCursorScreenPoint();
+  // 显示器切换检测（§2.3.3）：判定 = 「缓存失效 ∨ 光标越出缓存矩形 ⇒ 取屏一次」——
+  //   缓存失效（displayBounds 为 null，来自拖动起点或拖动中收到的 E5 事件）必须在此消费；
+  //   同屏内该判定只是一次纯算术矩形包含比较（零 API 调用，不触碰 NFR-1 开销判据）。
+  if (!drag.displayBounds || !petPointInRect(cursor, drag.displayBounds)) {
+    const next = petDisplayOf([cursor.x, cursor.y]);
+    drag.displayBounds = next ? next.bounds : null;
+    if (next && next.id !== drag.displayId) {
+      // 切换检测（身份比较，§2.3.3）：**不重锚抓取偏移**（第 12 轮删除，DD-23）——位置 API 的坐标空间
+      //   与所在屏 scaleFactor 无关且可逆（§2.2 R6）⇒ 跨屏无需换参考系；原重锚公式
+      //   `grabOffset ← 光标 − getPosition()` 会把「光标自上一 tick 起的位移」吃进抓取偏移（R7）
+      //   ⇒ 每跨一次屏偏一次、往返不可逆（= 用户报告症状）。
+      const fromId = drag.displayId;
+      drag.displayId = next.id;
+      if (PET_GEOM_DEBUG) {
+        petGeomLog(
+          `geom-switch from=${fromId} display=${next.id} scale=${next.scaleFactor}`
+          + ` size=${petPosText(petWindow.getSize())} pos=${petPosText(petWindow.getPosition())}`,
+        );
+      }
+      // 跨屏的尺寸标记（§2.3.3 简化一 / §2.3.5-B2）：**无条件**置标记——不再比较 `scaleFactor`
+      //   （原「上一 tick 所在屏 scaleFactor」字段与其刷新已删）：同 `scaleFactor` 的跨屏由校准第 ③ 步
+      //   的容差自锁吸收（R1 的比值 = 1 ⇒ 读回不漂移 ⇒ 零写入零日志）；光标折返时按当前切换结果重算。
+      drag.pendingSizeAnchor = { bounds: next.bounds };
+    }
+    // 同 id / 取屏失败（next 为 null）：§2.3.3「相同 ⇒ 仅刷新缓存」——缓存即上面的 displayBounds
+  }
   const target = [Math.round(cursor.x - drag.grabOffset.x), Math.round(cursor.y - drag.grabOffset.y)];
   let wrote = 0;
   if (target[0] !== drag.lastApplied[0] || target[1] !== drag.lastApplied[1]) {  // 同目标去重
@@ -692,8 +1333,18 @@ function petDragTick() {
     drag.lastApplied = target;
     wrote = 1;
   }
+  // 跨屏尺寸标记的消费判据（§2.3.3 简化二 / §2.1 F5 ②）：每 tick 用**纯算术**判「**窗口中心点**
+  //   进入新屏 `bounds`」（中心点 = target + PET_SIZE_DIP / 2，常量偏移；petPointInRect 取半开区间），
+  //   成立的**首个** tick 校准一次并清标记。判据读本 tick 已推导的 target（写入之后调用，使校准
+  //   读到的即目标位置）；无 getSize / 无取屏调用——每跨屏事件至多一次尺寸写入、同屏内全程零次。
+  if (drag.pendingSizeAnchor) {
+    const center = { x: target[0] + PET_SIZE_DIP.w / 2, y: target[1] + PET_SIZE_DIP.h / 2 };
+    if (petPointInRect(center, drag.pendingSizeAnchor.bounds)) {
+      drag.pendingSizeAnchor = null;
+      petCalibrateSize();
+    }
+  }
   drag.tick++;
-  if (++drag.sizeCheckCounter >= PET_DRAG_SIZE_CHECK_TICKS) { drag.sizeCheckCounter = 0; fixPetWindowSize(); }
   if (PET_DRAG_DEBUG && drag.tick % PET_DRAG_LOG_SAMPLE_TICKS === 0) {
     const applied = petWindow.getPosition();
     const delta = [target[0] - applied[0], target[1] - applied[1]];
@@ -753,16 +1404,11 @@ function scheduleWander() {
   }, 15000 + Math.random() * 20000);
 }
 
-/** 桌宠最大 X（屏幕宽 - 窗口宽）。 */
-function petMaxX() {
-  const { workAreaSize } = screen.getPrimaryDisplay();
-  return workAreaSize.width - 250;
-}
-
 /**
  * 散步/跑步：随机走一段距离就停下休息（不必走完全程）。
  * 只有中途碰到墙壁才折返，折返 petBounceLeft 次后歇着。
  * 20% 概率跑步（更快更远）；脱手逃跑（petForceRun）强制跑步。
+ * 边界 = 桌宠当前所在屏的工作区（US-9，不跨屏）；y 写前归位（根因 2）。
  */
 function doWander() {
   // 拖动态守卫：任何来源的散步都不得在拖动中移动窗口（根因 D）
@@ -770,18 +1416,26 @@ function doWander() {
     scheduleWander();
     return;
   }
+  // 段起点算一次边界（所在屏口径），段内不重算
+  const bounds = petWorkAreaBounds(petCurrentDisplay());
+  if (!bounds) {
+    scheduleWander();
+    return;
+  }
   if (!petWanderDir) petWanderDir = Math.random() < 0.5 ? 'left' : 'right';
   if (petBounceLeft <= 0) petBounceLeft = 1 + Math.floor(Math.random() * 2); // 撞墙后折返 1~2 次
-  const maxX = petMaxX();
   const [x, y] = petWindow.getPosition();
+  // y 归位：写入前钳入所在屏工作区，消除「纵向失踪」（根因 2 / TC-9）
+  const targetY = Math.round(Math.min(Math.max(y, bounds.minY), bounds.maxY));
   const run = petForceRun || Math.random() < 0.2;
   petForceRun = false;
   // 随机走一段（不一定到墙）
   const distance = run ? 200 + Math.random() * 300 : 80 + Math.random() * 200;
   let targetX = petWanderDir === 'left' ? x - distance : x + distance;
-  const hitWall = petWanderDir === 'left' ? targetX <= 0 : targetX >= maxX;
+  const hitWall = petWanderDir === 'left' ? targetX <= bounds.minX : targetX >= bounds.maxX;
   if (hitWall) {
-    targetX = petWanderDir === 'left' ? 0 : maxX; // 撞墙：走到墙为止，之后折返
+    // 撞墙：走到墙为止，之后折返（墙 = 所在屏工作区边缘，US-9）
+    targetX = petWanderDir === 'left' ? bounds.minX : bounds.maxX;
   }
   const dist = Math.abs(targetX - x);
   if (dist < 4) {
@@ -796,16 +1450,32 @@ function doWander() {
   setPetState((run ? 'run-' : 'walk-') + petWanderDir);
   const startX = x;
   const startTime = Date.now();
+  let segStartLogged = false;
+  // 段起点低频兜底校准（§2.3.5-B 第 4 条 / DD-22 / H-3）：本时点在 setInterval(moveTimer, 16) **之前**
+  //   ⇒ 运动尚未开始、窗口静止 ⇒ 读回不进「移动中的噪声带」（§2.3.5-A 第 5 点），
+  //   且即使触发 setBounds 也不与任何移动循环争窗口（本缺陷的机制即「setBounds 同时设位置与尺寸」）。
+  //   频率上界 = ≤1 次 / PET_WANDER_SIZE_CHECK_MS（30 s；现状逐帧调用约 3750 次/分 ⇒ 本轮删除）。
+  //   禁止形态（§2.3.5-B 第 4 条）：不得恢复逐帧调用；不得改为「每 N 个 tick」（= 段内、运动在途）；不得挪到段末。
+  if (Date.now() - petWanderSizeCheckedAt >= PET_WANDER_SIZE_CHECK_MS) {
+    petCalibrateSize();
+    petWanderSizeCheckedAt = Date.now();
+  }
   clearInterval(moveTimer);
   moveTimer = setInterval(() => {
     const t = Math.min(1, (Date.now() - startTime) / duration);
     const nx = Math.round(startX + (targetX - startX) * t);
-    petWindow.setPosition(nx, y);
-    // 保险：Windows 偶尔会让 setPosition 后的窗口尺寸漂移，随手拉回固定值（调用频率不变）
-    fixPetWindowSize();
+    petWindow.setPosition(nx, targetY); // y = 归位后的值（写入前钳制，根因 2）
+    // 段起点（y 归位后）1 行 geom——AC7 取证点
+    if (!segStartLogged) { segStartLogged = true; petGeomSnapshot('seg-start'); }
+    // 运动在途（本回调内）**零尺寸判定、零尺寸写入**（§2.3.5-B 第 4 条 / DD-22）：原逐帧的尺寸校准
+    //   调用已删——移动中的读回噪声带（+0…+34 DIP）跨过容差 8 ⇒ 每帧判「漂移」⇒ 每帧尺寸写入
+    //   （同时设位置与尺寸）⇒ 与移动循环互相打断。本路径唯一的校准时点 = 段起点兜底（见上方门控块）。
     if (t >= 1) {
       clearInterval(moveTimer);
       moveTimer = null;
+      // 段末 1 行 geom（AC7 取证点）+ 离散停泊事件落盘（US-13，不在 tick 内写盘）
+      petGeomSnapshot('seg-end');
+      petSavePos();
       if (hitWall) {
         // 撞墙 → 折返（1~2 次后停下休息）
         petBounceLeft--;
@@ -1205,6 +1875,12 @@ function rebuildTrayMenu() {
     { label: '新手向导（设置 API Key）', click: () => createWelcomeWindow() },
     { label: '插件市场', click: () => createMarketWindow() },
     { label: '鲸鱼娘兑换屋', click: () => openExchangeWindow() },
+    // 找回鲸鱼娘（US-14）：专注模式下桌宠窗口不存在 ⇒ 置灰不可用
+    { label: '找回鲸鱼娘', enabled: settings.mode !== 'focus', click: () => summonPet() },
+    { type: 'separator' },
+    // 更新分组（U-7：首条分隔线后，「更换背景」组之前）
+    { label: '检查更新', click: () => { manualCheckUpdates(); } },
+    { label: '自动检查更新', type: 'checkbox', checked: settings.autoCheckUpdates, click: (item) => setAutoCheckUpdates(item.checked) },
     { type: 'separator' },
     { label: '更换背景', click: () => chooseBackground() },
     { label: '恢复默认背景', click: () => resetBackground() },
@@ -1247,11 +1923,10 @@ function setAutoStart(enabled) {
   app.setLoginItemSettings({ openAtLogin: enabled });
 }
 
-function setPetEnabled(enabled) {
-  settings.petEnabled = enabled;
+function setAutoCheckUpdates(enabled) {
+  settings.autoCheckUpdates = enabled;
   saveSettings();
-  if (enabled) createPetWindow();
-  else destroyPetWindow();
+  rebuildTrayMenu();
 }
 
 // ---------------------------------------------------------------------------
@@ -1316,7 +1991,7 @@ function handleOpenArg(argv) {
 // (~/.dsh/profiles/web) using the bundled pnpm, then restart the backend.
 // ---------------------------------------------------------------------------
 const PLUGIN_REGISTRY_URL = 'https://awesome-dsh-plugin.com/plugins.json';
-const PLUGIN_REGISTRY_FALLBACK = 'https://cdn.jsdelivr.net/gh/turtle2209/Bigfish@main/plugins.json';
+const PLUGIN_REGISTRY_FALLBACK = 'https://gitee.com/ludonghuai/big-fish/raw/main/plugins.json';
 const NPM_REGISTRY = 'https://registry.npmmirror.com/';
 
 function profileDir() {
@@ -1416,6 +2091,60 @@ function resolveInstalledName(spec) {
   // 兜底：取末尾合法段（去掉版本号）
   const last = base.split('@').pop();
   return isPlainPackageName(last) ? last : null;
+}
+
+// ---------------------------------------------------------------------------
+// 已装插件更新（设计档 §2.2.5 / AC10）——版本对比全在主进程，前端只按 id 匹配渲染。
+// ---------------------------------------------------------------------------
+
+/** 注册表条目 → 安装标识（与 market.js normalizePlugin 同口径：npm 优先，install 字段取标识，url 兜底）。 */
+function pluginUpdateSpecOf(p) {
+  let spec = p && p.npm;
+  if (!spec && p && p.install) {
+    const m = String(p.install).match(/add\s+(github:[^\s]+|link:[^\s]+|[^\s]+)/);
+    if (m && m[1].startsWith('github:')) spec = m[1]; // 与 normalizePlugin 同口径：install 字段只采纳 github:
+  }
+  if (!spec && p && p.url) {
+    const m = String(p.url).match(/github\.com\/([^/]+\/[^/]+)/);
+    if (m) spec = 'github:' + m[1];
+  }
+  return spec || '';
+}
+
+/** 已装插件版本：profileDir()/node_modules/{realName}/package.json（读不到 → ''）。 */
+function installedPluginVersion(realName) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(profileDir(), 'node_modules', realName, 'package.json'), 'utf8'));
+    return pkg && pkg.version ? String(pkg.version) : '';
+  } catch { return ''; }
+}
+
+/** 计算可更新插件清单（AC10）：已装版本 < 注册表 version 才入选；github: 按原 installSpec 重装。 */
+function computePluginUpdates(plugins) {
+  const updates = [];
+  for (const p of plugins || []) {
+    const version = p && typeof p.version === 'string' ? p.version.trim() : '';
+    if (!version) continue; // 注册表条目缺 version → 无徽标（US-7 边界）
+    const spec = pluginUpdateSpecOf(p);
+    if (!spec || spec.startsWith('builtin:') || spec.startsWith('link:')) continue;
+    const realName = resolveInstalledName(spec);
+    if (!realName) continue;
+    if (!isPluginInProfile(realName)) continue; // 未装条目不参与也不记日志（避免 market:list 刷日志）
+    const installedVersion = installedPluginVersion(realName);
+    if (!installedVersion) {
+      updaterLog(`plugin update spec=${spec} result=skip detail=no-installed-version`);
+      continue;
+    }
+    if (compareVersions(version, installedVersion) <= 0) continue;
+    updates.push({
+      id: (p.name || p.npm || spec || '').replace(/\s+/g, '-').toLowerCase(),
+      name: p.name || p.npm || spec,
+      updateSpec: spec.startsWith('github:') ? spec : `${realName}@${version}`,
+      latestVersion: version,
+      installedVersion,
+    });
+  }
+  return updates;
 }
 
 /**
@@ -1565,9 +2294,16 @@ async function installPlugin(spec) {
   // npm / GitHub 插件：用内置 pnpm 安装到 profile
   const beforeMods = topLevelModules();
   const beforeDeps = (() => { const b = readProfileManifest(); return b && b.dependencies ? Object.keys(b.dependencies) : []; })();
+  // 更新分支（AC10）：目标已装（依赖键或顶层目录存在）→ 装完跳过 realName 探测与 addBundle
+  //   （realName 探测只识别「新增」包——更新时依赖键与顶层名不变，会误报失败）
+  const knownName = resolveInstalledName(spec);
+  const isUpdate = !!knownName && (beforeDeps.includes(knownName) || beforeMods.has(knownName));
   const res = await runCmd(runtimeNodeExe(), pnpmArgs('add', spec), { timeout: 15 * 60 * 1000 });
   if (res.code !== 0) {
     return { ok: false, message: `安装失败（pnpm exit ${res.code}）：\n${res.output.slice(-800)}` };
+  }
+  if (isUpdate) {
+    return { ok: true, message: `已更新 ${knownName}` };
   }
   // 解析【真实包名】注册 bundles（严禁把 github:user/repo 这类原始标识写进 bundles）
   let realName = null;
@@ -1632,6 +2368,7 @@ async function restartBackend() {
 // 插件市场窗口（market.html）
 // ---------------------------------------------------------------------------
 let marketWindow = null;
+let marketRegistryCache = null; // 最近一次 market:list 的注册表缓存（market:state 算 updates 用，不另发网络请求）
 
 function createMarketWindow() {
   if (marketWindow && !marketWindow.isDestroyed()) {
@@ -1667,7 +2404,7 @@ function createMarketWindow() {
 }
 
 /** 拉取市场目录：优先社区最大平台（awesome-dsh-plugin.com 在线全量），
- *  其次 jsdelivr 上的 Bigfish 精选目录，最后用内置本地副本。 */
+ *  其次 Gitee 上的 Bigfish 精选目录，最后用内置本地副本。 */
 async function fetchPluginRegistry() {
   const bundled = path.join(__dirname, 'plugins.json');
   let local = null;
@@ -1777,11 +2514,16 @@ if (!gotLock) {
     startCompletionWatcher();
     loadAffinity();
     startAffinityWatcher();
-    setTimeout(checkForUpdates, 5000);
+    scheduleUpdateChecks();
+    // 显示器配置变化（E5 三事件，DD-8）：失效拖动缓存 + 校正到可见区 + 落盘
+    screen.on('display-added', (_e, display) => handleDisplayChange('added', display));
+    screen.on('display-removed', (_e, display) => handleDisplayChange('removed', display));
+    screen.on('display-metrics-changed', (_e, display, changedMetrics) => handleDisplayChange('metrics', display, changedMetrics));
     // 首次安装 / 更新后：弹窗让用户选择模式（鲸鱼 / 专注）
     maybeShowModeDialog();
     if (settings.petEnabled) {
-      createPetWindow();
+      createPetWindow(petResolveStartPos());
+      petGeomSnapshot('start'); // 启动建窗后 1 行 geom（发射规则①）
       scheduleWander();
       scheduleSleep();
       schedulePetChatter();
@@ -1803,6 +2545,8 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     quitting = true;
+    petStopDrag('destroyed'); // 退出路径终止拖动（设计档 §2.2.4 的主进程清空点）
+    petSavePos();             // 退出前兜底落盘（US-13，§2.3.2 调用时机表）
     globalShortcut.unregisterAll();
     stopCompletionWatcher();
     stopAffinityWatcher();
@@ -1841,10 +2585,13 @@ if (!gotLock) {
       grabOffset: { x: cursor.x - pos[0], y: cursor.y - pos[1] },
       timer: setInterval(petDragTick, PET_DRAG_TICK_MS),
       lastApplied: [pos[0], pos[1]],
-      sizeCheckCounter: 0,
       tick: 0,
       lastMessageAt: Date.now(),
+      displayBounds: null,       // 上一 tick 所在屏的 DIP 矩形（切换检测用，零 API 调用）
+      displayId: null,           // 上一 tick 所在屏 id（唯一职责 = 切换检测的身份比较，§2.3.3）
+      pendingSizeAnchor: null,   // 跨屏尺寸标记 { bounds }：窗口中心点进入新屏的首个 tick 校准一次（§2.3.3）
     };
+    petSyncDragDisplayCache(cursor); // 拖动起点刷新缓存（§2.3.3）
     if (PET_DRAG_DEBUG) petDragLog(`drag-start grabOffset=${petPosText([petDrag.grabOffset.x, petDrag.grabOffset.y])} pos=${petPosText(pos)}`);
   });
   ipcMain.on('pet-drag-heartbeat', () => {
@@ -1855,19 +2602,42 @@ if (!gotLock) {
     // reason 由渲染层给出（pointerup / pointercancel / lostcapture）；缺省按 pointerup
     petStopDrag(/^(pointerup|pointercancel|lostcapture)$/.test(reason) ? reason : 'pointerup');
     if (!petWindow || petWindow.isDestroyed()) return;
-    // 脱手：如果鲸鱼娘被拖到墙壁边缘，她会挣脱并往反方向跑
-    const maxX = petMaxX();
-    const [x] = petWindow.getPosition();
-    if (x <= 4 || x >= maxX - 4) {
-      petWanderDir = x <= 4 ? 'right' : 'left';
-      petBounceLeft = 2;
-      petForceRun = true;
-      petSay('哇！被你拖到墙角啦，我跑！');
-      setPetState('idle');
-      doWander();
-    } else {
+    // 松手落点解析（US-10 + 骑线处置 §2.3.7）：唯一调用点 = 此处（petStopDrag 返回之后）——
+    //   stale / destroyed 不校正不落盘（§2.3.2 注）；reason 已归一化，无需白名单过滤。
+    //   两条校正规则由 petSettlePos 合并为**一次**位置写入（kind='visible' ⇒ drop；kind='straddle' ⇒ straddle）。
+    const dropPos = petWindow.getPosition();
+    const settled = petSettlePos(dropPos);
+    const wasCorrected = settled.kind !== 'none';
+    if (wasCorrected) petApplyPos(settled.pos, settled.kind === 'straddle' ? 'straddle' : 'drop');
+    petCalibrateSize(); // 松手收口（§2.3.5-C 调用点⑦）：覆盖「停在骑线后松手」
+    petSavePos();
+    // 校正与挣脱必须离散（§2.3.6 / DD-14）：校正把窗口钳到边缘 ⇒ 若照常判贴墙则每次校正必误触发；
+    //   骑线推离同规则豁免（推离落点正是某屏 bounds 缘，§2.3.7）。
+    if (wasCorrected) {
+      // 本次发生位置校正 ⇒ 豁免贴墙判定、不发 wall 行
+      //   （AC1 判据 = geom-fix reason ∈ {drop, straddle} 在场 + wall 缺席）
       scheduleWander();
+    } else {
+      // 脱手：如果鲸鱼娘被拖到**整个桌面**的外缘，她会挣脱并往反方向跑
+      //   （基准 = 全部显示器 bounds 的并集，§2.1 E 组 E1；不是所在屏工作区——两者用途不同）
+      const bounds = petDesktopBounds();
+      const [x] = petWindow.getPosition();
+      const escaped = !!bounds && (x <= bounds.minX + PET_WALL_EPS || x >= bounds.maxX - PET_WALL_EPS);
+      if (PET_GEOM_DEBUG) {
+        petGeomLog(`wall x=${x} minX=${bounds ? bounds.minX : 'n/a'} maxX=${bounds ? bounds.maxX : 'n/a'} escaped=${escaped ? 1 : 0}`);
+      }
+      if (escaped) {
+        petWanderDir = x <= bounds.minX + PET_WALL_EPS ? 'right' : 'left';
+        petBounceLeft = 2;
+        petForceRun = true;
+        petSay('哇！被你拖到墙角啦，我跑！');
+        setPetState('idle');
+        doWander();
+      } else {
+        scheduleWander();
+      }
     }
+    petGeomSnapshot('drag-end'); // AC2 / AC8（B01）取证点：落点解析与尺寸校准**全部完成之后**（§2.3.2 注）
   });
   ipcMain.on('pet-clicked', () => {
     // 原地点击也起过跟随循环（按下即起）——点完即止，保证拖动状态在所有路径下清空
@@ -1901,19 +2671,22 @@ if (!gotLock) {
   // 插件市场 IPC
   ipcMain.handle('market:list', async () => {
     const registry = await fetchPluginRegistry();
+    marketRegistryCache = registry;
     const installed = listInstalledPlugins();
     const disabled = listDisabledPlugins();
     const bundledNames = [];
     try {
       bundledNames.push(...fs.readdirSync(bundledPluginsDir()));
     } catch { /* no bundled dir */ }
-    return { registry, installed, disabled, bundledNames, profileDir: profileDir(), dshHome: dshHome() };
+    const updates = computePluginUpdates(registry.plugins);
+    return { registry, installed, disabled, bundledNames, updates, profileDir: profileDir(), dshHome: dshHome() };
   });
   // 快速状态：只读本地已装/已禁用（不拉在线目录），用于操作后即时刷新
   ipcMain.handle('market:state', () => ({
     installed: listInstalledPlugins(),
     disabled: listDisabledPlugins(),
     bundledNames: (() => { try { return fs.readdirSync(bundledPluginsDir()); } catch { return []; } })(),
+    updates: computePluginUpdates((marketRegistryCache && marketRegistryCache.plugins) || []),
   }));
   ipcMain.handle('market:install', async (_e, spec) => {
     if (typeof spec !== 'string' || !spec) return { ok: false, message: '无效的插件标识' };
@@ -1949,8 +2722,64 @@ if (!gotLock) {
       return { ok: false, message: String((err && err.message) || err) };
     }
   });
+  // 插件更新（§2.2.5）：单个更新走 installPlugin + 一次 restartBackend；全部更新逐项执行后一次重启
+  ipcMain.handle('market:update', async (_e, spec) => {
+    if (typeof spec !== 'string' || !spec) return { ok: false, message: '无效的更新标识' };
+    const res = await installPlugin(spec);
+    if (!res.ok) {
+      updaterLog(`plugin update spec=${spec} result=fail detail=${String(res.message).replace(/\s+/g, ' ').slice(0, 120)}`);
+      return res;
+    }
+    try {
+      await restartBackend();
+    } catch (err) {
+      updaterLog(`plugin update spec=${spec} result=fail detail=restart:${String((err && err.message) || err).slice(0, 120)}`);
+      return { ok: false, message: '已安装但重启失败：' + ((err && err.message) || err) };
+    }
+    updaterLog(`plugin update spec=${spec} result=ok`);
+    return res;
+  });
+  ipcMain.handle('market:update-all', async () => {
+    const registry = await fetchPluginRegistry();
+    const updates = computePluginUpdates(registry.plugins);
+    const results = [];
+    for (const u of updates) {
+      const res = await installPlugin(u.updateSpec);
+      results.push({ id: u.id, name: u.name, ok: res.ok, message: res.message });
+      updaterLog(`plugin update spec=${u.updateSpec} result=${res.ok ? 'ok' : 'fail'} detail=${String(res.message).replace(/\s+/g, ' ').slice(0, 120)}`);
+    }
+    try {
+      await restartBackend(); // 全部完成（含部分失败）后一次重启
+    } catch (err) {
+      results.push({ id: '', name: '后端重启', ok: false, message: '插件已更新但重启失败：' + ((err && err.message) || err) });
+    }
+    return results;
+  });
   ipcMain.on('market-open-external', (_e, url) => {
     if (typeof url === 'string' && /^https?:\/\//.test(url)) shell.openExternal(url);
+  });
+
+  // 更新窗口 IPC（U-13：关闭只关窗不取消；取消 → 中止在途并清临时，回到可重试态）
+  ipcMain.on('upd:cancel', () => {
+    if (updateMode === 'harness') updater.cancelHarnessInstall();
+    else updater.cancelAppDownload();
+  });
+  ipcMain.on('upd:install-now', () => {
+    if (updateMode !== 'app' || !pendingAppFile) return;
+    const res = updater.installApp(pendingAppFile);
+    if (!res.ok) { sendUpdateStatus({ mode: 'app', phase: 'error', message: res.error }); return; }
+    quitting = true;
+    setTimeout(() => app.quit(), 800); // 先例：uninstall()
+  });
+  ipcMain.on('upd:retry', () => {
+    if (updateMode === 'harness') {
+      if (pendingHarnessInfo) startHarnessUpdate(pendingHarnessInfo);
+    } else if (pendingAppInfo) {
+      startAppDownload(pendingAppInfo);
+    }
+  });
+  ipcMain.on('upd:close-window', () => {
+    if (updateWindow && !updateWindow.isDestroyed()) updateWindow.close();
   });
 
   // 好感度 / 兑换屋 IPC

@@ -9,5 +9,7 @@ contextBridge.exposeInMainWorld('marketAPI', {
   disable: (pkg) => ipcRenderer.invoke('market:disable', pkg),
   enable: (pkg) => ipcRenderer.invoke('market:enable', pkg),
   restart: () => ipcRenderer.invoke('market:restart'),
+  update: (spec) => ipcRenderer.invoke('market:update', spec),
+  updateAll: () => ipcRenderer.invoke('market:update-all'),
   openExternal: (url) => ipcRenderer.send('market-open-external', url),
 });

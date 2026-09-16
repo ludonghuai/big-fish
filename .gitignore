@@ -12,3 +12,11 @@ node-runtime/
 probe-electron.js
 download-electron.js
 download-node.js
+
+# 框架目录（checklist / memory / sessions / 临时开发工具）——非交付物
+.thincoder/
+
+# 测试临时产物（隔离 userData / DSH_HOME 的测试目录）——非交付物
+.test-userdata*/
+.test-dsh-home/
+测试-更新功能/

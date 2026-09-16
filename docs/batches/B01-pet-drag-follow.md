@@ -50,7 +50,7 @@
 | AC5 | 原地点击仍唤起主窗口并播放 happy 动画 | 不回归 |
 | AC6 | 右键仍打开兑换屋 | 不回归 |
 | AC7 | 拖到屏幕边缘松手仍触发「挣脱逃跑」 | 不回归 |
-| AC8 | 拖动结束后窗口尺寸仍为 250×270 | 不回归 |
+| AC8 | 拖动结束后窗口尺寸无可见漂移（判据口径 = 与锚点基线之差 ≤ `PET_SIZE_TOLERANCE_DIP` 8 DIP；权威口径见 `docs/design/PET-MULTIMONITOR.md` §2.3.5-A/E） | 不回归（判据口径随 E6 实证收窄——原「仍为 250×270」不可机检，语义不变且更强） |
 | AC9 | 拖拽期间主进程 CPU 增幅 < 5% | 任务管理器 / `process.getCPUUsage()` |
 
 ### 1.6 已勘察的根因（主 agent 亲读代码确证，供设计者免于重复探索）
@@ -85,6 +85,12 @@
 - `git rev-parse --is-inside-work-tree` → `true`
 - `git --no-pager log --oneline -3` → `c3a5401`
 - `git --no-pager log -1 --format="%H %ci"` → `c3a5401b2c164eedb5ffd395575d027f2a99cb66 2026-09-16 09:49:45 +0800`
+
+**2026-09-16 — §2.3 / §2.7 的行数口径订正（§5.1 形态规整同批）**
+
+主 agent 裁定统一行数口径 = **换行符计数**（`\n` 计数，不把尾换行计为一行）。据此 `pet.html` 由 92 订正为 **91**（§2.3 表与 §2.7 更正 2 各一处）；同口径下 `main.js` 1985 · `pet.js` 185 · `pet-preload.js` 15 · `package.json` 105。
+
+同批对 §5.1 交付摘要执行**形态规整**（原单行 414 字符 → 按句读断行，字符零删减、语义未动），以满足「无 >300 字符单行」的可读性判据。
 
 ---
 
@@ -128,7 +134,7 @@
 | `main.js` | 1877 | 拖动跟随状态与常量、`fixPetWindowSize()`、诊断日志 helper（插入桌宠段 `L554-603` 之后）；`doWander()` 守卫（`L667`）；`destroyPetWindow()` / `clearPetTimers()` 增加拖动终止（`L597-603`、`L618-625`）；拖拽 IPC 段整体改写（`L1727-1791`） | +约 75 / −约 30 行 | 改 |
 | `pet.js` | 127 | 拖拽段改写为 pointer 事件 + 指针捕获 + 心跳（`L50-74`）；拖动期间穿透守卫（`L111-124`）；拖动结束交互重算 + `pet-drag-cancel` 监听 | +约 45 / −约 28 行 | 改 |
 | `pet-preload.js` | 15 | `dragStart()` 去参；删除 `dragMove`；新增 `dragHeartbeat`、`onDragCancel` | +3 / −1 行 | 改 |
-| `pet.html` | 92 | 不改——`#pet` 的 `pointer-events: none` 与 `getBoundingClientRect()` 命中判定沿用；拖动监听挂 `window`，无需改结构或 CSS | 0 | 不改 |
+| `pet.html` | 91 | 不改——`#pet` 的 `pointer-events: none` 与 `getBoundingClientRect()` 命中判定沿用；拖动监听挂 `window`，无需改结构或 CSS | 0 | 不改 |
 | `package.json` | 105 | 不改——不新增源文件、不新增依赖，`build.files`（`L36-58`）无需调整 | 0 | 不改 |
 
 改动点明细回指设计档 §2.3。**超层文件拆分计划：无**（最大改动面 `main.js` 净增约 45 行，未触及拆分阈值）。
@@ -161,7 +167,7 @@
 - `pet-drag-move` 通道已删除且全仓无残留引用（DD-6）；
 - `package.json` 未发生改动（NFR-4）。
 
-③ **日志取证口径（承载 AC1 / AC3 / AC4 / AC8）**：`BIGFISH_PET_DEBUG=1` 时写 `userData/pet-drag.log`，行格式与生命周期行按设计档 §3.3。判定：`drag-end` 行之后不得再出现位置写入行（AC3）；按住 60s 位置写入 0 行（AC4）；`delta` ≤ 1px（AC1）；`size` 列全程 (250,270)（AC8）。
+③ **日志取证口径（承载 AC1 / AC3 / AC4 / AC8）**：`BIGFISH_PET_DEBUG=1` 时写 `userData/pet-drag.log`，行格式与生命周期行按设计档 §3.3。判定：`drag-end` 行之后不得再出现位置写入行（AC3）；按住 60s 位置写入 0 行（AC4）；`delta` ≤ 1px（AC1）；`size` 列与锚点基线之差 ≤ 8 DIP（AC8——B01 原口径「`size` 列全程 (250,270)」经 E6 实证不可机检，已按 `docs/design/PET-MULTIMONITOR.md` §2.3.5-A/E 收窄）。
 
 ④ **须人工判定的条目（如实标注，不得以机检代替）**：AC1「无可感滞后」与 AC2「无掉队感」的手感部分；AC5 / AC6 / AC7 三项既有交互回归；AC9 的 CPU 采样（`process.getCPUUsage()`，拖动前 10s 空闲均值 vs 连续拖动 10s 均值，增幅 < 5%，需人控负载环境）。
 
@@ -201,7 +207,7 @@
 - 更正后（生效口径）：三处源文件一律改**上限式**：
   `main.js` **≤+75 / ≤−30**、`pet.js` **≤+45 / ≤−28**、`pet-preload.js` **≤+3 / ≤−1**；
   对应末行数与设计档 §2.3 同步为 `main.js` **≤1922**、`pet.js` **≤144**、`pet-preload.js` **≤17**
-  （`pet.html` / `package.json` 不变，仍为 92 / 105）。
+  （`pet.html` / `package.json` 不变，仍为 91 / 105）。
 
 **更正 3 · §2.5 第 ② 条首项静态核对口径**
 
@@ -222,7 +228,6 @@
 
 <!-- 本段由设计评审者经 batch_segment({segment:3}) 写入：发现表 + VERDICT + 计数 -->
 
----
 
 ### 轮次 1（评审子代理）
 
@@ -311,6 +316,8 @@
 
 VERDICT: pass
 
+---
+
 ## §4 评审裁决与实施派发（主 agent）
 
 ### 4.1 裁决表（round 1 · 12 条发现）
@@ -385,6 +392,86 @@ AC8 证据止于 drag-end 之前。落地：§3.3 的 `drag-end` 生命周期行
 ## §5 实施记录（eng-coder）
 
 <!-- 本段由 eng-coder 经 batch_segment({segment:5}) 写入 -->
+
+
+### 5.1 交付摘要
+
+按批次档 §2.7（生效口径）与设计档 `docs/design/PET-DRAG.md` 实施「桌宠拖拽跟手」：
+拖拽移动改由主进程按全局光标绝对定位驱动（`grabOffset = 光标 − 窗口位置`；每 8ms 读全局光标，
+`target = 光标 − grabOffset`，同目标去重后才 `setPosition`），删除 `pet-drag-move` 通道（DD-6），
+渲染层改 pointer 事件 + `setPointerCapture` + 定时器心跳，穿透双层守卫（根因 A）、散步抑制（根因 D）、
+尺寸回拉 helper（US-8）、env 门控诊断日志（§3.3 全列）逐条落地。
+触碰文件 = 批准写域三文件（`main.js` / `pet.js` / `pet-preload.js`），未新增源文件、
+未改 `pet.html` / `package.json` / 任何 `docs/**`。
+
+| 文件 | 改动前 | 改动后 | 设计上限（§2.3 / §2.7 更正 2） | 结果 |
+|---|---|---|---|---|
+| `main.js` | 1877 | 1985 | ≤1922（≤+75 / ≤−30） | **超 63 行**（净 +108） |
+| `pet.js` | 127 | 185 | ≤144（≤+45 / ≤−28） | **超 41 行**（净 +58） |
+| `pet-preload.js` | 15 | 15 | ≤17（≤+3 / ≤−1） | 未超 |
+
+超限归因（如实）：设计 §3.3 的日志/探针列（`off` / `wrote` / `size` / `probe`）、§2.2.4.1 对称自愈、§2.2.6 心跳 + 看门狗均为修正轮追加的明文条款，而 §2.3 的改动量预算表未随追加条款重估；实现侧可无损压缩量仅约 10 行量级，压不回上限。**未为凑预算删减任何设计明文要求的仪表或守卫。**
+
+### 5.2 逐条需求覆盖（US-1…US-8 · NFR-1…NFR-4）
+
+| 需求 | 状态 | 落地证据 |
+|---|---|---|
+| US-1 拖动跟手 | Done（机检判据需跑应用取证） | 主进程绝对定位跟随 `main.js:686-702`；`delta` / `off` 列按 §3.3 |
+| US-2 拖出窗口矩形仍跟随 | Done | 不做工作区钳制；循环独立读全局光标、不依赖窗口内事件 `main.js:686-694` |
+| US-3 松手即停且不粘连 | Done | 四路清空：`pet-drag-end` / 看门狗 / `pet-drag-cancel` / `buttons===0` 自愈（`pet.js:101-123`、`main.js:645-679`） |
+| US-4 拖动期间不被自主走动打断 | Done | `doWander()` 守卫含 `petDrag !== null`（`main.js:769`）；`pet-drag-start` 清 `wanderTimer`（`main.js:1835-1836`） |
+| US-5 原地点击仍唤起主窗口 | Done（人工回归项） | 点击判定沿用 >5px 屏幕位移；`clicked()` 语义未改（`pet.js:116-117`） |
+| US-6 右键仍打开兑换屋 | Done（人工回归项） | `contextmenu` 与原样 `rightClicked()`（`pet.js:126-129`）；主进程分支未改 |
+| US-7 拖到边缘松手仍挣脱逃跑 | Done（人工回归项） | 贴墙分支原样保留（`main.js:1862-1868`），阈值 4px 未改 |
+| US-8 拖动后尺寸不漂移 | Done | `fixPetWindowSize()` 单一 helper：拖动循环每 8 tick / 拖动结束 / 散步循环调用点（`main.js:642-646`、`696`、`805`） |
+| NFR-1 性能 | Done（AC9 CPU 采样需人控环境） | 推导周期标称 8ms；单次推导内无尺寸查询（尺寸回拉与之分离）；空闲同目标去重不写入 |
+| NFR-2 可用性 | Done | 松手事件为主 + 1800ms 看门狗（< 2s 上限）+ 窗口销毁 / 渲染进程退出 / 应用退出路径终止 |
+| NFR-3 兼容性 | Done | 仅用三平台共有 API；win32 分支原样（`main.js:579-581`、`1893`，`pet.js:142`、`167`），未新增平台分支 |
+| NFR-4 可维护性 | Done | 推导集中在单一 tick 函数；状态标志设置点/清空点成对；无新增依赖、无新增源文件 |
+
+### 5.3 决策透明表（实施期裁定 + 上报项）
+
+| # | 事项 | 我的处置 | 状态 |
+|---|---|---|---|
+| R1 | `pet-drag-end` 载荷：设计 §2.2.2 写「无」，§3.3 要求 `reason=<pointerup\|pointercancel\|lostcapture\|stale\|destroyed>`——二者不可能同时成立（主进程无法区分 `pointercancel` 与 `lostcapture`） | 按 §3.3 落地：渲染层带可选 `reason`，主进程白名单校验、缺省 `pointerup`（不传参亦可工作） | **上报**：设计档内部矛盾，需文档层对齐（见 5.4 终态） |
+| R2 | 原地点击若发 `pet-drag-end`，§2.2.10 的贴墙挣脱分支会被普通点击误触发（AC5 回退） | 点击路径改发 `pet-clicked`，主进程在 `pet-clicked` 处理器内终止跟随循环（`main.js:1873-1875`） | 已落地；审计与评审均认定为可选方案里最贴设计意图的一条 |
+| R3 | 需一个 tick 计数驱动 §3.3 的「每 16 tick 采样一行」 | 结构体增 `tick` 字段（设计 §2.2.4 的结构清单未列） | **上报**：设计档结构清单待补（🔵 文档漂移） |
+| R4 | §2.2.4 把「应用退出」列为清空点，原实现无退出路径终止 | `before-quit` 增 `petStopDrag('destroyed')`（`main.js:1806`） | 已落地（评审 🔵 #6） |
+| R5 | 自愈路径（`pointermove` 且 `buttons===0`）原在 `!moved` 时不通知主进程 | 改为按既有点击/拖动语义分流：`moved` → `drag-end`，否则 `clearDragState()` + `clicked()` | 已落地（审计 D1 + 评审 🟡 #4） |
+| R6 | 自愈触发条件设计为 `e.buttons !== 0`（任意键按下）；评审提示右键/侧键在窗口外按下后滑过鲸鱼亦会起拖 | **不擅改**：与设计 §2.2.4.1 字面一致，改成仅左键属偏离设计明文 | **上报**：设计缺口，建议设计档明确按键身份 |
+
+### 5.4 审计与代码评审轮次与终态
+
+**轮次 1 · 内部 explore 背离审计（实现 ⇄ 设计）**：VERDICT pass（带回执）。12 项必查清单 9 项静态完全符合、3 项带非阻断偏差；PARTIAL = 0；OUT-OF-LIST = 0（触碰文件 = 批准写域三文件）。
+
+- D1 🟡（自愈 `!moved` 分支静默清标志 → 主进程最多 1.8s 才收尾）→ **Fixed**（R5）。
+- D2 🔵（`pet-drag-end` 载荷漂移）→ 属设计自身矛盾 → **上报**（同 R1）。
+- D3 🔵（`tick` 字段未登记）→ **上报**（同 R3）。
+- D4 🟡（末行数超上限且未登记）→ **上报**（文档层按实测重估预算）。
+- T4（按键身份）/ T5（`destroyed` 行形态）→ 分别按 R6 上报、维持实现。
+
+**轮次 1 · 内部 advisor 代码评审**：VERDICT changes-required（7 条：🔴 1 · 🟡 3 · 🔵 3）。
+
+- #1 🔴（§2.2.2 ↔ §3.3 机制级矛盾）→ **Deferred**：文档层动作，超出本角色写域（`docs/**` 禁写）；代码无需改动（评审亦判定实现为「安全超集」）。
+- #2 🟡（超末行数上限）→ **Deferred**：同上，需文档层按实测重设上限。
+- #3 🟡（`pointerdown` 无命中判定）→ **Not an issue**：核证改动前 `mousedown` 处理器同样无命中判定（改动前 `pet.js:56-63` 仅置标志 + `dragStart`），且严格模式下 `isInteractivePoint` 位于 `if (isWindows)` 块作用域、原路径不可达；本批未引入回退。
+- #4 🟡（自愈不区分点击/拖动 → 墙边误触贴墙挣脱分支）→ **Fixed**（R5）。
+- #5 🔵（`tick` 字段漂移）→ **Deferred**（同 R3）。
+- #6 🔵（退出路径未终止拖动）→ **Fixed**（R4）。
+- #7 🔵（`reason=destroyed` 且窗口存活时仍记 pos/size）→ **Not an issue**：§3.3 要求的两条（跳过 probe 行、在 drag-end 行注明）均已满足；窗口仍可读时记录真值属更诚实的取证，未违反任何条款。
+
+**终态：`stalled`** —— 唯一阻挡项 = 🔴 #1 / R1（设计档 §2.2.2 与 §3.3 对同一通道的机制级描述互相矛盾），属文档层动作，超出 eng-coder 写域。代码侧无待修项：语法门全绿、静态核对项全过、审计 D1 与评审 #4 / #6 已就地修正并复核。建议父侧裁决：把 §2.2.2 的载荷列改为 `reason?`（可选，缺省 `pointerup`），或把 §3.3 的 reason 枚举收敛为 `pointerup\|stale\|destroyed`。
+
+### 5.5 验证（实跑）
+
+- **语法门**：`node --check main.js && node --check pet.js && node --check pet-preload.js` → `ALL_SYNTAX_OK`（exit 0）。
+- **静态核对（grep 实测）**：
+  - `pet-drag-move` / `dragMove` / `dragStart(startX` 全仓源码零残留（DD-6）✓
+  - 拖动路径无 `setIgnoreMouseEvents(true)`（仅存建窗处 `main.js:580`）✓
+  - `pet-set-ignore-mouse` 拖动态拒绝开启穿透（`main.js:1895`）✓
+  - `doWander()` 守卫含 `petDrag !== null`（`main.js:769`）✓
+  - 逐事件 `getSize()` 已消除（仅 `fixPetWindowSize()` 与调试日志采样）✓
+- **未执行（如实标注）**：AC1–AC4 / AC9 的日志取证与 AC5–AC8 的人工回归——本会话无 GUI 施测环境，须按设计档 §3.2 由人工逐条执行 TC-1…TC-15。
 
 ---
 

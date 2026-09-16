@@ -12,15 +12,19 @@
 | # | 条目 | 需求档节 | 批次档 §2 | status | 触发 |
 |---|---|---|---|---|---|
 | R1 | 桌宠拖拽跟手修复（Windows） | `docs/requirements/PET.md` §三 US-1…US-8 / §四 NFR-1…NFR-4 | `docs/batches/B01-pet-drag-follow.md` §2 | 在途 | 归批（B01） |
+| R2 | 自动更新：App 本体（含内置技能/插件随包更新）+ Harness（npm latest）+ 已装插件（注册表版本对比）；更新源统一迁 Gitee | `docs/requirements/UPDATE.md` §一 / §三 US-1…US-9 | `docs/batches/B02-auto-update.md` §2 + `docs/batches/B04-harness-activate-fix.md` §2 | 待核销 | 归批（B02 实施 + B04 AC9 修复轮）——真机复测 AC9 通过（B04 §6.2）；剩 AC5/AC10/AC11/AC12 为发布门项（见 T8） |
+| R3 | App 更新安装包清理——已下载完成的安装包不在磁盘累积（下次启动回收，不在安装器运行时删） | `docs/requirements/UPDATE.md` §三 US-10 | `docs/batches/B05-installer-cleanup.md` §2 | 在途 | 归批（B05） |
 
 ## 二、技术待办
 
 | # | 条目 | 归属档节 | 最小证据（file:line + 症状） | status | 触发 |
 |---|---|---|---|---|---|
-| T1 | 桌宠右键语义修正——右键按下也走 `clicked()` 路径，导致右键**同时**切换主窗口并打开兑换屋 | `docs/design/PET-DRAG.md` §2.5 观察项 F2 | `pet.js:56-74` —— `mousedown` 无按键判断，右键松开时 `!moved` 成立即调 `clicked()` | 待设计 | 归批（B02） |
-| T2 | `main.js` 拆分——1877 行单文件承载 6 个功能域（后端生命周期 / 桌宠 / 好感度 / 模式背景 / 插件引擎 / 应用编排） | `docs/design/PET-DRAG.md` §2.5 观察项 F4 | `main.js` 全文件 1877 行；各功能域混居，改任一处都需通读全档 | 待设计 | 条件（B01 收口后评估） |
-| T3 | `setPetEnabled()` 不可达——「按 `petEnabled` 开关桌宠」之路无入口 | `docs/design/PET-DRAG.md` §2.5 观察项 F3 | `main.js:1149-1154` —— 函数已定义，全仓无调用者；托盘「模式」走 `setMode()`（`main.js:1114-1115`） | 待讨论 | 条件（下次改动托盘菜单时并入） |
-| T4 | 无自动化测试基建 | `docs/design/PET-DRAG.md` §3.3 | `package.json:13-21` 无 `test` script；全仓无测试文件 | 待讨论 | 认账不排期 |
+| T1 | 桌宠右键语义修正——右键按下也走 `clicked()` 路径，导致右键**同时**切换主窗口并打开兑换屋 | `docs/design/PET-DRAG.md` §2.5 观察项 F2 | `pet.js:56-74` —— `mousedown` 无按键判断，右键松开时 `!moved` 成立即调 `clicked()` | 待设计 | 归批（B06） |
+| T2 | `main.js` 拆分——单文件承载 6 个功能域（后端生命周期 / 桌宠 / 好感度 / 模式背景 / 插件引擎 / 应用编排） | `docs/design/PET-DRAG.md` §2.5 观察项 F4 | `main.js` 全文件 1985 行（B01 实施后；实施前 1877 行）；各功能域混居，改任一处都需通读全档 | 待设计 | 条件（B01 收口后评估） |
+| T4 | 无自动化测试基建 | `docs/design/PET-DRAG.md` §3.3 | `package.json:13-21` scripts 无 `test`（= start/pack/dist/dist:win/mac/linux/icons/make-latest）；现存 `tests/` 三文件（update-lib.test.js / update-stub.mjs / harness-store.test.js）为开发期工具、非仓门禁 | 待讨论 | 认账不排期 |
+| T5 | 发版流程说明缺 `make-latest` 步骤——手工改 `latest.json` 会留空 sha256，客户端 fail-closed 拒装新版本 | `docs/design/AUTO-UPDATE.md` §2.2.8 | `latest.json:11-13` —— sha256 三平台为空串；`package.json` scripts 已有 `make-latest` | 待讨论 | 条件（下次 App 发版前） |
+| T7 | 打包前置未落档且未纳入版本控制：`node-runtime/` 与 `dsh-bundle/node_modules/` 均被 `.gitignore` 排除，README 只说「自带 Node（node-runtime/）」未说如何准备——全新克隆打不出可运行安装包 | `README.md` §打包 / §运行时选择 | `.gitignore:4`（`node-runtime/`）、`.gitignore:1`（`node_modules/`）；`git ls-files node-runtime` 实测为空 | 待讨论 | 条件（发版流程文档化时） |
+| T8 | 首次真实发版演练清单：`make-latest.js` 正例（AC11）· 真实安装+自动拉起（AC5）· 市场更新徽标（AC10）· 更新前后 `~/.dsh` 关键面快照（AC12） | `docs/design/AUTO-UPDATE.md` §2.2.8 / §3.1 | `docs/batches/B04-harness-activate-fix.md` §6.3 —— 四项均为发布门项，本地构建不可闭环；⚠️ 禁用本地构建产物跑 `make-latest.js` 覆盖 `latest.json`（sha256 会与 Gitee 实附件不符 → 用户拒装） | 待讨论 | 条件（首次真实发版时） |
 
 ---
 

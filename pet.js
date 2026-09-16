@@ -98,8 +98,12 @@ function endDrag(reason) {
 window.addEventListener('pointerdown', (e) => beginDrag(e));
 window.addEventListener('pointermove', (e) => {
   if (dragging) {
-    // 自愈：按键已松开（pointerup 丢失）→ 通知主进程收尾并清标志（否则跟随循环要等到看门狗）
-    if (e.buttons === 0) { endDrag('pointerup'); return; }
+    // 自愈：pointerup 丢失（键已松开）——按既有的点击/拖动语义收尾，避免误触贴墙挣脱分支
+    if (e.buttons === 0) {
+      if (moved) endDrag('pointerup');
+      else { clearDragState(); window.petAPI.clicked(); }
+      return;
+    }
     if (Math.abs(e.screenX - startX) + Math.abs(e.screenY - startY) > 5) moved = true;
     return;
   }

@@ -8,7 +8,7 @@
     "name": "Bigfish",
     "email": "643820309@qq.com"
   },
-  "homepage": "https://github.com/turtle2209/Bigfish",
+  "homepage": "https://gitee.com/ludonghuai/big-fish",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -17,7 +17,8 @@
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
-    "icons": "node make-icons.js"
+    "icons": "node make-icons.js",
+    "make-latest": "node make-latest.js"
   },
   "dependencies": {},
   "devDependencies": {
@@ -43,7 +44,14 @@
       "pet-preload.js",
       "market.html",
       "market.js",
+      "market-update.js",
       "market-preload.js",
+      "update.html",
+      "update.js",
+      "update-preload.js",
+      "updater.js",
+      "update-lib.js",
+      "harness-store.js",
       "exchange.html",
       "exchange.js",
       "exchange-preload.js",

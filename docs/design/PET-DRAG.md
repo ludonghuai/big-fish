@@ -96,10 +96,20 @@
 |---|---|---|---|
 | `pet-drag-start` | renderer → main | 无（原 `{x, y}` 取消） | `pointerdown` |
 | `pet-drag-heartbeat` | renderer → main | 无 | 拖动期间每 500ms（定时器驱动，与鼠标事件无关） |
-| `pet-drag-end` | renderer → main | 无 | `pointerup` / `pointercancel` / `lostpointercapture` |
+| `pet-drag-end` | renderer → main | `reason?`（可选；取值见 §3.3；缺省 `pointerup`） | `pointerup` / `pointercancel` / `lostpointercapture` |
 | `pet-drag-cancel` | main → renderer | 无 | 主进程兜底终止拖动后，通知渲染层清标志 |
 | `pet-clicked` · `pet-right-clicked` · `pet-set-ignore-mouse` · `pet-say` · `pet-state` · `pet-affinity` | 双向不变 | 不变 | 不变 |
 | ~~`pet-drag-move`~~ | — | **删除** | 新机制不再需要渲染层上报坐标 |
+
+> **`pet-drag-end` 的 `reason` 为何必须由渲染层提供**：主进程只能观察到「拖动已结束」这一事实，无法区分结束的**成因**——`pointerup` / `pointercancel` / `lostpointercapture` 三者都是渲染层的 pointer 事件语义（后两者由渲染层派发，窗口侧收不到对应信号）。
+>
+> 因此 §3.3 要求的 `reason=<pointerup|pointercancel|lostcapture|stale|destroyed>` 不能由主进程自行推导：
+>
+> - 前三个取值随事件由渲染层上报（`lostcapture` 即渲染层的 `lostpointercapture` 事件；`pet.js:116`、`pet.js:121`、`pet.js:122`）；
+> - `stale`（看门狗超时）与 `destroyed`（窗口销毁）由主进程自行判定并写入；
+> - 主进程对上报值做白名单校验，非白名单或缺省一律按 `pointerup` 处理（`main.js:1855-1857`）。
+>
+> 即：载荷列必须带 `reason`——若按原「无」载荷实现，§3.3 的 `drag-end reason=<...>` 无从产生，契约表与日志口径互相矛盾。
 
 #### 2.2.3 跟随算法
 
@@ -114,8 +124,15 @@
 
 | 侧 | 载体 | 结构 | 设置点 | 清空点 |
 |---|---|---|---|---|
-| main | `petDrag`（模块级变量，`null` = 未在拖动） | `{ grabOffset, timer, lastApplied, sizeCheckCounter, lastMessageAt }` | `pet-drag-start` 处理器（先停旧再建新，幂等） | `pet-drag-end`；看门狗超时；窗口销毁（`destroyPetWindow`）；应用退出 |
+| main | `petDrag`（模块级变量，`null` = 未在拖动） | `{ grabOffset, timer, lastApplied, sizeCheckCounter, tick, lastMessageAt }` | `pet-drag-start` 处理器（先停旧再建新，幂等） | `pet-drag-end`；`pet-clicked`（原地点击路径）；看门狗超时；窗口销毁（`destroyPetWindow`）；应用退出（`before-quit`） |
 | renderer | `dragging`（布尔） | — | `pointerdown`；伪取消后的**对称自愈重新起拖**（见 §2.2.4.1） | `pointerup`；`pointercancel`；`lostpointercapture`；收到 `pet-drag-cancel`；`pointermove` 且 `e.buttons === 0`（自愈） |
+
+> **上表字段与清空点的补充说明**（与交付代码对齐）：
+>
+> - `tick` = 本次拖动的 tick 计数，仅用于 §3.3 每 16 tick 采样一行的节流（`main.js:637`、`main.js:695`）；
+> - `pet-clicked` 是「位移 ≤ 5px 的原地点击」路径的清空点——该路径按既有交互语义走点击、渲染层不发 `pet-drag-end`，起于 `pointerdown` 的跟随循环由 `pet-clicked` 处理器终止（`main.js:1875`），否则只能等看门狗（1800ms）收尾。
+>
+> - **指针（字段时效边界；2026-09-16 加）**：`petDrag.sizeCheckCounter` **自 B03 起已删除**（拖动循环内的尺寸断言随其废止）——尺寸写入纪律见 `docs/design/PET-MULTIMONITOR.md` §2.3.5；上表描述的是 **B01 时期结构**，保留作历史。
 
 「点击 / 拖动」判定沿用既有语义：起点 `screenX/screenY` 与松开时的差 > 5px 判为拖动（`pet.js:66`）。**必须用屏幕坐标**——拖动期间窗口跟着光标走，`clientX/clientY` 近似恒定，用它判位移会永远判成点击。
 
@@ -137,6 +154,8 @@
 #### 2.2.6 心跳与超时（兜底）
 
 常量：`PET_DRAG_TICK_MS = 8`（标称）、`PET_DRAG_SIZE_CHECK_TICKS = 8`、`PET_DRAG_KEEPALIVE_MS = 500`（渲染层）、`PET_DRAG_STALE_MS = 1800`（主进程）、`PET_DRAG_PROBE_MS = 250`（日志探针，见 §3.3）。
+
+> **指针（常量时效边界；2026-09-16 加）**：`PET_DRAG_SIZE_CHECK_TICKS` **自 B03 起已删除**（拖动循环内每 8 tick 的尺寸断言已废止）——尺寸写入纪律见 `docs/design/PET-MULTIMONITOR.md` §2.3.5；本节描述的是 **B01 时期机制**，保留作历史。
 
 - 心跳由渲染层**定时器**驱动，与鼠标事件无关——长按不动（AC4）期间事件为零但心跳照发，**不会被误判为失联**（这是心跳必须由定时器而非事件驱动的原因）。
 - 主进程每个 tick 检查 `Date.now() − lastMessageAt > PET_DRAG_STALE_MS` → 调 `petStopDrag('stale')` 并发 `pet-drag-cancel` 给渲染层清标志。
@@ -161,9 +180,12 @@
 #### 2.2.9 尺寸回拉（US-8）
 
 - 抽出 helper `fixPetWindowSize()`：`getSize()` 不符则 `setSize(250, 270)`。
+  > **指针（口径时效边界；2026-09-16 加）**：`fixPetWindowSize()` 的写入口径「`getSize()` 不符则 `setSize(250, 270)`」**自 B03 第 10 轮起已废**——尺寸写入改用 `setBounds`（位置原样传回；理由 = `resizable: false` 下 `setSize` 只放大不缩小），读回仍用 `getSize()`；权威口径 = `docs/design/PET-MULTIMONITOR.md` §2.3.5-C 第 5 步与 §2.5 DD-21；本行描述的是 **B01 时期机制**，保留作历史。
 - 调用点：① 拖动循环内每 `PET_DRAG_SIZE_CHECK_TICKS`（8）个 tick 一次（≈64ms，约 16 次/秒）；② 拖动结束时一次；③ 散步循环的既有回拉调用点（`main.js:702-704`）**改为调用 `fixPetWindowSize()`**——该处原为内联的重复实现（`main.js:703-704`，与拖动路径重复），本批只把实现换成 helper 调用，**调用频率（每 tick 一次）与语义均不变**（消除重复实现，承载 NFR-4）。
 - 语义不变（US-8 边界）：仍是「发现漂移即拉回」，拖动路径只降低调用频率以服务 NFR-1。
 - **口径澄清（对 NFR-1「单次推导内不得包含同步的窗口尺寸查询」）**：该判据约束的是**推导步骤**（`光标 → target` 的换算，§2.2.3）；尺寸回拉是与之分离的独立检查——不在推导内、不参与 target 计算，且拖动路径上已无**逐事件**查询（既有逐事件查询在 `main.js:1747-1748`，本批随 `pet-drag-move` 通道一并删除）。故 NFR-1 条文本批不作改动。
+
+> **指针（本节时效边界；2026-09-16 加）**：尺寸判据口径与写入纪律自 B03 起由 `docs/design/PET-MULTIMONITOR.md` §2.3.5 承载（`fixPetWindowSize()` 已被 `petCalibrateSize()` 取代）——本节描述的是 **B01 时期机制**，保留作历史。
 
 #### 2.2.10 拖动结束与贴墙挣脱（US-7）
 
@@ -171,13 +193,15 @@
 
 ### 2.3 受影响文件全清单
 
-| 文件 | 当前行数 | 改动点（含现状行号） | 预计改动量 | 预计末行数 |
+| 文件 | 当前行数 | 改动点（含现状行号） | 预计改动量 | 末行数（交付后） |
 |---|---|---|---|---|
-| `main.js` | 1877 | ①–⑤（明细 = 本节「注 M1」） | ≤+75 行 / ≤−30 行 | ≤1922 |
-| `pet.js` | 127 | ① 拖拽段改写为 pointer 事件 + 指针捕获 + 心跳（`L50-74`）② 拖动期间穿透守卫（`L111-124`）③ 拖动结束交互重算 + `pet-drag-cancel` 监听 + 伪取消后的对称自愈重新起拖（§2.2.4.1） | ≤+45 行 / ≤−28 行 | ≤144 |
-| `pet-preload.js` | 15 | `dragStart()` 去参、删除 `dragMove`、新增 `dragHeartbeat` 与 `onDragCancel` | ≤+3 行 / ≤−1 行 | ≤17 |
-| `pet.html` | 92 | **不改**——结论：`#pet` 的 `pointer-events: none`（`L37`）与命中判定沿用；拖动监听挂在 `window` / 捕获挂在 `document.body`，无需改动 CSS 或结构 | 0 | 92 |
+| `main.js` | 1877 | ①–⑤（明细 = 本节「注 M1」） | ≤+75 行 / ≤−30 行 | 1985（超预算 63 行） |
+| `pet.js` | 127 | ① 拖拽段改写为 pointer 事件 + 指针捕获 + 心跳（`L50-74`）② 拖动期间穿透守卫（`L111-124`）③ 拖动结束交互重算 + `pet-drag-cancel` 监听 + 伪取消后的对称自愈重新起拖（§2.2.4.1） | ≤+45 行 / ≤−28 行 | 185（超预算 41 行） |
+| `pet-preload.js` | 15 | `dragStart()` 去参、删除 `dragMove`、新增 `dragHeartbeat` 与 `onDragCancel` | ≤+3 行 / ≤−1 行 | 15 |
+| `pet.html` | 91 | **不改**——结论：`#pet` 的 `pointer-events: none`（`L37`）与命中判定沿用；拖动监听挂在 `window` / 捕获挂在 `document.body`，无需改动 CSS 或结构 | 0 | 91 |
 | `package.json` | 105 | **不改**——结论：不新增源文件，故 `build.files`（`L36-58`）无需调整；不新增依赖 | 0 | 105 |
+
+> **行数口径 = 换行符计数（`\n` 计数，不把尾换行计为一行）**——本表五项均按此口径复核（2026-09-16 将 `pet.html` 由 92 订正为 91）。
 
 > **注 M1 —— `main.js` 改动点明细（§2.3 受影响文件表 `main.js` 行 ①–⑤ 所指）**
 >
@@ -187,11 +211,18 @@
 > - ④ 拖拽 IPC 段整体改写（`L1727-1791`）
 > - ⑤ 散步循环内的既有尺寸回拉调用点改为调用 `fixPetWindowSize()`（`L702-704`，调用频率与语义不变）
 
+**注 M2 —— 末行数与预算的差异（如实登记）**
+
+- 「末行数（交付后）」列为**交付后实测值**；`pet.html` / `package.json` 本批未改动，其末行数即现状值。
+- 原预算（上限式）：`main.js` ≤1922、`pet.js` ≤144、`pet-preload.js` ≤17。实测：`main.js` **超 63 行**、`pet.js` **超 41 行**、`pet-preload.js` 未超（15 ≤ 17）。
+- 超限归因：§3.3 的 `off` / `wrote` / `size` 日志列与 `probe` 行、§2.2.4.1 的对称自愈、§2.2.6 的心跳 + 看门狗，均为修正轮追加的明文条款，而本节改动量预算未随条款追加重估；实现侧可无损压缩空间仅约 10 行量级，压回上限须删去设计明文要求的仪表或守卫（已明确拒绝）。
+- 结论：**未发生「压缩至上限」**——超出的行数即上述明文条款的落地成本，如实登记，不作追认式改述。
+
 **超层文件体量（事实陈述 + 观察项 F4）**
 
-`main.js` 当前 **1877 行**（实测），按「单文件 > 500 行须拆分」的口径**现状即已超顶**——这是既有的体量债，不因本批改动量小而不存在，故本节不再以「净增量小」推断「未触及阈值」。
+`main.js` 交付后 **1985 行**（实测），按「单文件 > 500 行须拆分」的口径**现状即已超顶**——这是既有的体量债，不因本批改动量小而不存在，故本节不再以「净增量小」推断「未触及阈值」。
 
-本批**不拆分**的理由：① 本批无「新增源文件」的授权（不新增文件、`package.json` 不得改动）；② 本批对 `main.js` 的净改动量极小（≤+75 / ≤−30 行），此刻拆分会把改动面从「拖拽路径」扩散到全应用主进程，风险与收益不匹配；③ 拆分 `main.js` 属项目级重构，须独立立案。
+本批**不拆分**的理由：① 本批无「新增源文件」的授权（不新增文件、`package.json` 不得改动）；② 本批对 `main.js` 的净改动量为 **+108 行**（预算 ≤+75，已超限——见注 M2），相对全文件体量的占比很小，此刻拆分会把改动面从「拖拽路径」扩散到全应用主进程，风险与收益不匹配；③ 拆分 `main.js` 属项目级重构，须独立立案。
 
 **登记为观察项 F4（批次外协调项：拆分 `main.js`）**，供后续批次评估——见 §2.5 观察项。
 
@@ -232,7 +263,7 @@
 
 - **F2**：右键按下会同时走 `clicked` 路径——现状 `mousedown` 无按键判断，右键松开时 `!moved` 成立即调 `clicked()`（`pet.js:56-74`），于是右键既开兑换屋又切换主窗口。本批保留原语义（DD-9），不静默修正。
 - **F3**：`setPetEnabled(enabled)`（`main.js:1149-1154`）已定义但全仓无调用者——托盘「模式」菜单走的是 `setMode()`（`main.js:1114-1115`），不经过它；即「按 `petEnabled` 开关桌宠」这条路目前不可达。不影响本批任何 AC（本批改动的拖拽路径不经过该函数）。本批不修（既不接上托盘入口，也不删除该函数）；是否另批处理由用户裁决。
-- **F4（批次外协调项）**：**拆分 `main.js`**——当前 1877 行，按「单文件 > 500 行须拆分」口径已超顶（§2.3）。本批不拆分（理由见 §2.3），登记在案供后续批次评估；不影响本批任何 AC。
+- **F4（批次外协调项）**：**拆分 `main.js`**——交付后 1985 行（实测），按「单文件 > 500 行须拆分」口径已超顶（§2.3）。本批不拆分（理由见 §2.3），登记在案供后续批次评估；不影响本批任何 AC。
 
 > 编号说明：F1 号位空闲（无对应条目）；F2 已被 `docs/requirements/PET.md` §二 引用，编号不得变更。
 
@@ -253,8 +284,16 @@
 | AC5 | US-5 | 手工：原地点击 → 主窗口显隐切换 + happy 动画 1.6s；不产生窗口位移 | 人工（既有行为回归） |
 | AC6 | US-6 | 手工：右键 → 兑换屋窗口出现 | 人工（既有行为回归） |
 | AC7 | US-7 | 手工：拖到屏幕左 / 右边缘松手 → 气泡「哇！被你拖到墙角啦，我跑！」+ 跑步离场 | 人工（既有行为回归） |
-| AC8 | US-8 | 手工：拖动结束后窗口尺寸仍为 250×270；日志 `size=(250,270)` 列全程相符，**含 `drag-end` 行的 `size` 字段**（被验证的时刻＝拖动之后——该行即取证点） | 半机检 |
+| AC8 | US-8 | 拖动结束后，**`pet-geometry.log` 的 `geom tag=drag-end` 行**的 `size` 与**锚点基线**之差 ≤ `PET_SIZE_TOLERANCE_DIP`（8 DIP）；该行即取证点（被验证的时刻＝拖动之后；日志面见 §3.1 AC8 注）。**判据语义不变且更强**：尺寸不发生可见漂移、拖动后不出现回拉跳动（纠正频次由「每 64ms 断言」降到「每跨屏事件 / 真漂移一次」）；人眼复核拖动后无可见尺寸跳变 | 半机检：尺寸符合性可机检（`size` 与锚点基线均出自日志）；「无可见跳变」为主观项，只能人工判断 |
 | AC9 | NFR-1 | `process.getCPUUsage()`：拖动前 10s 空闲均值 vs 连续拖动 10s 均值，增幅 < 5% | 机检 |
+
+> **AC8 判据口径与实证依据（2026-09-16 同步）**：AC8 的**实现口径** = 「窗口尺寸与锚点基线之差 ≤ `PET_SIZE_TOLERANCE_DIP`（8 DIP）」——**权威口径** = `docs/design/PET-MULTIMONITOR.md` §2.3.5-A/E（此处只引用不重述）。
+>
+> **实证依据** = `docs/design/PET-MULTIMONITOR.md` §2.2「E6 的实证收口」（Q1–Q3）：`getSize()` 同屏静止读回亦带 +2 ~ +6 量化误差，原「精确等于 250×270」的判据不可机检，故本档判据措辞按该实证改写。
+>
+> **取证点时点（2026-09-16 加）**：`geom tag=drag-end` 行的发射时点 = 落点解析（可见性校正 / 骑线推离）与尺寸校准**完成之后**（该行的 `pos` / `size` 即校正 + 校准后的终值）——权威口径见 `docs/design/PET-MULTIMONITOR.md` §3.3 发射规则 ② 与 §2.3.2 的松手行注；本节 AC8 / TC-12 的取证点以该口径为准。
+>
+> **取证点的日志面与行类型（2026-09-16 加）**：AC8 取证点 = **`pet-geometry.log` 的 `geom tag=drag-end` 行**（**不是** `pet-drag.log` 的 `drag-end` 生命周期行；后者的 `size` 是终止时刻读数、可能早于**松手收口**的那一次校准——`docs/design/PET-MULTIMONITOR.md` §2.3.5-C 调用点⑦）。权威源 = `docs/design/PET-MULTIMONITOR.md` §3.3 发射规则 ②（此处只引用不重述）。
 
 ### 3.2 用例表
 
@@ -271,7 +310,7 @@
 | TC-9 | 正常 | 按住 0.3s 不移动后松开（原地点击） | 主窗口显隐切换 + happy 动画；窗口位移为 0 | US-5 / AC5 |
 | TC-10 | 正常 | 在鲸鱼娘上右键 | 兑换屋窗口打开，位置仍在鲸鱼娘右侧 | US-6 / AC6 |
 | TC-11 | 边界 | 拖到屏幕左边缘（x ≤ 4）松手 | 触发挣脱逃跑分支（气泡 + 跑步） | US-7 / AC7 |
-| TC-12 | 正常 | 拖动一段后松手 | `getSize()` 为 (250, 270)；日志 `size` 列全程 (250,270)，**含 `drag-end` 行的 `size` 字段**（取证点同 §3.1 AC8） | US-8 / AC8 |
+| TC-12 | 正常 | 拖动一段后松手 | `drag-end` 行的 `size` 与**锚点基线**之差 ≤ `PET_SIZE_TOLERANCE_DIP`（8 DIP）（取证点与判据口径同 §3.1 AC8） | US-8 / AC8 |
 | TC-13 | 边界 | 连续拖动 10s 并采集 CPU | 主进程 CPU 增幅 < 5% | NFR-1 / AC9 |
 | TC-14 | 错误 | 拖动中销毁桌宠窗口（托盘菜单 →「模式」→「专注模式」）→ `setMode('focus')` → `destroyPetWindow()`；托盘入口 `main.js:1111-1117`，`setMode` 定义 `main.js:1038-1052`，销毁调用点 `main.js:1046` | 跟随循环终止、无未捕获异常；切回鲸鱼模式（`setMode('whale')` → `ensurePet()`）后拖动仍可用 | NFR-2 |
 | TC-15 | 边界 | win32：光标移出鲸鱼矩形 / 拖动中 | 非拖动时穿透行为与现状一致；拖动期间不发生穿透切换 | NFR-3、根因 A 回归 |
@@ -290,14 +329,15 @@
    - `delta = target − applied`——证明该 tick 的 `setPosition` 目标已生效；
    - `off = cursor − (applied + grabOffset)`——NFR-1「光标 ↔ 被抓住的那一点偏移 ≤ 2px」的**直接度量**（`applied` = 窗口当前位置，`grabOffset` = 本次拖动的抓取偏移；跟随无误差时 `off = (0,0)`）；
    - `wrote = 1` = 该 tick 实际调用了 `petWindow.setPosition()`（经同目标去重），`wrote = 0` = 未写入——AC3 / AC4 按「`wrote=1` 的行」计数；
-   - `size=(w,h)` = 该采样时刻的窗口尺寸（供 AC8）。
+   - `size=(w,h)` = 该采样时刻的窗口尺寸（供 AC8 的**辅助**核对；AC8 的**取证点**与判据口径见 §3.1——取证点是 `pet-geometry.log` 的 `geom tag=drag-end` 行，**不是**本采样列）。
    生命周期行：
    `[ISO 时间] drag-start grabOffset=(dx,dy) pos=(x,y)`；
-   `[ISO 时间] drag-end reason=<pointerup|pointercancel|lostcapture|stale|destroyed> pos=(x,y) size=(w,h)`（`size` = 拖动结束时刻的实测尺寸——AC8 关心的正是该时刻）；
+   `[ISO 时间] drag-end reason=<pointerup|pointercancel|lostcapture|stale|destroyed> pos=(x,y) size=(w,h)`（`size` = 拖动结束时刻的实测尺寸；**本行不是 AC8 的取证点**——AC8 取证点 = `pet-geometry.log` 的 `geom tag=drag-end` 行；本行的 `size` 是终止时刻读数、可能早于**松手收口**的那一次校准——`docs/design/PET-MULTIMONITOR.md` §2.3.5-C 调用点⑦）；
    `[ISO 时间] probe pos=(x,y) size=(w,h)`——`drag-end` 后 `PET_DRAG_PROBE_MS`（250ms > NFR-2 的 200ms 上限）追加一条**静态探针行**，使 AC3 可伪证（否则「drag-end 之后不再有位置行」因「位置行只在拖动期间写入」而结构性恒真）；`reason=destroyed`（窗口已销毁，`getPosition()` 不可用）时跳过该行，并在 `drag-end` 行注明。
    `applied` 由 `petWindow.getPosition()` 读取（仅在日志开启时采样，避免常态开销）。
 2. **手工验证清单**：按 §3.2 逐条执行并记录结果（含 AC5–AC8 的回归项）。
 3. **静态核对**：改动后核对「拖动路径上不再出现**逐事件**的同步 `getSize()`（根因 B；拖动循环的尺寸检查已收敛为 `fixPetWindowSize()`、每 8 tick 一次——口径见 §2.2.9）」「拖动路径不再出现 `setIgnoreMouseEvents(true)`」「窗口自主位移的唯一来源（散步循环 `doWander` / `moveTimer`）在拖动态被守卫覆盖」。
+   > **指针（本项时效边界；2026-09-16 加）**：`fixPetWindowSize()` 自 B03 起已被 `petCalibrateSize()` 取代、拖动循环内每 8 tick 的尺寸断言亦已删除——尺寸写入纪律见 `docs/design/PET-MULTIMONITOR.md` §2.3.5；本项描述的是 **B01 时期机制**，保留作历史。
 4. **语法门**：`node --check main.js`、`node --check pet.js`、`node --check pet-preload.js`（本仓无 lint / test script，此为可用的最小机械门）。
 5. **跟随周期分布实测**：取日志相邻采样行的时间戳差 ÷ 16 得平均 tick 周期——标称 `PET_DRAG_TICK_MS = 8`，允许 +2ms 内偏差（平均周期 ≤ 10ms，口径见 §2.2.6）。
 
@@ -325,3 +365,11 @@
 | 2026-09-16 | 修正轮（设计评审发现落地·验收判据）：AC1 判定改用新增 `off` 列直接度量 ≤2px 偏移；AC3 增 `drag-end` 后 250ms `probe` 行使判定可伪证、`drag-end` 行增 `size` 字段（AC8 取证点）；AC4 改用 `wrote` 列计数；TC-3 改写为瞬态用例。 |
 | 2026-09-16 | 修正轮 round 2（判据可证伪性）：AC2 判据改为与 128ms 采样粒度自洽的口径——全程 `off` ≤ 2px，且相邻采样行不存在「`cursor` 已变而 `applied` 未变」的对（替代原「无 >100ms 的目标停滞」——原阈值低于采样分辨率，不可证伪）；TC-3 预期输出同步改同源口径（替代原「无 >100ms 的写入间隔」），并把「`off` 峰值随即回落」写成可机判读法（`off` > 2px 的采样行的下一采样行须回落至 ≤2px）。US-2 语义与「不做钳制」边界均不动。 |
 | 2026-09-16 | 修正轮（可读性形态）：§2.3 受影响文件表 `main.js` 行的改动点长单元格（310 字符）下沉为表下「注 M1」条目注，表格行改留节内指针——全档行宽机检 >300 字符行为 0；纯形态重排，内容、编号与行号引用零删减，无语义改动。 |
+| 2026-09-16 | 收口轮（文档 ⇄ 已交付代码对齐；纯事实更正，无语义改动）：§2.2.2 的 `pet-drag-end` 载荷由「无」更正为 `reason?`（可选，缺省 `pointerup`），并补「reason 为何须由渲染层提供」说明（消除与 §3.3 的机制级矛盾）；§2.3 末行数列改按交付后实测（`main.js` 1985 / `pet.js` 185 / `pet-preload.js` 15）并新增注 M2 如实登记超预算归因；§2.2.4 补 `tick` 字段与 `pet-clicked` 清空点；§2.5 观察项 F4 同步为 1985 行。 |
+| 2026-09-16 | 计数口径修正（主 agent 裁定「行数 = 换行符计数（`\n` 计数，不把尾换行计为一行）」）：§2.3 受影响文件表 `pet.html` 行的当前行数与末行数由 92 一并订正为 91，表下补行数口径声明；纯事实更正，无语义改动。 |
+| 2026-09-16 | 判据口径同步（B03 R3 连锁；源 = 主 agent 裁定）：§3.1 AC8 的实现口径由「保持 250×270」改为「窗口尺寸与锚点基线之差 ≤ `PET_SIZE_TOLERANCE_DIP`（8 DIP）」，权威口径与实证依据 = `docs/design/PET-MULTIMONITOR.md` §2.3.5-A/E 与 §2.2「E6 的实证收口」（Q1–Q3）（只引用不重述）；§3.2 TC-12 预期输出改同源口径；§3.3 `size` 列补判据口径指针。判据语义（尺寸不发生可见漂移、拖动后不出现回拉跳动）不变。 |
+| 2026-09-16 | 评审前档面对齐（源 = 主 agent 裁定；无语义改动）：§2.2.9 末尾加指针——尺寸判据口径与写入纪律自 B03 起由 `docs/design/PET-MULTIMONITOR.md` §2.3.5 承载（`fixPetWindowSize()` 已被 `petCalibrateSize()` 取代），本节保留作 B01 时期历史；§3.1 AC8 注与本变更记录原引用的实证范围收窄为 Q1–Q3（Q4 属换算面观察项，见 `docs/design/PET-MULTIMONITOR.md` §2.5 F7）；相对指针改显式文档指针（D4）。 |
+| 2026-09-16 | 跨档指针（B03 设计评审修正轮；只加指针、机制原文不动）：§2.2.4 补 `petDrag.sizeCheckCounter` 自 B03 起已删除的**字段时效指针**；§2.2.6 补 `PET_DRAG_SIZE_CHECK_TICKS` 自 B03 起已删除的**常量时效指针**（两处均指向 `docs/design/PET-MULTIMONITOR.md` §2.3.5）；§3.1 AC8 注补 `drag-end` 行的**发射时点**指向（落点解析与尺寸校准完成之后）。 |
+| 2026-09-16 | 跨档指针补全（B03 收尾修正轮；只加指针、机制原文不动）：§3.3 静态核对第 3 项补**时效指针**——`fixPetWindowSize()` 自 B03 起已被 `petCalibrateSize()` 取代、每 8 tick 的尺寸断言已删除，尺寸写入纪律指向 `docs/design/PET-MULTIMONITOR.md` §2.3.5（理由：该处与尚未实施的代码仍相符，实施后即成事实错误）。 |
+| 2026-09-16 | 收口前档面对齐（源 = 主 agent 裁定；无语义改动）：§3.1 AC8 判定 cell 与 AC8 注补**取证点的日志面与行类型**（= `pet-geometry.log` 的 `geom tag=drag-end` 行，**非** `pet-drag.log` 的 `drag-end` 生命周期行；权威源 = `docs/design/PET-MULTIMONITOR.md` §3.3 发射规则 ②）；§3.1 取证点时点行与 §3.3 的 `size` 列义同源改称；§3.3 生命周期行删去「AC8 关心的正是该时刻」的误导断言。 |
+| 2026-09-16 | 跨档指针补全（B03 第 10 轮连锁；只加指针、机制原文不动；类别 = **非机制变更**）：§2.2.9 的 `setSize(250, 270)` 写入口径加**时效指针**——该口径自 B03 第 10 轮起已废（写入改 `setBounds`，理由 = `resizable: false` 下 `setSize` 只放大不缩小），权威口径 = `docs/design/PET-MULTIMONITOR.md` §2.3.5-C 第 5 步与 §2.5 DD-21。 |

@@ -117,6 +117,7 @@
     .badge.official { color: #7ab0ff; border-color: #2d4a7a; background: rgba(79,142,247,.1); }
     .badge.builtin { color: #4cd4c3; border-color: #1f5f58; background: rgba(55,182,168,.1); }
     .badge.github { color: #d29922; border-color: #6b5415; background: rgba(210,153,34,.08); }
+    .badge.upd { color: var(--accent); border-color: #2d4a7a; background: rgba(79,142,247,.12); }
     .card-desc { color: var(--text-dim); font-size: 13px; min-height: 42px; }
     .card-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; }
     .installed-tag { color: var(--ok); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
@@ -172,6 +173,7 @@
       <span><span class="dot" id="src-dot"></span><span id="src-text">加载中…</span></span>
       <span id="count-text"></span>
       <span id="installed-count"></span>
+      <button class="btn" id="update-all" hidden>全部更新</button>
     </div>
   </header>
 
@@ -201,5 +203,6 @@
   <div class="toast-wrap" id="toasts"></div>
 
   <script src="market.js"></script>
+  <script src="market-update.js"></script>
 </body>
 </html>

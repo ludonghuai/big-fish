@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; style-src 'self' 'unsafe-inline';">
+  <title>更新 Bigfish</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel2: #1e222b;
+      --border: #2a2f3a;
+      --text: #e8eaf0;
+      --text-dim: #9aa3b2;
+      --accent: #4f8ef7;
+      --danger: #e5534b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+    header {
+      padding: 13px 18px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      flex-shrink: 0;
+    }
+    h1 { font-size: 16px; font-weight: 600; }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 14px;
+      padding: 18px 22px;
+    }
+    .status-text { font-size: 14px; min-height: 22px; }
+    .progress-wrap { display: flex; align-items: center; gap: 12px; }
+    .progress-bar {
+      flex: 1;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .progress-fill { height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .2s; }
+    .percent-text { font-size: 13px; color: var(--text-dim); min-width: 44px; text-align: right; }
+    .elapsed { font-size: 12px; color: var(--text-dim); }
+    .btn-row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+    .btn {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 7px 16px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn:hover { background: #262c38; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: #3f7ce4; }
+    .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header><h1 id="heading">更新 Bigfish</h1></header>
+  <main>
+    <div class="status-text" id="status-text">正在准备…</div>
+    <div class="progress-wrap hidden" id="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="percent-text" id="percent-text"></div>
+    </div>
+    <div class="elapsed hidden" id="elapsed"></div>
+    <div class="btn-row">
+      <button class="btn hidden" id="retry-btn">重试</button>
+      <button class="btn hidden" id="cancel-btn">取消</button>
+      <button class="btn primary hidden" id="install-btn">安装并重启</button>
+      <button class="btn hidden" id="close-btn">关闭</button>
+    </div>
+  </main>
+  <script src="update.js"></script>
+</body>
+</html>

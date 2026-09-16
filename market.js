@@ -34,6 +34,7 @@ let state = {
   search: '',
   source: 'none',
   busy: false,
+  updates: [],          // 可更新插件（主进程算好下发，按 id 匹配）
 };
 
 // ---------------------------------------------------------------------------
@@ -207,7 +208,7 @@ function renderTabs() {
     if (c === 'all') b.textContent = '全部';
     else if (c === 'installed') b.textContent = '已安装 (' + installedCount + ')';
     else b.textContent = CATEGORY_LABELS[c] || c;
-    b.onclick = () => { state.category = c; renderTabs(); renderGrid(); };
+    b.onclick = () => { state.category = c; renderTabs(); renderGrid(); renderStatus(); };
     tabs.appendChild(b);
   }
 }
@@ -233,6 +234,7 @@ function renderCard(p) {
   if (p.official) meta.appendChild(el('span', 'badge official', 'Bigfish 官方'));
   if (p.bundled) meta.appendChild(el('span', 'badge builtin', '内置离线'));
   if (p.isGitHub) meta.appendChild(el('span', 'badge github', 'GitHub'));
+  if (updOf(p)) meta.appendChild(el('span', 'badge upd', '可更新'));
   meta.appendChild(el('span', '', p.owner || ''));
   if (p.stars > 0) meta.appendChild(el('span', '', '★ ' + p.stars));
   titleWrap.appendChild(meta);
@@ -265,6 +267,7 @@ function renderCard(p) {
     const toggleBtn = el('button', 'btn', disabled ? '启用' : '禁用');
     toggleBtn.onclick = () => (disabled ? onEnable(p) : onDisable(p));
     foot.appendChild(toggleBtn);
+    if (updOf(p)) { const b = el('button', 'btn', '更新'); b.onclick = () => doUpdate(updOf(p)); foot.appendChild(b); }
     const btn = el('button', 'btn danger', '卸载');
     btn.onclick = () => onUninstall(p);
     foot.appendChild(btn);
@@ -424,10 +427,10 @@ async function refreshState() {
   try {
     const s = await api.state();
     state.installed = s.installed || [];
-    state.disabled = s.disabled || [];
+    state.disabled = s.disabled || []; if (Array.isArray(s.updates)) state.updates = s.updates; // 更新后徽标即时消失
     state.bundledNames = s.bundledNames || [];
     renderTabs();
-    renderGrid();
+    renderGrid(); renderStatus();
   } catch (err) {
     console.error('[market] state refresh error', err);
   }
@@ -440,6 +443,7 @@ async function refresh() {
     state.installed = data.installed || [];
     state.disabled = data.disabled || [];
     state.bundledNames = data.bundledNames || [];
+    state.updates = data.updates || [];
     state.source = data.registry.source;
     const raw = data.registry.plugins || [];
     const norm = raw
@@ -470,10 +474,12 @@ async function refresh() {
 function renderStatus() {
   const dot = document.getElementById('src-dot');
   const txt = document.getElementById('src-text');
-  const srcMap = { remote: ['online', '在线目录（awesome-dsh-plugin 全量）'], mirror: ['local', '精选镜像目录（GitHub）'], local: ['local', '内置目录（离线）'], none: ['none', '目录不可用'] };
+  const srcMap = { remote: ['online', '在线目录（awesome-dsh-plugin 全量）'], mirror: ['local', '精选镜像目录（Gitee）'], local: ['local', '内置目录（离线）'], none: ['none', '目录不可用'] };
   const [cls, label] = srcMap[state.source] || ['none', '未知来源'];
   dot.className = 'dot ' + cls;
   txt.textContent = label;
+  const updAll = document.getElementById('update-all');
+  if (updAll) { updAll.hidden = state.category !== 'installed' || state.updates.length === 0; updAll.textContent = '全部更新 (' + state.updates.length + ')'; }
   const installedCount = state.installed.filter((n) => !n.startsWith('@deepseek-ai/')).length;
   document.getElementById('installed-count').textContent = `已安装 ${installedCount} 个插件`;
 }
@@ -489,6 +495,6 @@ document.getElementById('refresh').onclick = () => refresh();
 document.getElementById('link-profile').onclick = () => {
   api.list().then((d) => api.openExternal('file:///' + String(d.profileDir).replace(/\\/g, '/')));
 };
-document.getElementById('link-repo').onclick = () => api.openExternal('https://github.com/turtle2209/Bigfish');
+document.getElementById('link-repo').onclick = () => api.openExternal('https://gitee.com/ludonghuai/big-fish');
 
 refresh();
