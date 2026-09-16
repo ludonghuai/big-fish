@@ -48,30 +48,75 @@ function setState(s) {
 }
 
 // drag to move; a click (no movement) summons the main window
+// 窗口位置由主进程按全局光标绝对定位推导（本层只识别起止、保活与穿透守卫）
 let dragging = false;
 let moved = false;
+let dragPointerId = null;
 let startX = 0;
 let startY = 0;
+let dragHeartbeatTimer = null;
+const PET_DRAG_KEEPALIVE_MS = 500;   // 心跳周期（定时器驱动，与鼠标事件无关）
 
-window.addEventListener('mousedown', (e) => {
+/** 停心跳定时器。 */
+function stopDragHeartbeat() {
+  if (dragHeartbeatTimer) { clearInterval(dragHeartbeatTimer); dragHeartbeatTimer = null; }
+}
+
+/** 起拖入口：pointerdown 与伪取消后的对称自愈共用（设计档 §2.2.4.1）。 */
+function beginDrag(e) {
   dragging = true;
   moved = false;
   startX = e.screenX;
   startY = e.screenY;
   document.body.style.cursor = 'grabbing';
-  window.petAPI.dragStart(startX, startY);
-});
-window.addEventListener('mousemove', (e) => {
-  if (!dragging) return;
-  if (Math.abs(e.screenX - startX) + Math.abs(e.screenY - startY) > 5) moved = true;
-  window.petAPI.dragMove(e.screenX, e.screenY);
-});
-window.addEventListener('mouseup', () => {
-  if (dragging && !moved) window.petAPI.clicked();
-  else if (dragging && moved) window.petAPI.dragEnd();
+  // 自认为处于穿透态时先请求恢复可交互（异步 IPC 窗口期的防守，设计档 §2.2.7）
+  if (!lastInteractive) window.petAPI.setIgnoreMouse(false);
+  try { document.body.setPointerCapture(e.pointerId); dragPointerId = e.pointerId; } catch { dragPointerId = null; }
+  window.petAPI.dragStart();
+  stopDragHeartbeat();
+  dragHeartbeatTimer = setInterval(() => window.petAPI.dragHeartbeat(), PET_DRAG_KEEPALIVE_MS);
+}
+
+/** 清空拖动标志（不通知主进程）。 */
+function clearDragState() {
   dragging = false;
+  stopDragHeartbeat();
   document.body.style.cursor = 'grab';
+  if (dragPointerId !== null) {
+    try { document.body.releasePointerCapture(dragPointerId); } catch { /* 已隐式释放 */ }
+    dragPointerId = null;
+  }
+}
+
+/** 拖动结束：清标志并通知主进程终止跟随（reason ∈ pointerup|pointercancel|lostcapture）。 */
+function endDrag(reason) {
+  if (!dragging) return;
+  clearDragState();
+  window.petAPI.dragEnd(reason);
+}
+
+window.addEventListener('pointerdown', (e) => beginDrag(e));
+window.addEventListener('pointermove', (e) => {
+  if (dragging) {
+    // 自愈：按键已松开（pointerup 丢失）→ 清标志；真拖动时通知主进程收尾
+    if (e.buttons === 0) { if (moved) endDrag('pointerup'); else clearDragState(); return; }
+    if (Math.abs(e.screenX - startX) + Math.abs(e.screenY - startY) > 5) moved = true;
+    return;
+  }
+  // 伪取消的对称自愈：仍按住 + 命中点在窗口内 → 重新起拖（设计档 §2.2.4.1）
+  if (e.buttons !== 0 && isInteractivePoint(e.clientX, e.clientY)) beginDrag(e);
 });
+window.addEventListener('pointerup', (e) => {
+  if (!dragging) return;
+  // 点击 / 拖动判定沿用既有语义：屏幕坐标位移 > 5px 判为拖动
+  if (moved) endDrag('pointerup');
+  else { clearDragState(); window.petAPI.clicked(); }
+  // 拖动结束：用松手时的命中点重算，恢复既有的动态穿透（设计档 §2.2.7）
+  applyInteractivity(e.clientX, e.clientY);
+});
+window.addEventListener('pointercancel', () => endDrag('pointercancel'));
+window.addEventListener('lostpointercapture', () => endDrag('lostcapture'));
+window.petAPI.onDragCancel(() => clearDragState());
 // 右键：在鲸鱼旁打开兑换窗口
 window.addEventListener('contextmenu', (e) => {
   e.preventDefault();
@@ -95,27 +140,37 @@ window.petAPI.onAffinity((a) => {
 // 点击穿透只在 Windows 上可靠；Linux 上开启会导致整个桌宠点不到。
 // 用 navigator.platform 判断（渲染进程里拿不到 process.platform）
 const isWindows = /Win/i.test(navigator.platform || '');
-if (isWindows) {
-  // Click-through: only the pet image and the visible bubble capture the mouse;
-  // the transparent surroundings pass clicks through to the desktop.
-  let lastInteractive = false;
-  function isInteractivePoint(x, y) {
-    const r = img.getBoundingClientRect();
-    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
-    if (bubble.classList.contains('show')) {
-      const br = bubble.getBoundingClientRect();
-      if (x >= br.left && x <= br.right && y >= br.top && y <= br.bottom) return true;
-    }
-    return false;
+// 渲染层自认为「当前命中点可交互」的状态——win32 穿透判定维护，拖动起止也要读它
+let lastInteractive = false;
+
+// Click-through: only the pet image and the visible bubble capture the mouse;
+// the transparent surroundings pass clicks through to the desktop.
+function isInteractivePoint(x, y) {
+  const r = img.getBoundingClientRect();
+  if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
+  if (bubble.classList.contains('show')) {
+    const br = bubble.getBoundingClientRect();
+    if (x >= br.left && x <= br.right && y >= br.top && y <= br.bottom) return true;
   }
+  return false;
+}
+
+/** 按命中点应用穿透状态（仅 win32 生效；主进程侧另有平台判定）。 */
+function applyInteractivity(x, y) {
+  if (!isWindows) return;
+  const interactive = isInteractivePoint(x, y);
+  if (interactive === lastInteractive) return;
+  lastInteractive = interactive;
+  window.petAPI.setIgnoreMouse(!interactive);
+}
+
+if (isWindows) {
   window.addEventListener('mousemove', (e) => {
-    const interactive = isInteractivePoint(e.clientX, e.clientY);
-    if (interactive !== lastInteractive) {
-      lastInteractive = interactive;
-      window.petAPI.setIgnoreMouse(!interactive);
-    }
+    if (dragging) return;   // 拖动期间不切换穿透（根因 A 的渲染层守卫）
+    applyInteractivity(e.clientX, e.clientY);
   });
   window.addEventListener('mouseleave', () => {
+    if (dragging) return;   // 拖动期间不切换穿透（根因 A 的渲染层守卫）
     if (lastInteractive) {
       lastInteractive = false;
       window.petAPI.setIgnoreMouse(false);

@@ -584,7 +584,12 @@ function createPetWindow() {
     // 新窗口加载完成立刻推送好感度，避免切换模式后条子显示 0
     broadcastAffinity();
   });
-  petWindow.on('closed', () => { petWindow = null; });
+  // 渲染进程异常退出 → 跟随循环终止（设计档 §2.2.6）
+  petWindow.webContents.on('render-process-gone', () => petStopDrag('destroyed'));
+  petWindow.on('closed', () => {
+    petStopDrag('destroyed'); // 窗口关闭路径终止拖动（设计档 §2.2.6）
+    petWindow = null;
+  });
 }
 
 /** 桌宠启用但窗口没了时，重建它（解决关窗后桌宠消失）。 */
@@ -600,6 +605,101 @@ function destroyPetWindow() {
   petBounceLeft = 0;
   if (petWindow && !petWindow.isDestroyed()) petWindow.destroy();
   petWindow = null;
+  petStopDrag('destroyed'); // 拖动跟随循环一并终止（幂等：clearPetTimers 已停过则此处 no-op）
+}
+
+// ---------------------------------------------------------------------------
+// Pet drag-follow — 主进程按全局光标绝对定位驱动窗口（设计档 docs/design/PET-DRAG.md §2.2）
+//   拖动开始时记抓取偏移 grabOffset = 光标 − 窗口位置；随后每 PET_DRAG_TICK_MS 读一次
+//   全局光标，按「光标 − grabOffset」推导目标位置，同目标去重后才写入（不做工作区钳制）。
+// ---------------------------------------------------------------------------
+const PET_DRAG_TICK_MS = 8;            // 标称跟随周期 ≈125Hz（JS 定时器粒度只会 ≥8ms，允许 +2ms 偏差）
+const PET_DRAG_SIZE_CHECK_TICKS = 8;   // 尺寸回拉频率：每 8 tick（≈64ms）一次
+const PET_DRAG_STALE_MS = 1800;        // 心跳失联阈值（NFR-2 的 2s 上限内留 200ms 余量）
+const PET_DRAG_PROBE_MS = 250;         // drag-end 后的静态探针延迟（> NFR-2 的 200ms 上限）
+const PET_DRAG_LOG_SAMPLE_TICKS = 16;  // 诊断日志采样频率：每 16 tick（≈128ms）一行
+const PET_DRAG_DEBUG = process.env.BIGFISH_PET_DEBUG === '1'; // 日志开关，默认关闭且关闭时零开销
+
+/** 追加一行拖拽诊断日志（尽力而为，先例：exchange.log）。 */
+function petDragLog(text) {
+  try {
+    const file = path.join(app.getPath('userData'), 'pet-drag.log');
+    fs.appendFileSync(file, `[${new Date().toISOString()}] ${text}\n`);
+  } catch { /* best effort */ }
+}
+
+/** 位置元组 → 日志文本 (x,y)。 */
+function petPosText(pos) { return `(${pos[0]},${pos[1]})`; }
+
+/**
+ * 拖动跟随状态（null = 未在拖动）。
+ * 设置点：pet-drag-start（先停旧再建新，幂等）；清空点：petStopDrag（唯一出口，全路径覆盖）。
+ * tick = 本次拖动的 tick 计数（仅用于日志采样节流，服务设计档 §3.3 的 16-tick 采样）。
+ */
+let petDrag = null;
+
+/** 尺寸回拉（Windows 偶发漂移的 workaround，单一实现）：不符即拉回 250×270。 */
+function fixPetWindowSize() {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const [cw, ch] = petWindow.getSize();
+  if (cw !== 250 || ch !== 270) petWindow.setSize(250, 270);
+}
+
+/** 终止拖动跟随（唯一清空点）：停循环 → 最终位置同步 + 尺寸回拉 → 日志/探针 → 兜底通知渲染层。 */
+function petStopDrag(reason) {
+  if (!petDrag) return;
+  const drag = petDrag;
+  petDrag = null;
+  clearInterval(drag.timer);
+  const alive = !!petWindow && !petWindow.isDestroyed();
+  if (alive) {
+    // 最终位置同步 + 尺寸回拉（AC8 的取证点＝拖动结束时刻的尺寸）
+    const cursor = screen.getCursorScreenPoint();
+    const target = [Math.round(cursor.x - drag.grabOffset.x), Math.round(cursor.y - drag.grabOffset.y)];
+    if (target[0] !== drag.lastApplied[0] || target[1] !== drag.lastApplied[1]) {
+      petWindow.setPosition(target[0], target[1]);
+      drag.lastApplied = target;
+    }
+    fixPetWindowSize();
+  }
+  if (PET_DRAG_DEBUG) {
+    petDragLog(alive
+      ? `drag-end reason=${reason} pos=${petPosText(petWindow.getPosition())} size=${petPosText(petWindow.getSize())}`
+      : `drag-end reason=${reason} pos=n/a size=n/a note=window-destroyed probe=skipped`);
+    // 静态探针：drag-end 后 250ms（> NFR-2 的 200ms 上限）再采一次，使 AC3 可伪证
+    if (alive && reason !== 'destroyed') {
+      setTimeout(() => {
+        if (!petWindow || petWindow.isDestroyed()) return;
+        petDragLog(`probe pos=${petPosText(petWindow.getPosition())} size=${petPosText(petWindow.getSize())}`);
+      }, PET_DRAG_PROBE_MS);
+    }
+  }
+  // 兜底终止（看门狗）时通知渲染层清拖动标志
+  if (reason === 'stale' && alive) petWindow.webContents.send('pet-drag-cancel');
+}
+
+/** 跟随循环的一个 tick：看门狗 → 读全局光标 → 推导目标 → 同目标去重写入 → 尺寸回拉 → 采样日志。 */
+function petDragTick() {
+  if (!petDrag) return;
+  if (!petWindow || petWindow.isDestroyed()) { petStopDrag('destroyed'); return; }
+  const drag = petDrag;
+  if (Date.now() - drag.lastMessageAt > PET_DRAG_STALE_MS) { petStopDrag('stale'); return; }
+  const cursor = screen.getCursorScreenPoint();
+  const target = [Math.round(cursor.x - drag.grabOffset.x), Math.round(cursor.y - drag.grabOffset.y)];
+  let wrote = 0;
+  if (target[0] !== drag.lastApplied[0] || target[1] !== drag.lastApplied[1]) {  // 同目标去重
+    petWindow.setPosition(target[0], target[1]);
+    drag.lastApplied = target;
+    wrote = 1;
+  }
+  drag.tick++;
+  if (++drag.sizeCheckCounter >= PET_DRAG_SIZE_CHECK_TICKS) { drag.sizeCheckCounter = 0; fixPetWindowSize(); }
+  if (PET_DRAG_DEBUG && drag.tick % PET_DRAG_LOG_SAMPLE_TICKS === 0) {
+    const applied = petWindow.getPosition();
+    const delta = [target[0] - applied[0], target[1] - applied[1]];
+    const off = [Math.round(cursor.x - (applied[0] + drag.grabOffset.x)), Math.round(cursor.y - (applied[1] + drag.grabOffset.y))];
+    petDragLog(`tick cursor=${petPosText([cursor.x, cursor.y])} target=${petPosText(target)} applied=${petPosText(applied)} delta=${petPosText(delta)} off=${petPosText(off)} wrote=${wrote} size=${petPosText(petWindow.getSize())}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -622,6 +722,7 @@ function clearPetTimers() {
   clearTimeout(chatterTimer);
   clearInterval(moveTimer);
   wanderTimer = sleepTimer = eatTimer = moveTimer = chatterTimer = null;
+  petStopDrag('destroyed'); // 拖动跟随循环同样是桌宠定时器，一并终止（NFR-2：异常路径也清空）
 }
 
 function setPetState(state) {
@@ -664,7 +765,8 @@ function petMaxX() {
  * 20% 概率跑步（更快更远）；脱手逃跑（petForceRun）强制跑步。
  */
 function doWander() {
-  if (!petWindow || petWindow.isDestroyed() || petState !== 'idle') {
+  // 拖动态守卫：任何来源的散步都不得在拖动中移动窗口（根因 D）
+  if (!petWindow || petWindow.isDestroyed() || petState !== 'idle' || petDrag !== null) {
     scheduleWander();
     return;
   }
@@ -699,9 +801,8 @@ function doWander() {
     const t = Math.min(1, (Date.now() - startTime) / duration);
     const nx = Math.round(startX + (targetX - startX) * t);
     petWindow.setPosition(nx, y);
-    // 保险：Windows 偶尔会让 setPosition 后的窗口尺寸漂移，随手拉回固定值
-    const [cw, ch] = petWindow.getSize();
-    if (cw !== 250 || ch !== 270) petWindow.setSize(250, 270);
+    // 保险：Windows 偶尔会让 setPosition 后的窗口尺寸漂移，随手拉回固定值（调用频率不变）
+    fixPetWindowSize();
     if (t >= 1) {
       clearInterval(moveTimer);
       moveTimer = null;
@@ -1724,33 +1825,36 @@ if (!gotLock) {
     if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
   });
 
-  // Pet drag + click
-  let petDragStartScreen = null;
-  let petDragStartPos = null;
-  ipcMain.on('pet-drag-start', (_e, { x, y }) => {
-    if (!petWindow) return;
+  // Pet drag + click（拖动移动由主进程按全局光标绝对定位驱动，设计档 PET-DRAG §2.2）
+  ipcMain.on('pet-drag-start', () => {
+    if (!petWindow || petWindow.isDestroyed()) return;
     // 用户开始拖动：立即停掉走动动画，避免瞬移
     if (moveTimer) { clearInterval(moveTimer); moveTimer = null; }
     if (petState === 'walk-left' || petState === 'walk-right' || petState === 'run-left' || petState === 'run-right') setPetState('idle');
-    // 停下后重新安排下一次散步（不阻断后续走动）
-    scheduleWander();
-    petDragStartScreen = { x, y };
-    petDragStartPos = petWindow.getPosition();
+    // 清除待发的散步（根因 D：原实现在此处调 scheduleWander()，拖动中会被自主走动抢占窗口）
+    clearTimeout(wanderTimer);
+    wanderTimer = null;
+    if (petDrag) { clearInterval(petDrag.timer); petDrag = null; } // 幂等：先停旧再建新
+    const cursor = screen.getCursorScreenPoint();
+    const pos = petWindow.getPosition();
+    petDrag = {
+      grabOffset: { x: cursor.x - pos[0], y: cursor.y - pos[1] },
+      timer: setInterval(petDragTick, PET_DRAG_TICK_MS),
+      lastApplied: [pos[0], pos[1]],
+      sizeCheckCounter: 0,
+      tick: 0,
+      lastMessageAt: Date.now(),
+    };
+    if (PET_DRAG_DEBUG) petDragLog(`drag-start grabOffset=${petPosText([petDrag.grabOffset.x, petDrag.grabOffset.y])} pos=${petPosText(pos)}`);
   });
-  ipcMain.on('pet-drag-move', (_e, { x, y }) => {
-    if (!petWindow || !petDragStartScreen || !petDragStartPos) return;
-    petWindow.setPosition(
-      petDragStartPos[0] + (x - petDragStartScreen.x),
-      petDragStartPos[1] + (y - petDragStartScreen.y),
-    );
-    // 保险：拖动后拉回固定尺寸（Windows 偶发尺寸漂移）
-    const [cw, ch] = petWindow.getSize();
-    if (cw !== 250 || ch !== 270) petWindow.setSize(250, 270);
+  ipcMain.on('pet-drag-heartbeat', () => {
+    // 心跳由渲染层定时器驱动：事件驱动的心跳会在长按不动时静默 → 被看门狗误判失联
+    if (petDrag) petDrag.lastMessageAt = Date.now();
   });
-  ipcMain.on('pet-drag-end', () => {
+  ipcMain.on('pet-drag-end', (_e, reason) => {
+    // reason 由渲染层给出（pointerup / pointercancel / lostcapture）；缺省按 pointerup
+    petStopDrag(/^(pointerup|pointercancel|lostcapture)$/.test(reason) ? reason : 'pointerup');
     if (!petWindow || petWindow.isDestroyed()) return;
-    petDragStartScreen = null;
-    petDragStartPos = null;
     // 脱手：如果鲸鱼娘被拖到墙壁边缘，她会挣脱并往反方向跑
     const maxX = petMaxX();
     const [x] = petWindow.getPosition();
@@ -1766,6 +1870,8 @@ if (!gotLock) {
     }
   });
   ipcMain.on('pet-clicked', () => {
+    // 原地点击也起过跟随循环（按下即起）——点完即止，保证拖动状态在所有路径下清空
+    petStopDrag('pointerup');
     wakePet();
     toggleMainWindow();
     petSay('要我帮忙吗？');
@@ -1785,6 +1891,8 @@ if (!gotLock) {
   ipcMain.on('pet-set-ignore-mouse', (_e, ignore) => {
     // 点击穿透只在 Windows 上可靠；Linux 上一旦开启整条鱼都点不到
     if (process.platform !== 'win32') return;
+    // 拖动期间拒绝「开启穿透」：穿透会切断事件流（根因 A 的主进程侧防守，设计档 §2.2.7）
+    if (ignore && petDrag) return;
     if (petWindow && !petWindow.isDestroyed()) {
       petWindow.setIgnoreMouseEvents(ignore, { forward: true });
     }
