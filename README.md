@@ -157,5 +157,8 @@ Bigfish 遵循 DeepSeek Harness 官方 Cordis 插件体系：
   作者 GitHub：[s17179XTY](https://github.com/s17179XTY)，MIT 协议，
   详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
 - 插件市场在线目录来自 [awesome-dsh-plugin](https://awesome-dsh-plugin.com) 社区
+- 桌宠视频动画素材与动画链机制参考自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)
+  （作者 **PC2005-cloud**；素材许可 = 允许开源使用、**禁止商用**，本仓非商用 ⇒ 可用；
+  转商用须先替换为自产素材或取得原作者授权）——详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
 - DeepSeek Harness 本体：[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）
 - 详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)

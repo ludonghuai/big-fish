@@ -49,7 +49,7 @@
 | C8 | `pet.js` / `pet.html` / `pet-preload.js` 为 B01 活跃文件，本批不触碰（托盘菜单在 `main.js` 侧） | 批次档 §1.7 |
 | C9 | **B04：修复须覆盖全链**——激活 / 回滚 / 清理 / 启动清理四处同源机制（都以目录改名或删除实现）一并修正，仅修激活点会留下同族缺陷 | `updater.js:336-345`（激活）、`updater.js:411-422`（回滚）、`updater.js:425-433`（清理）、`updater.js:436-451`（启动清理）——设计者亲读 |
 | C10 | **B04：测试层须补「激活后对活跃路径复测」**——本缺陷的漏检根因 = 既有冒烟只在安装面（`staging`）验，切换后再未校验实际解析结果 | `updater.js:318-329`（`harnessSmoke` 只跑 `paths.staging`）；`docs/batches/B04-harness-activate-fix.md` §1.4 裁定 2 |
-| C11 | **B04：零新依赖**（`dependencies` 保持空**对象** `{}`）；**不改需求档**（AC9 条文不变，只细化判定面） | `package.json:23`（`"dependencies": {}`）；`docs/batches/B04-harness-activate-fix.md` §1.4 裁定 3 / §1.1 |
+| C11 | **B04：零新依赖**（`dependencies` 保持空**对象** `{}`）；**不改需求档**（AC9 条文不变，只细化判定面） | `package.json:27`（`"dependencies": {}`；行号只作 as-of 参考）；`docs/batches/B04-harness-activate-fix.md` §1.4 裁定 3 / §1.1 |
 | C12 | **B04：`dshBinPath()` 对外语义不变**——打包版优先 userData 副本、出厂副本兜底；dev 分支不变 | `main.js:130-138`（现行实现）；设计处理见 §2.2.1「Harness 版本读数」（副本落点变化属实现形态，语义不变） |
 | C13 | **B05：写入 / 删除面仍限 `userData`**（NFR-2）——回收只作用于 `userData/updates/`，不触碰安装目录、`~/.dsh`、系统临时目录 | `docs/batches/B05-installer-cleanup.md` §1.7；下载唯一落点 = `updater.js:118-120`（全仓 grep 字面量 `'updates'` 仅 `updater.js:118`（下载落点）与 `updater.js:462`（清理面）两处——设计者亲 grep） |
 | C14 | **B05：`updater.js` 单函数 <300 行、文件 <500 行**（B04 终态 486 行——本批只能小幅增量） | `updater.js` 实测 486 行（`find /c /v ""` 口径；B05 实施起点）；`startupCleanup` 现状 15 行 |
@@ -334,7 +334,7 @@ downloadApp（用户点「立即更新」后，main.js 打开更新窗口并调�
 
 installApp（用户点「安装并重启」）:
   win32：spawn(安装器, [], {detached:true, stdio:'ignore'}) → quitting=true → 800ms 后 app.quit()
-  （先例：uninstall() main.js:302-315；NSIS runAfterFinish=true 已配置，package.json:85，装完自动拉起新版）
+  （先例：uninstall() main.js:302-315；NSIS runAfterFinish=true 已配置，`package.json:110`（行号只作 as-of 参考），装完自动拉起新版）
   darwin/linux：shell.openPath(安装包)（打开 dmg/AppImage，不自动退出；不承诺专项验证，NFR-3）
 
 up-to-date（manual）：气泡『已是最新版本』
@@ -561,10 +561,10 @@ node make-latest.js [--version <v>] [--note <文本>]
 
 #### 2.2.10 内置 bundle（出厂冻结树）的钉版与刷新路径（B08）
 
-**对象**：仓内 `dsh-bundle/`——打包时经 `package.json:81-94` 的 `extraResources`（`dsh-bundle/node_modules` → `<resources>/dsh/node_modules`）复制进安装包，由 `dshBinPath()`（`shell-backend.js:89-99`）在**无活跃指针**时兜底使用。
+**对象**：仓内 `dsh-bundle/`——打包时经 `package.json:83-96` 的 `extraResources`（`dsh-bundle/node_modules` → `<resources>/dsh/node_modules`；行号只作 as-of 参考）复制进安装包，由 `dshBinPath()`（`shell-backend.js:89-99`）在**无活跃指针**时兜底使用。
 
 - 使用场景（用户侧）：① 新装首次启动（尚无指针）；② 已发布的旧安装包（内置旧版）在其用户主动更新前的首次启动。有活跃指针时解析走指针副本，内置树不参与（B06 F5 后 dev 与打包同口径）。
-- 与「打包版冻结树」的关系：二者是**同一棵树**——打包把仓内 `dsh-bundle/node_modules` 原样复制为 `<resources>/dsh/node_modules`（`package.json:91-93`）。
+- 与「打包版冻结树」的关系：二者是**同一棵树**——打包把仓内 `dsh-bundle/node_modules` 原样复制为 `<resources>/dsh/node_modules`（`package.json:93-94`——复制块 from/to 两行；行号只作 as-of 参考）。
 
 **三条口径（源 = `docs/batches/B08-dsh-bundle-version.md` §1.8；口径 1 的时点定义见下）**
 
@@ -593,9 +593,12 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
     ④ cwd=dsh-bundle 跑 npm install --omit=dev --save-exact --no-audit --no-fund [--registry <url>]
     ⑤ 冒烟：node dsh-bundle/node_modules/@deepseek-ai/dsh/lib/bin.js --version → 退出 0 且输出含 target
        （--version 支持面：dsh-bundle/node_modules/@deepseek-ai/dsh/lib/bin.js:77）
+       （**已知窄面（B08 收口轮登记）**：判据 = **子串匹配**（逐字忠于口径原文「输出含 target」）⇒ 仅「⑥ 锁自洽通过、而树实为**含该串的异版本**」这一窄面会误判通过（例：target `0.1.5-rc.1`、实装 `0.1.5-rc.10`）——**已知取舍，非漏洞**；本批不收紧匹配宽度）
     ⑥ 自洽断言：锁文件根依赖串与 node_modules/@deepseek-ai/dsh 条目版本 == target
     ⑦ 摘要行（每次运行恒在场）：
        bundle refresh action=<refresh|none|repair|repair-fail> pin=<pin0> -> <new> tag=<tag> registry=<source> lock=<bytes>
+       （`--check` 面取值 = 本四值域的**子集**，**不新增第五值**：`none` = 已最新且锁自洽 / `refresh` = 落后 / `repair` = 锁自洽不过；
+       失败面（取版本失败 / 参数错等）= 退出码 2 + `detail=<原因>`；`repair-fail` 属刷新面，`--check` 面不产出）
   幂等与修复面（无论钉版是否已最新，⑤⑥ 均为可达面）：
     ②b target == pin0 且 ⑤⑥ 通过 → 幂等空操作（action=none、退出码 0、两文件零 diff）
     ②c target == pin0 但 ⑤⑥ 不过 → 修复：重跑 ④（同钉版安装）后复跑 ⑤⑥
@@ -615,7 +618,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
   `npm ci` 全量复现 = **可选强证据**（分钟级 + 下载量；§3.3 出批项）。
 - **产物链：仓内树 → 安装包内的树（修正轮 1 补全）**
   - `dsh-bundle/node_modules` 被 `.gitignore:1`（`node_modules/`）忽略 ⇒ **不随仓**；随仓的只有 `dsh-bundle/package.json` 与 `dsh-bundle/package-lock.json`。
-  - 装入安装包的树由 `package.json:91-93` 的 `extraResources`（`dsh-bundle/node_modules` → `<resources>/dsh/node_modules`）从**构建机**的仓内目录原样复制。
+  - 装入安装包的树由 `package.json:93-94` 的 `extraResources`（`dsh-bundle/node_modules` → `<resources>/dsh/node_modules`；复制块 from/to 两行 · 行号只作 as-of 参考）从**构建机**的仓内目录原样复制。
   - 构建机上该树的生成者 = `scripts/ensure-deps.js:72-73`（挂载点 = `package.json:14` 的 postinstall `--bundle-only` / `:15` 的 prestart）：**仅在 `bin.js` 不存在时**跑 `npm install --omit=dev --no-audit --no-fund`——是 `install` **不是** `ci`；树已存在则不重装、不触碰锁。
   - 分工：`ensure-deps.js` = 「树缺失才补」（目的 = 树存在；构建期 / 克隆后）；本脚本 ④ = 「显式刷新时改写钉版 + 锁 + 树」（目的 = 版本前移）。两者写**同一目录**，**不得同时执行**；刷新必须先于打包完成（口径 1）。
   - 未证明面（如实登记）：构建机上树缺失时由 `npm install` 按锁解算重建，**可能与刷新验过的树不同** ⇒ §2.5 L14；本批**不设**「刷新验过的树 == 打包进的树」判据。
@@ -659,11 +662,14 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 | 文件 | 当前行数（实测，2026-09-17） | 改动点（B08） | 预计改动量 | 末行数 |
 |---|---|---|---|---|
 | `dsh-bundle/package.json` | 9 | 钉版 `:7` 改为刷新所得精确版本 | 1 行值变更 | 9 |
-| `dsh-bundle/package-lock.json` | 8064（313,029 字节） | 随刷新重写（`@deepseek-ai/dsh` 及其依赖闭包的 version / resolved / integrity 面） | diff 预估 1000–2500 行（见下块） | 预估 8000–9800（实测回填批次档 §5） |
-| `scripts/refresh-dsh-bundle.js` | 0（新增） | 刷新路径 + 只读判定（契约 = §2.2.10） | +约 110 | 约 110 |
+| `dsh-bundle/package-lock.json` | 8064（313,029 字节） | 随刷新重写（`@deepseek-ai/dsh` 及其依赖闭包的 version / resolved / integrity 面） | diff 预估 1000–2500 行（**实测 8463 变更行** = +4486 / −3977——见下块） | **8573**（实测） |
+| `scripts/refresh-dsh-bundle.js` | 0（新增） | 刷新路径 + 只读判定（契约 = §2.2.10） | +约 110 | **290**（实测；行宽 >300 = 0） |
 | `package.json` | 128 | `scripts` 增 `bundle:refresh` / `bundle:check` 两行 | +2 | 130 |
-| `docs/requirements/UPDATE.md` | 153 | 新增 US-11 / US-12 / NFR-5 + §二 范围 + §三 编号来源 + 头部关联 + 变更记录；**修正轮 1**（US-11 操作性定义 · US-12 防复发 ①② · NFR-4 / NFR-5 形态与定义订正） | +约 33 | 186（实测） |
-| `docs/design/AUTO-UPDATE.md`（本档） | 855 | B08 修订面（§一 / §2.1 选型 I / §2.2.1 / §2.2.10（新增）/ §2.3 / §2.4 / §2.5 / §2.6 / §3.1–§3.3 / §四）；**修正轮 1**（§2.1 R2 · §2.2.10 · §2.3 口径注 · §2.4 DD-23/26 · §2.5 L11–L15 · §3.1 注 B08-1/2/5/6 · §3.2 TC-35/39/41/42/44 · §3.3 · §四） | +约 186 | 1041（实测；其中修正轮 1 = +45） |
+| `docs/requirements/UPDATE.md` | 153 | 新增 US-11 / US-12 / NFR-5 + §二 范围 + §三 编号来源 + 头部关联 + 变更记录；**修正轮 1**（US-11 操作性定义 · US-12 防复发 ①② · NFR-4 / NFR-5 形态与定义订正） | +约 33 | 187（实测；收口轮 +1） |
+| `docs/design/AUTO-UPDATE.md`（本档） | 855 | B08 修订面（§一 / §2.1 选型 I / §2.2.1 / §2.2.10（新增）/ §2.3 / §2.4 / §2.5 / §2.6 / §3.1–§3.3）；**修正轮 1**（§2.1 R2 · §2.2.10 · §2.3 注 · §2.4 DD-23/26 · §2.5 L11–L15 · §3.1 注 B08-1/2/5/6 · §3.2 TC-35/39/41/42/44 · §3.3） | +约 186 | 1056（实测；修正轮 1 +45 · 收口轮 +15） |
+
+> **B08 实测回填（收口轮；源 = 批次档 §5.1 / §5.3）**：`dsh-bundle/package.json` = 9 行（钉版 `:7` = `0.1.5-rc.1` 精确串）· `dsh-bundle/package-lock.json` = **8573 行 / 348,259 字节**（585 条目，其中 584 带 `integrity`）；
+> `scripts/refresh-dsh-bundle.js` = **290 行** · 根 `package.json` = **130 行**；锁根依赖串与锁内 `@deepseek-ai/dsh` 条目版本均 = 钉版。本表「预计改动量」列照表口径保留预估值；实测值入「末行数」列与本节「锁文件 diff 量级」块。
 
 > **应用运行时代码零改动（AC18 静态判据）**：`main.js` **204** / `shell-update.js` **331** / `shell-backend.js` **322** / `updater.js` **497** / `harness-store.js` **332** / `update-lib.js` **90**（as-of 2026-09-17；`find /c /v ""` 口径）——本批不动任一 `.js`。
 
@@ -671,10 +677,14 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 
 > **B08 锁文件 diff 量级（实测基准 + 预期；§1.5 待决 ① 的结论）**
 >
-> - **基准（实测，2026-09-17）**：`dsh-bundle/package-lock.json` = **8064 行 / 313,029 字节**；`packages` 条目 **1106** 个，其中 `node_modules/@deepseek-ai/*` 条目 **258** 个；带 `integrity` 字段的条目仅 **339** 个（**767 个条目缺 `resolved` / `integrity`**）。
+> - **基准（实测，2026-09-17；`packages` 计数经收口轮复算更正）**：`dsh-bundle/package-lock.json` = **8064 行 / 313,029 字节**；`packages` 条目 **554** 个
+>   （原文记 1106——计数口径偏差，见下「实测回填」），其中 `node_modules/@deepseek-ai/*` 条目 **258** 个；带 `integrity` 字段的条目仅 **339** 个
+>   （**215 个条目缺** `resolved` / `integrity`——原文记 767 = 同一偏差的导出值）。
 > - **变更面下界**：`@deepseek-ai/*` 相关条目的 version（含 resolved / integrity）面 ≥ **258 行**；`@deepseek-ai/dsh` 的直接依赖由 **61** 项增至 **72** 项（实测注册表元数据：npmmirror `@deepseek-ai/dsh/0.1.5-rc.1` 的 `dependencies`），新增直接依赖的传递闭包另计。
-> - **重生成后补齐面（预估）**：若刷新所用的 npm 为全部条目补写 `resolved` / `integrity`，则再增 ≈ **1500 行**（2 × 767）——该差异的**成因未定**（现锁的缺字段形态与工具版本 / `.npmrc` 的关系**未验证**），登记为观察项，不据此设判据。
+> - **重生成后补齐面（预估）**：若刷新所用的 npm 为全部条目补写 `resolved` / `integrity`，则再增 ≈ **430 行**（2 × 215；原文记 1500 = 2 × 767，同一计数偏差）——该差异的**成因未定**（现锁的缺字段形态与工具版本 / `.npmrc` 的关系**未验证**），登记为观察项，不据此设判据。
 > - **结论（预期区间）**：diff **1000–2500 行**（占全档 12%–30%）；行数终值 **8000–9800**（≈ 基准 ±20%）。**实测值由批次档 §5 回填**。
+> - **实测回填（B08 收口轮；源 = 批次档 §5.3）**：实测 `git diff --numstat` = **+4486 / −3977 = 8463 变更行**（占全档 98.7%）——**超出**本块预期区间；终值 **8573 行 / 348,259 字节**（落在 8000–9800 内）。
+>   超区间成因（三条，均已实测）：① 基准数偏差（`packages` 实为 554，非 1106）；② `dsh-bundle/.npmrc` 的 `replace-registry-host=always` 使全部 `resolved` 主机被改写（带 `integrity` 条目 339 → 584）；③ 树被 re-flatten（嵌套条目 184 → 32）。
 > - **验收口径**：不按逐行读 diff 验收——按**结构性判据**（钉版自洽 + 形态检查 + `npm ci` / 等价校验 + 刷新后冒烟）；大 diff 的语义面小（版本串替换 + 条目增删）。
 
 > **注 M1 —— B02 交付时 `main.js` 改动点明细（①–⑩；历史记录，B04 改动点见表内本行）**
@@ -731,7 +741,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 | DD-11 | 开关 `autoCheckUpdates` 默认开；手动检查不受开关约束 | 用户原话要「自动」能力，默认开；AC7 的零网络指自动检查——手动是用户显式动作 | 默认关（与需求意图相悖）；开关连手动一起关（手动检查永远可用是 US-5 条文） |
 | DD-12 | 测试钩子 env 覆盖（BIGFISH_UPDATE_URL / _INTERVAL_MS / _DSH_REGISTRY_URL） | 打包版无法靠改代码做假清单桩，env 覆盖使 AC1-AC4 可假桩机检（判定方式即批次档 §1.5 的「假清单桩」） | 无钩子纯人判（证据不可留存） |
 | DD-13 | 更新诊断日志 updater.log 常开（不做 env 门控） | 更新域排查（检查/下载/校验/安装各阶段）频率高于桌宠拖动；体量小（每轮检查几行） | env 门控（B01 pet-drag.log 口径——不同域不同决策） |
-| DD-14 | 安装器拉起沿用 uninstall() 先例：spawn detached + 800ms 退出；装完自动拉起靠既有 `runAfterFinish: true` | `package.json:85` 已配置；NSIS 侧零改动（批次档 §1.4 裁定 6 的勘察结论：NSIS 侧可行，无需退回引导手动启动） | 在 NSIS 侧重写 runAfterFinish（无需）；安装器内引导手动启动（无需） |
+| DD-14 | 安装器拉起沿用 uninstall() 先例：spawn detached + 800ms 退出；装完自动拉起靠既有 `runAfterFinish: true` | `package.json:110` 已配置（行号只作 as-of 参考）；NSIS 侧零改动（批次档 §1.4 裁定 6 的勘察结论：NSIS 侧可行，无需退回引导手动启动） | 在 NSIS 侧重写 runAfterFinish（无需）；安装器内引导手动启动（无需） |
 | DD-15 | updater.js 单函数 <300 行：installHarness 多阶段流（prepare/install/smoke/activate + 失败分支）拆阶段函数 | 函数级分层同样适用 500 线口径（评审 #11）；多阶段流压单函数难定位、难机检 | 单函数整体实现（超 300 行风险） |
 | DD-16（B04） | **Harness 运行时 = 版本化目录 + 活跃指针**：安装直接落 `userData/dsh-update/versions/<version>`（**落盘后永不改名/移动**，I-1）；激活 = 原子写 `userData/dsh-active.json`（`prev` 记上一版本）；解析/日志/清理共用同一指针判据（I-2） | 目录不移动 → 绝对路径链接目标恒有效（§2.0 E1）；写指针比双 rename 更原子；与 pnpm 布局解耦；保留 DD-3 三语义 | 选型 G 候选 2/3/4——否决理由见 §2.1 |
 | DD-17（B04） | **激活后对活跃路径复核（存在性 + 版本读数 + 冒烟）才算激活成功**；复核失败 = 激活失败（`phase=activate ok=0`，日志 `harness activate verify ok=0 stage=…`）+ 指针回滚 + 删该版本目录 | 本缺陷漏检根因 = 旧冒烟只在安装面（`staging`）验（C10）；复核跑的是**切换后的活跃路径**，与后端将来实际启动的同一目标 → 假成功无处可藏（AC9-b） | 只加日志不断言（无法机检）；只检存在性（漏「树内链接失效」——冒烟才是能证明依赖链可解析的检查） |
@@ -787,7 +797,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 - **L11（B08；修正轮 1 重写）**：内置树是**最近一次刷新**所得 `latest` 的快照，**不**随运行自动前移——已发布安装包的离线版在其用户主动走 Harness 更新前保持刷新时刻的版本（这正是「离线版服务首次下载用户」的设计语义，DD-23）；它只随**下一次刷新 + 发版**前移。
   **残余差（显式登记）**：刷新后延后发版 ⇒ 发布时刻注册表可能已前移（刷新与发版之间新发的版本不在包内）——本批**不设判据**（发版流程挂钩 = 出批项，L12）；操作性定义见 §2.2.10 口径 1。
 - **L12（B08；修正轮 1 订正计数）**：本批**三个**出批项（均非本批可闭环）：①「把 `bundle:check` 挂进 App 发版流程清单」需一份发版流程文档，本仓当前没有（`docs/TODO.md` 技术待办 T5 即该缺口；台账写权属主 agent）；② 打包态（`npm run dist:win`）双态冒烟（成本高）；③ `npm ci` 全量复现（分钟级 + 下载量，用户收口时可补跑强证据）。三者的替代证据与局限见 §3.3。
-- **L13（B08；修正轮 1）**：「等价校验」（定义见 §2.2.10 = §3.1 注 B08-1 ③ 的两字段断言）是锁**根面**自洽的**必要条件**——**不证明**传递依赖闭包可复现 / `resolved` 与 `integrity` 字段完整 / `npm ci` 能跑通。依据 O9（1106 条目中仅 339 带 `integrity`，成因 unverified）——O9 只作本限制的依据，**不据此设判据**。
+- **L13（B08；修正轮 1）**：「等价校验」（定义见 §2.2.10 = §3.1 注 B08-1 ③ 的两字段断言）是锁**根面**自洽的**必要条件**——**不证明**传递依赖闭包可复现 / `resolved` 与 `integrity` 字段完整 / `npm ci` 能跑通。依据 O9（554 条目中仅 339 带 `integrity`——收口轮复算，成因 unverified）——O9 只作本限制的依据，**不据此设判据**。
 - **L14（B08；修正轮 1）**：刷新脚本 ⑤⑥ 验的是**刷新机上**的树；装入安装包的树由**构建机**生成（`scripts/ensure-deps.js:72-73` 的 `npm install`，仅树缺失时触发）——两棵树的一致性**无判据**（未验证面）。本批不设「刷新验过的树 == 打包进的树」判据（§2.2.10 产物链）。
 - **L15（B08；修正轮 1）**：未传 `--registry` 时，①（取 dist-tags）走 npmmirror → npmjs 兜底，④（`npm install`）走 npm 默认源（`dsh-bundle/.npmrc:3` 只设 `replace-registry-host=always`，不改默认源）⇒ **取版本源与装包源可能不同源**；摘要 `registry=` 只记取版本所用源。传 `--registry <url>` 时两处同源（§2.2.10 契约）。
 
@@ -799,11 +809,12 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 - **O4（发现即报告，贴线文件）**：`market.js` 实测 500 行，已贴「单文件 > 500 行须拆分」硬上限（B02 评审 #5 定的守住线）。本批不动该文件；拆分裁决仍归 T2 评估。
 - **O5（发现即报告 + 一致性修正，一致性面）**：§2.2.9 的行枚举此前漏登记 6 处**实现已产出**的失败 / 取消变体（`updater.js:179/182/198/203/442`、`result=skip` 取证行 `main.js:2149`）——本批补齐为「失败 / 取消变体（通用口径）」段（非新增语义；属 B02 交付即存在的文档与代码不一致）。已修，随本批落档。
 - **O6（发现即报告，台账指针已可收回）**：`docs/TODO.md` R3 已登记本需求（挂 `docs/requirements/UPDATE.md` §三 US-10（待建）与 `docs/batches/B05-installer-cleanup.md` §2（待建），status=待设计）——本次两处「（待建）」均已落地（US-10 已写入需求档；§2 由本角色落笔）；台账的「（待建）」字样与 status 推进（待设计 → 在途）归主 agent（台账写权不在本角色）。
-- **O7（发现即报告，台账证据陈旧）**：`docs/TODO.md` T4 的证据行「全仓无测试文件」与现状不符——本仓现有 3 个测试文件（`tests/update-lib.test.js`、`tests/update-stub.mjs`、`tests/harness-store.test.js`，B02/B04 交付）；其 `package.json:13-21` 行号亦已漂移。台账写权在主 agent，本角色仅报告。
+- **O7（发现即报告，台账证据陈旧）**：`docs/TODO.md` T4 的证据行「全仓无测试文件」与现状不符——本仓现有 3 个测试文件（`tests/update-lib.test.js`、`tests/update-stub.mjs`、`tests/harness-store.test.js`，B02/B04 交付）；其 `package.json:13-21` 行号亦已漂移（现行 = **`:13-26`**，收口轮实测；行号只作 as-of 参考）。台账写权在主 agent，本角色仅报告。
 - **O8（发现即报告，F6 之后的文档-代码漂移未同步）**：B06 F6 拆分（`main.js` 2831 → **204** + 15 个 `shell-*.js`）后，本档 **§2.2.1 模块表与 §2.3 表**仍写拆分前形态
   （如 `main.js:130-138` 的 `dshBinPath` 现居 `shell-backend.js:89-99`；`updaterLog` 现居 `shell-update.js:51`；`harness activate dsh active` 现居 `shell-update.js:247`）。
   本批**不重写**这些历史行（避免夹带大范围改写），改为在 §2.3 加 B08 as-of 注；系统性收口归技术待办 **T13（文档一致性收口）**，写权属主 agent。
-- **O9（发现即报告，未验证项）**：现锁文件 **767 个条目缺 `resolved` / `integrity`**（1106 条目中仅 339 个带 `integrity`）——成因未定（工具版本 / `.npmrc` 的 `replace-registry-host=always` 之关系**未验证**）；本批不据此设判据，刷新后由批次档 §5 回填实测值。
+- **O9（发现即报告，未验证项）**：现锁文件 **215 个条目缺** `resolved` / `integrity`（**554** 条目中仅 339 个带 `integrity`；两数均于收口轮复算，原文记 767 / 1106 = 同一计数口径偏差）——成因未定（工具版本 / `.npmrc` 的 `replace-registry-host=always` 之关系**未验证**）；本批不据此设判据。
+   **收口轮回填**：刷新后 **584 / 585** 条目带 `integrity`（唯一缺者 = 根条目 `""`，其本不带该字段）——该现象**未复现**（成因仍未验证；判据面未据此改变，见 L13）。
 
 ### 2.6 UI / 交互决策
 
@@ -844,7 +855,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 | AC2 | US-1 | `BIGFISH_UPDATE_INTERVAL_MS=60000` + 假清单 → 1 分钟内托盘气泡出现且无模态窗。日志：`update check reason=poll ... result=update-available` 行按 60s 间隔出现 | 半机检（日志；气泡人判） |
 | AC3 | US-2、NFR-2 | 假清单指向本地桩（tests/update-stub.mjs 提供安装包字节流 + 正确 sha256）→ 更新窗口进度推进至 100%、日志 `update verify ok type=app`、窗口进入 ready 态 | 机检（日志 + 假桩；进度条形态人判） |
 | AC4 | US-2、NFR-2 | 篡改桩（sha256 不匹配）→ 日志 `update verify fail expected=… actual=…`；`userData/updates/` 下无残留文件（fs 断言）；窗口错误态含错误信息 + 重试 | 机检（日志 + 目录断言） |
-| AC5 | US-3 | 真实安装演练：确认安装 → 安装器启动 + 应用退出 → 装完自动拉起新版（`runAfterFinish` 已配置，package.json:85）。日志：`update install type=app spawn=…` | 人判（真实安装） |
+| AC5 | US-3 | 真实安装演练：确认安装 → 安装器启动 + 应用退出 → 装完自动拉起新版（`runAfterFinish` 已配置，`package.json:110`——行号只作 as-of 参考）。日志：`update install type=app spawn=…` | 人判（真实安装） |
 | AC6 | US-4 | `grep -n "github\.com\|jsdelivr\|raw\.githubusercontent" main.js market.js market.html latest.json package.json` → 结果为空（`github:` 安装标识与插件来源文案除外）；且清单源常量唯一 = Gitee raw URL | 机检（grep） |
 | AC7 | US-5 | 断网自动检查 → 无弹窗无气泡、日志 `result=error`（静默）；手动失败 → 错误弹窗 + 重试可用；开关关闭 → 无 `check` 行（启动与轮询均跳过）；市场页打开时 `fetchPluginRegistry` 照常（括注例外）；dev → **B06 修订：App 面无检查行 + Harness 面照常检查** | 半机检（日志；弹窗人判） |
 | AC8 | US-6 | `node --test tests/update-lib.test.js` 全绿——§2.2.6 断言表 10 例（含 `0.1.5-rc.1` > `0.1.0-rc.6`）+ `parseRegistryMetadata` 假源 fixture（dist-tags.latest=0.1.5-rc.1）+ `decideUpdate` 判定有更新；注册表源回退（npmmirror 失败 → npmjs 兜底）以 update-stub 组合路由断言（TC-24） | 半机检（node --test + 假源桩组合） |
@@ -861,7 +872,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 | AC17（B08） | US-11 | 内置树首启：后端正常启动、`--no-open` 生效、窗口可加载（非 401 / 空页）。**主判据 = 静态正向**（args 无条件含 `--no-open`：`shell-backend.js:205`；机检 = `findstr /n /c:"--no-open" shell-backend.js` 命中该行）；**辅证** = 日志无 `opening the default browser` | 半机检（静态 grep + 日志辅证 + 真机目视）；**打包态复跑 = 出批项**——注 B08-2 |
 | AC18（B08） | US-11、NFR-5 | dev 与打包同口径：① **零 `.js` 改动**（`git diff --name-only` 仅 4 个非 `.js` 文件）；② 无指针时解析走内置树（隔离 userData 实跑）；③ 有指针时解析走指针副本（本批不改解析代码 + §1.3 ④ 已实测） | 机检（diff + 日志）——注 B08-3 |
 | AC19（B08） | US-11（触发场景）；判据权威源 = `docs/requirements/SHELL.md` §三 US-9 | 无 token 后端（内置 `0.1.0-rc.6` 树）→ `bigfish.log` 有 `backend web url captured port=<n> token=no`；窗口加载裸地址且可用 | **机检**（日志行）——注 B08-4 |
-| AC20（B08） | NFR-5、US-12 | 零新依赖（根 `"dependencies"` 为空**对象** `{}`——键集合为空，`package.json:25`；刷新脚本只用 Node 内置 + npm CLI）、零新构建步骤（`build.files` 零改动）、改动 / 新增 js 全部 `node --check` 绿 | 机检（静态 + `node --check`） |
+| AC20（B08） | NFR-5、US-12 | 零新依赖（根 `"dependencies"` 为空**对象** `{}`——键集合为空，`package.json:27`（行号只作 as-of 参考）；刷新脚本只用 Node 内置 + npm CLI）、零新构建步骤（`build.files` 零改动）、改动 / 新增 js 全部 `node --check` 绿 | 机检（静态 + `node --check`） |
 | AC21（B08） | US-12 | 刷新路径四面：① 幂等（已最新**且自洽**时 `action=none`、两文件零 diff）；② 判定可查（`bundle:check` 退出码 0 = 已最新且锁自洽 / 1 = 落后 / 2 = 取版本失败**或锁自洽不过**）；③ 失败不留半成品（④/⑤/⑥ 失败 → 钉版回 pin0 + 锁回 lock0，退出码 2）；④ **修复面**（自洽不过 → 重跑安装：`action=repair`／`repair-fail`，退出码 2） | **机检**（退出码 + diff + 摘要行）——注 B08-5 / B08-6 |
 
 **B04 判定面细化（AC9 / AC9-b / AC13 / AC14；逐条可机检）**
@@ -977,7 +988,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 3. **假源桩**：`tests/update-stub.mjs`——本地 http 服务（`http://127.0.0.1`，属 §2.2.2 env 覆盖钩子的 https 豁免面），路由：`/latest.json`（可配 version/sha256 参数）、`/installer`（可配字节流与篡改模式）、`/registry/npmmirror`（元数据，可配 404）与 `/registry/npmjs`（兜底元数据，正常）——后者组合供 TC-24 源回退断言。
    打包版手测时以 `BIGFISH_UPDATE_URL` / `BIGFISH_DSH_REGISTRY_URL` / `BIGFISH_DSH_REGISTRY_FALLBACK_URL` 指向之。
 4. **诊断日志取证**：`userData/updater.log`，行格式见 §2.2.9——AC1/AC2/AC3/AC4/AC7/AC9/**AC9-b/AC13**/AC10 的机器证据面。
-5. **静态核对**：`node --check` 于全部改动/新增 js（含 `harness-store.js`）；AC6 grep；「compareVersions 定义唯一」「`"dependencies"` 为空对象 `{}`」「临时路径常量」grep 项（B08 修正轮 1 订正形态——原写「空数组」与 `package.json:25` 实形不符）；
+5. **静态核对**：`node --check` 于全部改动/新增 js（含 `harness-store.js`）；AC6 grep；「compareVersions 定义唯一」「`"dependencies"` 为空对象 `{}`」「临时路径常量」grep 项（B08 修正轮 1 订正形态——原写「空数组」与 `package.json:27` 实形不符，行号只作 as-of 参考）；
    **B04 附加项**：`updater.js` 内不残留 `renameSync` 于安装树（版本目录改名是 I-1 违纪）；`main.js`/`updater.js` 不直接读写 `dsh-active.json`（指针单点归 `harness-store.js`）。
    **B05 附加项**：`updater.js` 内无 `.endsWith('.part')` 残留；`userData/updates/` 唯一删除点 = `startupCleanup`（`grep -n "'updates'" *.js` 仅两处）；`node --check updater.js`；行宽 ≤300 字符。
 6. **手工验证清单**：按 §3.2 逐条执行并记录（真实安装、气泡观感、徽标、发版演练、数据快照对比；**B04 加：真机失效副本注入 TC-26 与旧布局坏状态 TC-27**；**B05 加：隔离 userData 的回收三态 TC-32/TC-33/TC-34**）。
@@ -1039,3 +1050,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 |  | 产物链与 `ensure-deps.js` 分工 + `--registry` 约束面与 `registry=` 取值定义 + 「等价校验」操作定义；§2.1 选型 I 的 R2 判据补「含锁自洽」；§2.3 行数口径统一为**换行符计数**； |
 |  | §2.4 DD-23 时点口径改写 + 新增 **DD-26**；§2.5 C11 / C17 与 §3.1 AC20 / §3.3 手段 5 的「空数组」订正为「空对象 `{}`」；§2.5 新增 L13 / L14 / L15 + L11 重写 + L12 出批项计数 2 → 3； |
 |  | §3.1 AC16 / AC17 / AC20 / AC21 判定面细化 + 注 B08-1 ② 给命令形态 + 注 B08-2 判据分工（主判据 = 静态正向）+ 注 B08-5 扩为四面 + 新增 **注 B08-6**（失败后二元组判据）+ 新增 **TC-44**（已最新但锁不自洽）并同步 TC-35 / TC-39 / TC-41 / TC-42。**不改 `.js`，不改设计契约范围。** |
+| 2026-09-17 | **B08 收口轮（实施后文档事实同步 + 实测回填；源 = 批次档 §5 交付报告的四条 `Deferred` / 残余项）**：① 行锚按 as-of 实测更正（本档 **10 处** `package.json:NN` = 9 处行锚 + O7 所引 T4 行补现行值），逐处注「行号只作 as-of 参考」；② §2.3 B08 子表与「锁文件 diff 量级」块回填实测；③ §2.2.10 契约 ⑦ 补 `--check` 面 `action=` 取值 + ⑤ 冒烟判据已知窄面注。**不改判据结论、不改契约语义、不改 `.js`。** |
+|  | ① 明细：§一 C11 `:23` → `:27` · §3.1 AC20 `:25` → `:27` · §3.3 手段 5 `:25` → `:27` · §2.2.10 对象行 `:81-94` → `:83-96` · 复制块 `:91-93` → `:93-94`（2 处：§2.2.10 关系行 / 产物链行）· `runAfterFinish` `:85` → `:110`（3 处：§2.2.4 先例行 / §2.4 DD-14 / §3.1 AC5）· §2.5 O7 所引 T4 行补现行值 `:13-26`。 |
+|  | ② 明细：锁 **8573 行 / 348,259 字节**（diff **8463 变更行** = +4486 / −3977，超预估区间）· 脚本 **290 行** · 基准数更正 `packages` 1106 → **554**、缺 `integrity` 767 → **215**（同步 §2.3 基准块 / §2.5 L13 / O9）。 |
+|  | ③ 明细：`--check` 面取值 = `none` / `refresh` / `repair`（不新增第五值）+ 失败面 退出码 2 + `detail=<原因>`；冒烟判据窄面 = 子串匹配（仅「锁自洽 + 异版本含该串」一窄面）。 |

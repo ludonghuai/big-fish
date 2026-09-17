@@ -20,3 +20,7 @@ download-node.js
 .test-userdata*/
 .test-dsh-home/
 测试-更新功能/
+
+# 外部项目样本 / 移植参考区——非交付物：不被任何代码引用 · 不参与构建 · 不打进发行版
+# （build.files / extraResources 为显式白名单，不登记即排除；第三方代码不入仓历史——见 docs/README.md §一 落点行 / 台账 R14）
+samples/

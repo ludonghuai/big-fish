@@ -2,9 +2,12 @@
 
 > 归属板块：桌面壳
 > 落点：`docs/design/SHELL-UX.md`
-> 关联需求档：`docs/requirements/SHELL.md`（US-1…US-11、NFR-1…NFR-5）
+> 关联需求档：`docs/requirements/SHELL.md`（US-1…US-15、NFR-1…NFR-7）
 > 关联批次：`docs/batches/B06-shell-ux.md`（§1.3 需求结论 C1–C7、§1.4 技术裁定 R1–R7、§1.5 验收 AC1–AC7、§1.6 事实、§1.7 既有约束）·
-> `docs/batches/B07-harness-auth-compat.md`（§1.3 需求结论 C1–C6、§1.4 技术裁定 R1–R6、§1.5 验收 AC1–AC7、§1.6 事实、§1.7 既有约束）
+> `docs/batches/B07-harness-auth-compat.md`（§1.3 需求结论 C1–C6、§1.4 技术裁定 R1–R6、§1.5 验收 AC1–AC7、§1.6 事实、§1.7 既有约束）·
+> `docs/batches/B09-notify-latency.md`（§1.3 前置事实、§1.5 待决点、§1.6 验收 AC1–AC4）·
+> `docs/batches/B10-affinity-token-source.md`（§1.3 勘察结论、§1.5 待决点、§1.6 验收 AC1–AC4）·
+> `docs/batches/B12-market-security-blocking.md`（§1.3 范围、§1.4 验收 AC1–AC6）
 
 ---
 
@@ -178,7 +181,7 @@
 | # | 候选 | 判据逐项评估 | 取舍（选定代价/权衡） | 结论 |
 |---|---|---|---|---|
 | 1 | **8 s**（= 投影缓存写后阈值 5000 ms + 3000 ms 余量） | P1 ✓（有效时延 8–13 s，现状 30–35 s 的 ≈1/3）；**P2 的结构前提** ✓——阈值 > 写后阈值才能保证判定时快照已折叠最近事件（§2.2.12 判定前提）；余量 3 s 吸收写序抖动 / watch 到达延迟 / 判定读开销 | 与 5 s 周期对齐 ⇒ 时延有 0–5 s 抖动（现状同样抖动，非新增） | **选定** |
-| 2 | 5 s | P1 ✓（有效 5–10 s，再快 3 s）；但 5 s **≤** 写后阈值 ⇒ 判定可能读到尚未追上日志的快照（规则②兜底 ⇒ 白白推迟，收益被吃掉）；且阈值 ≤ 周期 ⇒ 阈值语义退化为「≤ 1 个周期」 | 收益 3 s，换来判定面与时序前提相抵 | 否决 |
+| 2 | 5 s | P1 ✓（有效 5–10 s，再快 3 s）；但 5 s **≤** 写后阈值 ⇒ 判定可能读到尚未追上日志的快照（**规则③** 兜底（抑制；持续超 `GATE_STALE_MAX_MS`(30000) 由 **③′** 转降级）⇒ 白白推迟，收益被吃掉）；且阈值 ≤ 周期 ⇒ 阈值语义退化为「≤ 1 个周期」 | 收益 3 s，换来判定面与时序前提相抵 | 否决 |
 | 3 | 15 s | P1 △（有效 15–20 s，仅 ≈2× 改善）；余量最足 | 用户诉求（「太久了」）改善有限 | 否决 |
 | 4 | 保持 30 s | 用户 2026-09-17 真机验收点名项，不解决 | — | 否决 |
 
@@ -205,7 +208,7 @@
 
 | # | 候选方案 | 判据逐项评估 | 取舍（选定代价/权衡） | 结论 |
 |---|---|---|---|---|
-| 1 | **双形态：per-record 目录优先 → 旧单文件兜底**（形态判别以**磁盘事实**为准） | P1 ✓（活跃 0.1.5 走目录、出厂 `0.1.0-rc.6` 走旧文件——两条路径都覆盖）；P2 ✓；P3 ✓（`node:fs` / `node:path` 既有）；P4 ✓（旧面分支 = 现状代码语义保留） | 两个分支的维护面（旧面随 B08 到期剔除——§2.2.13 消解期） | **选定** |
+| 1 | **双形态：per-record 目录优先 → 旧单文件兜底**（形态判别以**磁盘事实**为准） | P1 ✓（活跃 0.1.5 走目录、出厂 `0.1.0-rc.6` 走旧文件——两条路径都覆盖）；P2 ✓；P3 ✓（`node:fs` / `node:path` 既有）；P4 ✓（旧面分支 = 现状代码语义保留） | 两个分支的维护面（旧面随 B08 到期条件成立后剔除——§2.2.13「消解期（旧布局兜底）」） | **选定** |
 | 2 | 只支持 per-record 目录（新形态） | **P1 ✗**：出厂内置 Harness = `0.1.0-rc.6`（单文件布局）⇒ 离线用户的好感度**继续永久失效**——正是本 bug 的形态 | — | 否决 |
 | 3 | 只支持旧单文件 | **P1 ✗**：活跃 0.1.5 不再写该文件 ⇒ 本 bug 原样保留 | — | 否决 |
 | 4 | 按 Harness 版本号择形态（先读 `getCurrentDshVersion()` 再分支） | P1 △（要维护「版本 → 布局」映射）；**P4 ✗**：判别面从磁盘事实变成版本字符串（实际落盘形态无法由此确证），且多一张会过期的映射表 | — | 否决 |
@@ -512,12 +515,18 @@ runAutoChecks(reason)：
 > **注 S5（B07 修订——`shell-notify.js` 函数清单）**：`notify` · `isIgnoredPath` · `latestMtimeAsync` · `startCompletionWatcher` · `stopCompletionWatcher` · 转发访问器 `setLastBusyAt` / `setNotifiedForCycle`。
 > 同步实现 `latestMtime` **B07 退役**（全仓 0 调用点 + NFR-5 静态判据要求探测域无同步 fs 调用面）——依据与判据见 §2.2.10 修正 B。
 
-> **注 S6（B09 修订——`shell-notify.js` 函数/状态清单增量）**：新增函数 `completionGate()`（判定：读最新投影缓存记录 + 会话档 mtime 比较，返回 `done` / `open` / `stale` / `unavailable` 四态）与档内常量 `GATE_FRESH_TOLERANCE_MS`(1000) / `GATE_TURN_BOUNDARY_VER`(2)；
-> 新增状态 `completionGateMemo`（`{ lastBusyAt, verdict }`——按末次写入时刻记忆）/ `completionGateProbeRunning`（在途标记）/ `completionGateDiagLogged`（诊断行至多一次/生命周期）。
+> **注 S6（B09 修订——`shell-notify.js` 函数/状态清单增量）**：新增函数 `completionGate()`（判定：读最新投影缓存记录 + 会话档 mtime 比较，返回 `done` / `open` / `stale` / `unavailable` 四态）与档内常量 `GATE_FRESH_TOLERANCE_MS`(1000) / `GATE_TURN_BOUNDARY_VER`(2) /
+> `GATE_STALE_MAX_MS`(30000——`stale` 抑制上界，修正轮 1 #4) / `SESSION_LOG_NAME`(`session.v3.jsonl.zstd`) / `PROJCACHE_SEGMENTS`(`['storages', 'session_projcache', 'sessions']`——规则① 具名谓词，`shell-notify.js:38-39`)；
+> 辅助函数 **5** 名（**实施后收口轮按实装补齐**；均**不外导出**——判定面不对外暴露符号）：`completionGateProbe()`（判定准入——异步 + 防重叠 + 按 `lastBusyAt` 记忆）/ `completionGateDue()`（处置面——纯算术：四态 ⇒ 本轮是否提醒）/
+> `completionGateFire()`（提醒一次——既有通知语句逐字保留）/ `completionGateLogDiag()`（降级诊断行——规则② / ③′）/ `completionGateLogStale()`（`stale` 诊断行——规则③）。
+> 新增状态 `completionGateMemo`（`{ lastBusyAt, verdict, staleSince }`——按末次写入时刻记忆 + 上界起算点）/ `completionGateProbeRunning`（在途标记）/ `completionGateDiagLogged`（降级诊断行至多一次/生命周期）/
+> `completionGateStaleLogged`（`stale` 诊断行至多一次/生命周期）。
 > 注入面增量：`IDLE_NOTIFY_FALLBACK_MS`（组合根常量注入，承 `IDLE_NOTIFY_MS` 同形）；**无新增导出**（判定不对外暴露符号——判定规则见 §2.2.12）。
+> 依赖增量（修正轮 1 #2）：新增 **`require('./shell-backend.js')`**（诊断行走其 `writeDiag(line)`）——**同层**（两者均 L1，§2.2.6 注 M-迁移 ②）+ **无环**（`shell-backend.js:9-17` 的 require 面 = `electron` / node 内置 / `harness-store.js`）⇒ 合 §2.2.6 规则 1；合规登记见 §2.5 C40，落盘面见 §2.2.12。
 
 > **注 S7（B10 修订——`shell-affinity.js` 读面增量）**：档内新增常量（目录段 `['storages','session_projcache','sessions']` / 旧文件名段 `session_projcache.json` / 四桶名清单）与一次性诊断标记 `affinityDiagLogged`；
-> `sumSessionTokens()` 由「旧布局单面读」改为**双形态读面**（规则见 §2.2.13）；**导出面 +1** = `sumSessionTokens`（桩测机检用，无副作用）；
+> `sumSessionTokens()` 由「旧布局单面读」改为**双形态读面**（规则见 §2.2.13）；**导出面 +1** = `sumSessionTokens`（桩测机检用——**返回值幂等**；诊断行为 = 每进程至多一条、非持久状态，口径见 §2.2.13「增量语义（水位）」/「诊断行」）；
+> 依赖面**零新增**（`require('./shell-backend.js')` 边既有 = `shell-affinity.js:9`——设计者亲读）；
 > `shell-backend.js` 的 `module.exports` 增 `writeDiag`（1 行——函数体不动，诊断行落盘面复用；现状未导出 = 设计者亲读 `shell-backend.js:311-322`）。
 
 > **注 S8（B12 修订——`shell-plugins.js` 函数/导出增量）**：新增三个**纯函数**（零副作用）——`installSpecKind(spec)`（入参形态门：返回 `bundled` / `github` / `npm` / `null`）、
@@ -554,8 +563,10 @@ runAutoChecks(reason)：
 > 除上述三项外，本批**不增不删**任何日志行 / env 开关（B01–B05 锚点逐条保持——US-10 取证面硬要求）。
 
 > **B09 附注（计数与枚举同改——D3）**：本批对该清单的增删——① 新增 env 开关 `BIGFISH_IDLE_NOTIFY_MS`（空闲阈值测试钩子；默认 8000，读取点 `main.js`）；
-> ② 新增 console 行 1 条（`completion gate unavailable; falling back to idle threshold <ms>ms`——§2.2.12，条件发射、每监视器生命周期至多一条）；
-> ③ 既有行**不增不删**：`IDLE_NOTIFY_MS` 的注入值由 30 s 改为 8 s（**常量值变更**，非新增开关 / 非新增行）；通知文案三串逐字不变（§2.2.12 交互表）。除上述两项外本批不增不删任何日志行 / env 开关。
+> ② 新增诊断行 **2** 条（各条件发射、**各**每监视器生命周期至多一条）：`completion gate unavailable; falling back to idle threshold <ms>ms`（规则② / ③′ 降级）与
+> `completion gate stale; snapshot behind session log — reminder suppressed`（规则③；修正轮 1 #1）——均见 §2.2.12；
+> ③ 两条均经 **`shell-backend.writeDiag`** 发射（console + `bigfish.log` 双写；承 §2.2.8 / DD-27 / DD-40——修正轮 1 #2）⇒ 上表第 4 行（`bigfish.log` 面）新增壳侧诊断行；`logStream` 不可用时只到 console；
+> ④ 既有行**不增不删**：`IDLE_NOTIFY_MS` 的注入值由 30 s 改为 8 s（**常量值变更**，非新增开关 / 非新增行）；通知文案三串逐字不变（§2.2.12 交互表）。除上述三项外本批不增不删任何日志行 / env 开关。
 
 > **B10 附注（计数与枚举同改——D3）**：本批对该清单的增删——① 新增 `bigfish.log` / console 行 **1** 条（`affinity token source unavailable; …`——§2.2.13，条件发射、每进程生命周期至多一条）；
 > ② 新增**导出面 2 项**（`shell-affinity.sumSessionTokens` / `shell-backend.writeDiag`——非日志行，随注 S7 登记备查）；
@@ -824,18 +835,31 @@ startCompletionWatcher()
 | 4 | **写时机**：每个 `turn/end` ⇒ **立即无条件落盘**；其余事件按写后阈值（`writeEveryEvents` / `writeIntervalMs`）；会话创建 / 释放亦强制落盘 | 同上 projection-cache `:290-321`（`installWritePath`）+ `@deepseek-ai/dsh-base/cordis.patch.yml`（`writeEveryEvents: 200` / `writeIntervalMs: 5000`） |
 | 5 | 落盘顺序：先 `sessions.flush`（会话日志）后写缓存记录 ⇒ 回合末「缓存记录 mtime ≥ 会话日志 mtime」；实测两档同秒（…03:38:34） | 同上 `:263-267`（`write()`：`await …flush(session)` → `put(…)`） |
 | 6 | 同目录 family 已变过一次（0.1.0 → 0.1.5 改 per-record 布局），`shell-affinity.js:70` 的旧读面因此失效（技术待办 T14 / 批次 B10） | `docs/TODO.md` §技术组；`docs/README.md` §一（B10 立案） |
+| 7 | **写后阈值的语义（修正轮 1 #4 补证）**：write-behind 节流 + **尾部追写**（不丢事件）；写失败 fail-soft | projection-cache（活跃副本）`:263-268` · `:290-321` · `:328-334`（详见本表下注） |
+
+> **事实 #7 展开（尾部追写；修正轮 1 #4）**：`writeEveryEvents` / `writeIntervalMs` 是 write-behind 节流——**每次写入取当前实时状态快照**（`write()` 内 `checkpoint(session)`），节流只推迟写入时点、**不丢事件**；
+> `turn/end` / `session/created` / `session/disposed` 为无条件写入点；写入 fail-soft（`:328-334` 只 warn、缓存保持 stale）。
+> 指针：`write()` = projection-cache（活跃副本）`:263-268`（`checkpoint` → `markClean` → `flush` → `put`）· `installWritePath` = `:290-321` · `flushSoft` = `:328-334`；配置见「判定前提」。
 
 **判定前提（本设计承重前提；判决句）**：
 
-> 阈值 `IDLE_NOTIFY_MS`（8 s）**必须大于**投影缓存的写后阈值 `writeIntervalMs`（实测 shipped composition = **5000 ms**）——由事实 #4 可推：任一事件后 ≤ 5000 ms 内必有缓存写入，而该写入自身又刷新 `lastBusyAt` ⇒ **静默达 8 s 时，快照必已折叠最近一次会话事件**。
-> 该前提使「静默 + 快照回合态」可作完成判据；前提失效（配置被改 / 形态换代）⇒ 规则② 兜底（方向 = 抑制，安全侧）+ 实施期真机复核（TC-46）；登记为 **L-B09-4**。
+> 阈值 `IDLE_NOTIFY_MS`（8 s）**必须大于**投影缓存的写后阈值 `writeIntervalMs`（实测 = **5000 ms**：活跃副本 `dsh-base/cordis.patch.yml:165-166`；出厂 bundle 同值、落点 `dsh-web-app/cordis.patch.yml:79-80`）——由事实 #4 + **#7（尾部追写；修正轮 1 补证）** 可推：
+> 任一事件后 ≤ 5000 ms 内必有**覆盖该事件**的缓存写入，而该写入自身又刷新 `lastBusyAt` ⇒ **静默达 8 s 时，快照必已折叠最近一次会话事件**。
+> 该前提使「静默 + 快照回合态」可作完成判据；前提失效按**成因分两路兜底**（修正轮 2；源 = §3 轮次 2 发现 N1）：
+> ① **形态换代**（域 v7 / 行 `ver` ≠ 2——同 L-B09-3）⇒ **规则②** 降级（= `unavailable`：阈值退回 30 s + 降级行——判据读不出，非抑制面）；
+> ② **配置被改**（`writeIntervalMs` ≥ 阈值）⇒ **规则③** 抑制（方向 = 安全侧：`stale` ⇒ 本轮不提醒），持续超 `GATE_STALE_MAX_MS`(30000) 未转 `done` ⇒ 由 **③′** 转降级（退回 30 s + 降级行）；
+> 两路均以实施期真机复核（TC-46）把门；登记为 **L-B09-4**。
+> **已然成立的残余失效面（修正轮 1 #4）**：写路径本身 fail-soft（事实 #7）——写入连续失败 / 落盘面失效 ⇒ 日志前进而快照不动 ⇒ 持续 `stale`；本批以**规则③′ 的抑制上界**（≥ 30 s ⇒ 按 `unavailable` 处置 = 退回 30 s 阈值 + 降级行）兜住「长期静默抑制」，登记为 **L-B09-5**。
 
 **判定规则（本批定稿；四态）**：
 
-> 静默达 `IDLE_NOTIFY_MS` 后，判定**一次性**执行（异步）：
-> ① 取 `<dshHome>/sessions/**` 下 mtime 最大的会话日志 `L` 与 `<dshHome>/storages/session_projcache/sessions/*.json` 下 mtime 最大的记录 `C`；
-> ② `C` 不存在 / 不可解析 / 无 `record.rows.turnBoundary` / `rows.turnBoundary.ver !== 2` ⇒ `unavailable`——**判定源不可用 ⇒ 降级**（阈值改用 `IDLE_NOTIFY_FALLBACK_MS` = 30 s，= 现状语义）；
-> ③ `mtime(C) + FRESH_TOLERANCE_MS(1000) < mtime(L)` ⇒ `stale`——**快照落后于会话日志 ⇒ 本轮不提醒**（保守：宁可推迟，不误报）；
+> 静默达 `IDLE_NOTIFY_MS` 后，判定**一次性**执行（异步），落 `open` / `stale` / `unavailable` / `done` 之一：
+> ① 取**会话日志** `L` = `<dshHome>/sessions/<项目段>/<会话段>/session.v3.jsonl.zstd` 中 mtime 最大者（**具名谓词**：深度 = 3 段、文件名写死 = `session.v3.jsonl.zstd`；实测布局；**无 `**` 无界写法、不做目录递归遍历**）
+>    与投影缓存**记录** `C` = `<dshHome>/storages/session_projcache/sessions/*.json` 中 mtime 最大者（修正轮 1 #3）；
+> ② `C` 不存在 / 不可解析 / 无 `record.rows.turnBoundary` / `rows.turnBoundary.ver !== 2` / **无 `val`**（`!tb.val`）/ **`L` 读不出**（`sessions/` 下无可读会话段 ⇒ `logMtime === null`）⇒ `unavailable`——**判定源不可用 ⇒ 降级**（阈值改用 `IDLE_NOTIFY_FALLBACK_MS` = 30 s = 现状语义）+ 一条降级诊断行；
+>    （成因枚举按实装补齐——**实施后收口轮**：后两项 = `shell-notify.js:136`（`L` 读不出）/ `:153`（无 `val`）；与下文「读失败不抛出」**同向** = 读不出即判定源不可用、方向保守 ⇒ **非新增判据**——不新增规则、四态语义与全部计数不变。）
+> ③ `mtime(C) + GATE_FRESH_TOLERANCE_MS(1000) < mtime(L)` ⇒ `stale`——**快照落后于会话日志 ⇒ 本轮不提醒**（保守：宁可推迟，不误报）+ 一条 `stale` 诊断行；
+> ③′ **`stale` 抑制上界（修正轮 1 #4）**：同一 `stale` 状态延续 ≥ `GATE_STALE_MAX_MS`(30000) 仍未转 `done` ⇒ 按 `unavailable` 处置（退回 30 s + 降级行）——防「持续 `stale` ⇒ 永不提醒且无信号」（L-B09-5）；前提成立时该态为瞬时 ⇒ 本上界不可达（纯兜底）；
 > ④ `rows.turnBoundary.val.openTurnStartSeq !== null` ⇒ `open`——**回合在途 ⇒ 不提醒**；
 > ⑤ 否则 ⇒ `done`——**判为「已完成」⇒ 走既有通知语句（逐字保留）**。
 
@@ -843,20 +867,27 @@ startCompletionWatcher()
 
 - 判定仅在「静默 ≥ `IDLE_NOTIFY_MS` 且本轮未通知」时触发；结果按 **`lastBusyAt` 记忆**（`completionGateMemo.lastBusyAt !== lastBusyAt` 才重读）——任何新写入（含 `setLastBusyAt` 跨模块清零）自动失效重判 ⇒ **每个静默窗至多一次读**；
   5 s 定时器回调内仍**无同步 I/O**（判定是 `fs.promises` 异步，且由 `completionGateProbeRunning` 防重叠——与 `fallbackScanRunning` 同形）。
-- 读次数上界 ≈ 2 次目录列表（`sessions/` 两层 + `projcache/sessions/`）+ 每会话 1 次 stat + 1 次记录 `readFile`（实测单档 7.8 KB）——**按会话数计，不按文件数计、不做目录递归遍历**（NFR-5 B09 注记）。
+- 读次数上界（**具名谓词口径**）= 1 次 `sessions/` 列表 + 每项目段 1 次列表 + 每会话段 1 次 `stat`（固定文件名）+ 1 次 `projcache/sessions/` 列表
+  + **每记录 1 次 `stat`**（per-record ⇒ 与记录数同阶；实现 = `shell-notify.js:141-147`）+ 1 次记录 `readFile`（实测单档 7.8 KB）——**按会话段数计（含项目段数），不按文件数计、不做目录递归遍历**（NFR-5 B09 注记）；目录数假设 = 实测 **1** 个项目段（多工程 ⇒ 列表次数 = 1 + 项目段数，仍与文件数无关——修正轮 1 #3）。
 - 判定只可能**抑制**提醒，不新增提醒：`notifiedForCycle` / 开关守卫 / 清忙态三处既有语义**零改动**。
+- 判定状态与常量（**符号名 = 注 S6 同名**，静态判据按同一名核对）：`completionGateMemo`（`{ lastBusyAt, verdict, staleSince }`）/ `completionGateProbeRunning` / `completionGateDiagLogged` / `completionGateStaleLogged`；常量 `GATE_FRESH_TOLERANCE_MS`(1000) / `GATE_TURN_BOUNDARY_VER`(2) / `GATE_STALE_MAX_MS`(30000)。
 
 **降级与可观测性**：
 
-- 降级 = 规则② 的 `unavailable` 分支：阈值改用 30 s（现状值）——保证「读不到判定源」时行为与现状**逐字一致**（零回退）。
-- 诊断行（条件发射，**每监视器生命周期至多一条**，由 `completionGateDiagLogged` 把门）：
+- 降级 = 规则② 与 **③′** 的处置：阈值改用 30 s（现状值）——保证「读不到判定源 / 长期读不新鲜」时行为与现状**逐字一致**（零回退）。
+- 诊断行**两条**（各条件发射，**各**每监视器生命周期至多一条；分别由 `completionGateDiagLogged` / `completionGateStaleLogged` 把门）：
 
 ```
 [bigfish] completion gate unavailable; falling back to idle threshold <ms>ms
+[bigfish] completion gate stale; snapshot behind session log — reminder suppressed
 ```
 
-- 发射面 = `console.log`（与 §2.2.10 的 `completion watcher unavailable …` 同行口径；**不新增 `bigfish.log` 壳侧写入面**）；读失败不抛出（判定函数全包 `try/catch` ⇒ 不新增失败面）。
-- 实施期真机复核点（硬）：① 回合结束时缓存记录 **确实落盘**且 `openTurnStartSeq === null`；② 静默期中快照**不落后**于会话日志（规则③ 不误伤）；③ shipped composition 的 `writeIntervalMs` = 5000（前提）。任一不成立 ⇒ **停下报告**（改判定源或退回纯阈值——不在实施期自行放宽规则）。
+- 发射面 = **`backend.writeDiag(line)`**（console + `bigfish.log` 双写——承 §2.2.8 / DD-27 / DD-40 的既有**单一诊断落盘面**；`logStream` 不可用时只到 console）。
+  **修正轮 1 #2**：原设计为 console-only，而打包版 console 不可见 ⇒ AC17 / TC-50 的 `grep` 判据无可达目标；改走 `writeDiag` 使判据落 `bigfish.log`（console 仅作辅证 / 桩测面）。
+  依赖方向合规：`shell-notify.js → shell-backend.js` = **同层**（L1）+ **无环**（`shell-backend.js:9-17` 只 require `electron` / node 内置 / `harness-store.js`）⇒ 合 §2.2.6 规则 1（登记见注 S6 / §2.5 C40）。
+- 读失败不抛出（判定函数全包 `try/catch` ⇒ 不新增失败面）。
+- 实施期真机复核点（硬）：① 回合结束时缓存记录 **确实落盘**且 `openTurnStartSeq === null`；② 静默期中快照**不落后**于会话日志（规则③ 不误伤）——**明文前置** = 写后阈值是**尾部追写**（事实 #7：每次写入取当前实时状态快照，节流只推迟时点、不丢事件）；
+  ③ shipped composition 的 `writeIntervalMs` = 5000（前提；两态落点见「判定前提」）。任一不成立 ⇒ **停下报告**（改判定源或退回纯阈值——不在实施期自行放宽规则）。
 
 **与既有语义的交互（逐条核对；AC19）**：
 
@@ -887,7 +918,8 @@ startCompletionWatcher()
 - **L-B09-1**：等待用户确认期间（审批 / ask-user / 计划模式）回合保持**在途** ⇒ 不再收到提醒（现状会在 30 s 后发一条语义错误的「已完成」）；是否增设「等待你的确认」提醒 = open 项 U-13（新文案，超本批范围）。
 - **L-B09-2**：多会话并行（subagent）时判定取「最新日志 + 最新记录」对——两者若分属不同会话，规则③ / ④ 可致本轮不提醒（方向 = 推迟，不误报）；下个写入周期自然重判。
 - **L-B09-3**：判定源为 Harness **内部形态**（域 v7 / 行 `ver` = 2）——换代即走 `unavailable` 降级（30 s + 诊断行），不误报；采信条件收在规则②。
-- **L-B09-4**：判定前提失效（Harness 侧 `writeIntervalMs` ≥ 阈值，或外壳后续把阈值调 < 5000）⇒ 判定可能误报——缓解 = 规则③ 兜底（方向 = 抑制）+ 实施期复核点③ + 诊断行；本批以「阈值 8000 > 5000」的静态判据把门。
+- **L-B09-4**：判定前提失效（Harness 侧 `writeIntervalMs` ≥ 阈值，或外壳后续把阈值调 < 5000）⇒ 判定可能误报——缓解 = **规则③** 兜底（方向 = 抑制）、持续超 `GATE_STALE_MAX_MS`(30000) 未转 `done` 则由 **③′** 转降级（退回 30 s + 降级行）+ 实施期复核点③ + 诊断行；本批以「阈值 8000 > 5000」的静态判据把门。
+- **L-B09-5（修正轮 1 #4）**：**持续 `stale` 的静默抑制面**——判定源的写路径 fail-soft（事实 #7：写失败只 warn；`markClean` 已清节流状态 ⇒ 缓存可能长期停在旧记录）⇒ 日志前进而快照不动 ⇒ 规则③ 连续判 `stale`。缓解 = 规则③′ **抑制上界**（≥ 30 s ⇒ 按 `unavailable` 处置 = 退回 30 s 阈值 + 降级行）+ `stale` 诊断行（可观测）；残余 = 上界生效前的窗口内提醒被推迟（方向 = 保守，接受）。
 
 **边界（不做）**：不改 Harness（其落盘物**只读**）；不加用户面提示 / 新通知类型；不改 busy 判定面与回落机制；不新增依赖 / 文件 / 常驻日志；不新增提醒时刻的行内取证行（时延量化靠真机人工计时，见 §3.3）；不代 B10 修 `shell-affinity.js` 读面。
 
@@ -900,8 +932,10 @@ startCompletionWatcher()
 
 > ① **目录面**：读 `<dshHome>/storages/session_projcache/sessions/`，枚举名字**以 `.json` 结尾**的条目（`.json.bak.<stamp>` 类天然排除——批次档 §1.3 ⑥）；逐档 `JSON.parse`，成功者计为**可解析记录**。
 > ② **目录面可用判据 = 可解析记录数 ≥ 1** ⇒ **只读目录面**（不读旧文件），返回各记录 `record.rows.tokenUsage.val.totals` 的四桶之和（缺 `totals` 的记录按 0 贡献）。
-> ③ **目录面不可用**（目录不存在 / `readdir` 抛错 / 可解析记录数 = 0）⇒ 读旧面 `<dshHome>/storages/session_projcache.json`，取 `tables.sessions[*].rows.tokenUsage.val.totals` 求和。
+> ③ **目录面不可用**（目录不存在 / `readdir` 抛错 / 可解析记录数 = 0）⇒ 读旧面 `<dshHome>/storages/session_projcache.json`，取 `tables.sessions[*].rows.tokenUsage.val.totals` 求和；
+> **旧面可用判据（修正轮 4）** = 文件可解析 **且** `tables.sessions` 含至少一条**有效会话条目**（有 `rows.tokenUsage.val.totals` 可取）——仅「可解析」**不构成可用**；`tables.sessions` 缺失 / 空 / 无有效条目 ⇒ 该形态**不可用**（走下一形态 ⇒ 两形态皆不可用 ⇒ 判据 ④ 的 `null`）。
 > ④ **旧面也不可用** ⇒ 返回 `null`（**不是 0**——`0` 会把水位降到 0，使此前已计入的消耗在读数回升时被重复计入）；全过程**不抛错**。
+> **`null` 分支的调用方语义**（本次不累加、不改基线；启动期为 `null` ⇒ 首次读到非 `null` 时**重建基线**）见「增量语义（水位）」——该分支是 AC23 的可独立核查面（修正轮 1 #9 / 修正轮 2 修订）。
 
 **累加判据句（计费口径 B；用户 2026-09-17 12:19 裁定）**：
 
@@ -923,36 +957,53 @@ startCompletionWatcher()
 | 目录不存在 / `readdir` 抛错（EACCES 等） | 走旧面；旧面也不可用 ⇒ `null` | 夹具 ⇒ `null`，不抛 |
 | 两形态并存 | 目录面专读（防双计） | 夹具 ⇒ 返回值 ≠ 两形态之和 |
 | `*.json.bak.<stamp>` / 非 `.json` 条目 | 不被枚举（后缀判据天然排除） | 夹具 ⇒ 返回值不受其影响 |
-| `totals` 缺失（无 LLM 调用的会话） | 该记录贡献 0（仍计为可解析记录） | 夹具 ⇒ 返回值不受其影响 |
+| `totals` 缺失（无 LLM 调用的会话） | 该记录贡献 0（仍计为可解析记录） | 夹具 ⇒ 返回值不受其影响；**该口径的残余风险（记录 ≥ 1 但四桶全缺 ⇒ 静默归零）= L-B10-4** |
+| 旧面文件可解析但 `tables.sessions` 缺失 / 空 / 无有效会话条目（修正轮 4） | **该形态视为不可用**（走下一形态；两者皆不可用 ⇒ **`null`**）——**不得返回 `0`** | 夹具：旧面 `{}` / 空 `tables.sessions` + 目录面缺失 ⇒ `null`（TC-67C） |
 | 调谐：本机真实目录 | 返回值 = 独立复算值 | TC-57 |
+
+> **旧面可用判据（修正轮 4；源 = 批次档 §5 残余 #2——设计侧判据，实施侧改动归下一轮 eng-coder）**：旧面「可解析但无有效会话条目」⇒ **该形态不可用**（判据 ③ 的可用判据不成立）⇒ 走判据 ④ ⇒ **`null`**（**不得返回 `0`**）。
+> 理由 = `0` 会把水位降到 `0`，使**已计入的消耗在读数回升时被重复计入**（与 DD-38 的原理由同源，重复计入面 = L-B10-2 同族）；该形态 = **L-B10-4**（目录面「记录 ≥ 1 但四桶全缺」）的**旧面对照条**（两面同族：可解析但无有效桶）。
+> 实施面 = 旧面函数 `legacySessionTokens()`（as-of `shell-affinity.js:90-103`）按本条改（**本批批准清单外的改动 ⇒ 由下一轮 eng-coder 落**）；本轮只落设计与判据。
 
 **增量语义（水位；避免重启重复计入）**：
 
-- `sumSessionTokens()` = **幂等水位**：不写盘、不持状态，同一磁盘状态重复调用返回同值。
+- `sumSessionTokens()` = **幂等水位**：**返回值幂等**（同一磁盘状态重复调用返回同值）；**不写 `affinity.json`、不持持久状态**——副产品 = 读面不可用时至多发一条诊断行（**每进程至多一条、非持久状态**；发射点 = 函数内判据 ④ 分支，见下「诊断行」）。
 - `affinity.usage` / `affinity.wallet`（`shell-affinity.js:47`）= **持久化的终身累计值**（落 `affinity.json`，只增不减）。
 - 关系 = 水位差：`startAffinityWatcher()`（`:116-147`）在启动时把当前读数记为基线 `lastTokenSum`（`:125`），之后 `delta = s2 − lastTokenSum` 累加（`:129-139`）；
   **重启不重复计入**：`usage` 已持久化 + 基线每次启动重置 ⇒ 已计入的消耗不会被再次计入；仅当 `usage === 0`（首次使用 / `affinity.json` 缺失）时把整份水位一次性计入（`:120-124`，既有语义逐字保留）。
-- 水位下降（会话记录被清理 / 备份跳过）⇒ 仅重置基线（`:140-141`，既有语义，**不扣**好感）；水位回升的重复计入面 = **L-B10-2**。
-- 调用方语义零改动：`startAffinityWatcher` / `stopAffinityWatcher` / `affinityView` / `handleAffinity*` / 渲染面通道 `pet-affinity` 与常量 `EXCHANGE_RATE` / `AFFINITY_RATE` / `LEVEL_THRESHOLDS` / `FOODS` 逐字不变；
+- 水位下降（会话记录被清理 / 备份跳过）⇒ 仅重置基线（`:140-141`，既有语义，**不扣**好感）；水位回升的重复计入面 = **L-B10-2**（用例 = **TC-67A**）。
+- **`null` 分支（调用方语义；修正轮 1 #9 / 修正轮 2 修订——AC23 的可独立核查面）**：`sumSessionTokens()` 返回 `null` ⇒ 本次调用**不累加、不扣减**（`affinity.usage` / `affinity.wallet` / `affinity.json` 皆不动），且该 tick **不改基线**——
+  `s2 === null` 不满足任何分支的进入条件（`:128` 守卫 = **合取** `s2 !== null && lastTokenSum !== null`，设计者亲读）⇒ 基线保持原值（既非「置 `null`」也非「清零」）；后续水位的处置见下两条。
+- **基线重建（修正轮 2 新增；与上条并列的第三类处置）**：启动期读数即 `null` ⇒ 基线 `lastTokenSum` 被置 `null`（`:125`）；此后 tick 若 **`lastTokenSum === null` 且 `s2 !== null`** ⇒ **只重建基线（`lastTokenSum = s2`）、不计 delta**（`affinity.usage` / `affinity.wallet` / `affinity.json` 皆不动）——下一 tick 起按既有水位差语义正常累加（本进程内累加**不再永久暂停**）。
+  **为何不计 delta**：基线段缺失期间的消耗**不补算**——补算会把「暂停期间跨进程 / 跨会话的消耗」记成一次跳变（非本进程累积所得），与 L-B10-2 的重复计入面同族；只设基线即保住「不重复计入」的性质（方向 = 保守）。
+  残余（= **L-B10-5** 修订版）：暂停期的消耗不补算；含启动期 `usage === 0` 的「首次使用一次性计入历史」面（`:120-124` 只在启动时评估一次 ⇒ 启动读数为 `null` 时该一次性计入不发生，此后不再补触发）——保守，不强求。
+  **落位与守卫处置（修正轮 3；判据可达性）**：分支落 **tick 回调内、既有守卫行（`:128`）之前**，形态 = **新增 1 行**（`if (lastTokenSum === null && s2 !== null) lastTokenSum = s2;`）——**守卫行与既有累加 / 重基线块逐字不动**。
+  三类处置由此各归一处：① `s2 === null` ⇒ 两处条件皆不成立 ⇒ 基线保持原值（本次不改基线）；② `lastTokenSum === null ∧ s2 !== null` ⇒ 该行只设基线，随后守卫放行而 `s2 > lastTokenSum` / `s2 < lastTokenSum` 皆假 ⇒ **不计 delta**；③ 基线非 `null` ⇒ 该行不触发，既有累加 / 重基线逻辑逐句不变；`:145` 的每次广播（`:144` 注释）三种情形下均照发。
+  **否决的落位 = 分支置于守卫之后（或守卫内）**：守卫为**合取**（`:128`）⇒ `lastTokenSum === null` 的 tick 在守卫处即早退，分支成**死码**（仅 TC-67B 可暴露）；**另一否决形 = 「守卫拆为两句 + 早退」**：早退会跳过 `:145` 的每次广播 ⇒ 违「广播节奏不动」口径（`:974`）。
+  需求侧登记（设计侧回指注，修正轮 3 #7）= `docs/requirements/SHELL.md` 变更记录（本批裁定：该态属既有「按水位差累加」机制的**延伸**，**契约面逐字不动**）。
+- 调用方口径（修正轮 2 修订）= **除 `startAffinityWatcher` 内新增的基线重建分支外零改动**：`stopAffinityWatcher` / `affinityView` / `handleAffinity*` / 渲染面通道 `pet-affinity` 与常量 `EXCHANGE_RATE` / `AFFINITY_RATE` / `LEVEL_THRESHOLDS` / `FOODS` 逐字不变；
   **可兑换余额（`wallet`）与好感度同源**（同一 `delta`——见 U-14）。
 
 **本批改动面（`shell-affinity.js`）**：
 
 - `sumSessionTokens()`（`:68-83`）整体替换为双形态读面（上判据）；JSDoc（`:67`）与模块头注释（`:25-30` 的「uncachedInput + output」句）同步为口径 B + 双形态口径（**口径残留即示范**）。
-- 新增档内常量与一次性诊断标记 `affinityDiagLogged`；新增导出 `sumSessionTokens`（`module.exports`，`:292-305`）——**导出面 +1**，用途 = 使 AC21–AC25 可经桩测机检（承 B09 §3.3 手段 11 ③ 先例；无副作用）。
+- 新增档内常量与一次性诊断标记 `affinityDiagLogged`；新增导出 `sumSessionTokens`（`module.exports`，`:292-305`）——**导出面 +1**，用途 = 使 AC21–AC25 可经桩测机检（承 B09 §3.3 手段 11 ③ 先例；**返回值幂等**——副作用口径以「增量语义（水位）」/「诊断行」两节为准）。
+- 调用面（`startAffinityWatcher()`，`:116-147`）新增 **1 个基线重建分支**（`lastTokenSum === null ∧ s2 !== null` ⇒ 只设基线、不计 delta；修正轮 2——见「增量语义（水位）」）——**这是本批唯一的调用面改动**；tick 周期、广播节奏（`:144-145`）、`delta` 累加与 `saveAffinity()` 触发面均不动。
 
 **诊断行（本批新增 1 条；条件发射、每进程生命周期至多一条）**：
 
 ```
-[bigfish] affinity token source unavailable; real-usage accumulation is off
+[bigfish] affinity token source unavailable; dir=<yes|no>; real-usage accumulation is off
 ```
 
-- 条件：两形态均不可用（判据 ④ 分支）⇒ 经 `backend.writeDiag(line)` 发射（console + `bigfish.log` 双写，承 §2.2.8 落盘机制）；正常读数（任一面可用）⇒ **0 条**；
-  配套 = `shell-backend.js` 的 `module.exports`（`:311-322`）增 `writeDiag` **1 行**（现状未导出——设计者亲读）。
+- **发射点（修正轮 1 #3 定死）= `sumSessionTokens()` 函数内**（判据 ④ 分支处）——不放调用方：函数内发射使「该次调用判定不可用」与诊断一一对应，且 `require('./shell-backend.js')` 边既有（`shell-affinity.js:9`）⇒ 零新增依赖；档内一次性标记 `affinityDiagLogged` 保证**每进程至多一条**。
+- **`dir=` 字段（修正轮 1 #8）**= 目录 `<dshHome>/storages/session_projcache/sessions/` 的**存在性**（`yes` = 目录在但空 / 全损坏；`no` = 目录不存在）⇒ 区分「全新安装尚无任何会话数据」与「读面失效」，避免长期同文脱敏。
+- 条件：两形态均不可用（判据 ④ 分支）⇒ 经 `backend.writeDiag(line)` 发射（console + `bigfish.log` 双写，承 §2.2.8 落盘机制；`logStream` 只在后端启动后非空 ⇒ 后端未起时只到 console）；正常读数（任一面可用）⇒ **0 条**；
+  配套 = `shell-backend.js` 的 `module.exports`（`:311-322`）增 `writeDiag` **1 行**（现状未导出——设计者亲读；函数体 `:61-64` 既有）。
 - 依据：本 bug 的伤害来自**静默**（读失败无任何信号，长期无人察觉）⇒ 失败面须可诊断；复用 B07 已建立的单一诊断落盘面（`shell-backend.js:61-64`），不新造落盘路径、不改文件名 / 落点。
-- 机检：`findstr /c:"affinity token source unavailable" bigfish.log`（两形态均不可用时 1 条；正常态 0 条）。
+- 机检：`findstr /c:"affinity token source unavailable" bigfish.log`（两形态均不可用时 1 条；正常态 0 条）+ 行内 `dir=yes|no` 字段在场（口径 = TC-67）。
 
-**读面开销（口径与再议触发）**：单次 tick = 1 次 `readdir` + N 次小档 `readFile`（N = 可解析记录数；本机实测 **1** 档 / 7827 B）；**不做目录递归**；
+**读面开销（口径与再议触发）**：单次 tick = 1 次 `readdir` + N 次小档 `readFile`（N = 可解析记录数；本机实测 **1** 档——档大小随会话增长而变：B10 落笔时 7827 B / 修正轮 1 实测 7191 B）；**不做目录递归**；
 同步读与现状同口径（NFR-5 的「无 `*Sync(`」判据**只覆盖 `shell-notify.js`**——口径界定见 §2.5 C32）。再议触发（本批不做，登记 **L-B10-1**）：记录数 > 100 或单次读量 > 5 MB ⇒ 另批评估异步化 / 增量读。
 
 **已知限制（本批不修，留档）**：
@@ -961,9 +1012,26 @@ startCompletionWatcher()
 - **L-B10-2**：水位**回升**（会话记录被备份回滚 / 由会话日志重建后 `totals` 重新出现）⇒ 该段消耗可能被重复计入——现状逻辑不区分「回升」与「新消耗」（`:128-141` 既有语义未变）；
   触发 = 实际偏差被观察到 ⇒ 另批做「按会话 ID 记账」。
 - **L-B10-3**：`null` 与 `0` 的区分是本设计的安全前提（判据 ④）；若后续实现改成「读不到即 0」，L-B10-2 的重复计入面会被显著放大——判据须保持。
+- **L-B10-4（修正轮 1 #5）**：**「可解析记录 ≥ 1 但四桶全缺」⇒ 静默归零**——判据 ② 与容错表把「`totals` 缺失」当合法（贡献 0、仍算可解析记录）⇒ 若换代只改**桶名 / 层级**（文件仍可 `JSON.parse`），生效读面返回 **0**（非 `null`、且不满足诊断条件「两形态均不可用」）⇒ 症状与本次事故同型（读数不增长而无任何信号）。
+  本批**不扩诊断条件**（扩面 = 语义变更）；触发 = 该态在实际使用中被观察到（或 Harness 桶名再变）⇒ 另批评估「四桶全缺 ⇒ 视为该记录不可用（不计入可解析记录数）」或扩诊断条件；判据面 = 设计档本条 + O17 的断言限定。
+  **旧面对照条（修正轮 4）** = 旧面「可解析但 `tables.sessions` 缺失 / 无有效会话条目」——该形态已定为**不可用**（判据 ④ ⇒ `null`，不归零；见「旧面可用判据」注 + TC-67C）；两面同族 = 可解析但无有效桶。
+- **L-B10-5（修正轮 1 #9 派生；修正轮 2 修订——台账 T27 ⇒ 本批已修）**：启动期读数 `null` ⇒ 基线被置 `null`（`lastTokenSum = sum`，`:125`），而 tick 的守卫（`:128`）= **合取** `s2 !== null && lastTokenSum !== null`、且修复前 `lastTokenSum` 只在守卫内被重新赋值（`:131` / `:141`）⇒ **原状态 = 读数事后恢复也不重建基线（本进程累加永久暂停，仅重启可解）**。
+  证据链（原症状）：触发场景 = 首次安装 / 会话记录尚未产生 / 缓存被清后的首次启动（`:118-125`）⇒ 新用户首启后聊了半天而好感度不涨（与 T14 同型的**静默**失效）。
+  **本批已修**（用户 2026-09-17 裁定并入 B10；修法 = 「增量语义（水位）」的**基线重建**条 + DD-50）；**残余 = 暂停期的消耗不补算**（保守方向：不重复计入；含启动期 `usage === 0` 的一次性计入面）——残余不需修，登记备查；**落位与守卫处置**见「基线重建」条（修正轮 3）。
+  判据 = AC23（调用面口径 = 除基线重建分支外零改动）+ TC-67B（启动期读面 `null` ⇒ 恢复非 `null` 后**累加恢复**）。
 
 **边界（不做）**：不改 Harness（`~/.dsh` / `dsh-bundle/` / 更新副本**只读**）；不改喂食 / 兑换 / 好感度 UI 与既有常量；不改 10 s 周期与广播节奏；
 不新增依赖 / 不新增源文件；不做目录递归；不按 workspace / 会话过滤；不做异步化改造；不代 B08 改 bundle 版本；不代 B09 改判定面（§2.2.12 与本条是同一目录 family 的两条**独立**读面）。
+
+**消解期（旧布局兜底；US-13 契约点 / DD-39；修正轮 1 #1）**：兜底保留**至 B08（内置 bundle 版本收口）收口点**；到期条件 = 内置 bundle **≥ `0.1.5-rc.1`**（或任意产出 per-record 布局的版本；即出厂路径不再产生旧布局）**且**活跃副本枚举中**无产出旧布局的版本**（判据 = 逐副本「是否产出 per-record 布局」，不以版本号比较为判据；两条件全成立方可剔除旧面分支）；到期时由主 agent 在 B08 收口点核对并裁定。
+**条件不成立 ⇒ 顺延并重新登记到期条件——不得默认永久**（永久保留 = 纪律禁止的先例形态）。依据与逐字同源句 = `docs/requirements/SHELL.md` US-13「消解期（旧布局兜底）」；条件可机检（活跃副本枚举 + 逐副本形态判定，见该条到期条件句）。
+**修正轮 4 复核（B08 钉版后；源 = 批次档 §5 残余 #3）**：第一分句（内置 bundle **≥ `0.1.5-rc.1`**（或任意产出 per-record 布局的版本）——判据记为「出厂路径产出 per-record 布局」）**现已满足**：出厂 bundle 已钉 `0.1.5-rc.1`（per-record 目录布局；`dsh-bundle/node_modules/@deepseek-ai/dsh/package.json:4`，实测 2026-09-17）；
+第二分句（活跃副本枚举中**无产出旧布局的版本**——判据 = 逐副本「是否产出 per-record 布局」，不以版本号比较为判据）**不可从仓内验证**（用户机上的更新副本须在发版时点枚举）⇒ **兜底与消解期保留**，到期核对顺延至**下次发版复核**（时点与裁定 = 主 agent，B08 收口点面）。
+**修正轮 5（字面口径收口——源 = 批次档 §2.14 报而不改的 N-1；主 agent 复核裁定 = 修）**：第一分句字面原为「内置 bundle ≥ 0.1.5」——按 semver 严格比较，预发布版 `0.1.5-rc.1` < `0.1.5` ⇒ 原字面**自身永假**，与「已满足」的结论相抵；
+现字面 = 「≥ `0.1.5-rc.1`（或任意产出 per-record 布局的版本）」，与判据语义（出厂路径已切 per-record 布局）同口径。**结论与保留期 / 顺延重登 / 到期核对三句不变**；逐字同源句 = `docs/requirements/SHELL.md` US-13「消解期（旧布局兜底）」。
+**修正轮 6（第二分句字面口径收口——源 = 批次档 §2.14 报而不改的 N-2；主 agent 复核裁定 = 修）**：第二分句字面原为「活跃副本枚举中无 < 0.1.5」——按 semver 严格比较，预发布版 `0.1.5-rc.1` < `0.1.5` ⇒ 产出 per-record 布局的预发布副本被字面计入「< 0.1.5」（与第一分句同型的口径错误：以版本号比较代替「是否产出旧布局」）；
+现字面 = 「无产出旧布局的版本」（判据 = 逐副本「是否产出 per-record 布局」），与第一分句**同口径（行为面）、版本号只作举例**；**结论与保留期 / 顺延重登 / 到期核对三句不变**；同轮把 DD-39 决策表行 / §2.6 追认块 DD-39 条 / 需求档 US-13 同字面同步。
+**同族 as-of 说明**：§2.1 L-1 候选 1 / 候选 2 与 §2.4 DD-34 理由格内的「出厂 `0.1.0-rc.6`（单文件布局）」为 **B10 落笔时点的事实（as-of 2026-09-17）**，随 B08 钉版过期——读面**双形态**的结论不受影响（保留理由见本复核第二条）。
 
 #### 2.2.14 插件市场安全与扫描契约（B12 / US-14·US-15）
 
@@ -980,14 +1048,27 @@ startCompletionWatcher()
 **入参门判据句（主防线；US-14 契约第一层）**：
 
 > `installPlugin(spec)` 与 `uninstallPlugin(spec)` 的入参只允许三种形态，**其它一律 `{ ok:false, message }` 且不触文件系统、不起子进程**：
-> ① **内置形态** `builtin:<纯包名>` 或**裸** `<纯包名>`；② **GitHub 形态** `github:<owner>/<repo>[#<片段>]`（`owner` / `repo` 匹配 `[A-Za-z0-9._-]+`；`片段` 匹配 `[A-Za-z0-9._:@/-]+` 且不含 `..` 段）；
+> ① **内置形态** `builtin:<纯包名>` 或**裸** `<纯包名>`；② **GitHub 形态** `github:<owner>/<repo>[#<片段>]`（`owner` / `repo` 匹配 `[A-Za-z0-9._-]+` 且**排除 `..` 与全点段**——`github:../..` 的下游后果见「两层关系」逐形态论证；`片段` 匹配 `[A-Za-z0-9._:@/-]+` 且不含 `..` 段）；
 > ③ **npm 形态** `[<scope>/]<纯包名>[@<版本>]`（版本 / 标签 / 范围匹配 `[A-Za-z0-9-._+~^*<>=|]+`）。
 > 其中「纯包名」的判据 = **既有** `isPlainPackageName()`（`:99-106`，逐字复用：`@scope/name` 放行；`..` / `/abs` / 盘符 / 反斜杠 / `github:` / `git+` / `link:` / `file:` 一律拒）。
 
 - 实现面 = 新增纯函数 `installSpecKind(spec)`（返回 `'bundled' | 'github' | 'npm' | null`），`installPlugin` / `uninstallPlugin` 的**第一行**调用它；`null` ⇒ 早退拒绝。**内置分支的进入条件 = `kind === 'bundled'`**（名字段判别——`github:` / `name@ver` 形态不进内置面，与改前的 `existsSync` 结果面实测等价：`bundled-plugins/` 目录名全为纯包名，现仅含 `README.txt`）。
+- **分支通路（过门后的去向；修正轮 1 #3 + 修正轮 2 N2——统一为「计算面对全形态、动作面按 `kind` 分派」一条流程）**：
+  - ① **计算面（全形态必经）**：`bundledName` = 入参去掉 `builtin:` 前缀（非 `builtin:` 形态 = **原样入参**；与改前 `:312` 同源）⇒ **第一处 `path.join`**：`bundledSource = path.join(bundledPluginsDir(), bundledName)`（与改前 `:313` / `:359` 逐字同源）⇒ 紧随**包含判定（`bundledSource` 面）**；
+  - ② **动作面（按 `kind` 分派）**：`kind === 'bundled'`（含**裸纯包名**这一支）⇒ 进内置分支，分支内按 `existsSync(bundledSource)` 再分：**源存在 ⇒ 内置拷贝面；源不存在 ⇒ 落回 npm / pnpm 面**（`installPlugin` 走 `pnpm add`，与改前 `existsSync` 假分支逐字同径）；`kind === 'github' | 'npm'` ⇒ 直接走 npm / pnpm 面（**② 形态仍进第一处 `path.join`**——计算面全形态，故「逐形态论证」对 ② 成立）；
+  - ③ **第二处 `path.join`（仅内置动作面内可达）**：`target = path.join(profileDir(), 'node_modules', bundledName)` ⇒ 紧随**包含判定（`target` 面）** ⇒ 之后才是 `mkdirSync` / `rmSync` / `cpSync`；
+  - 卸载面同径：两处 `path.join` 与两处面判定同安装面；内置面内 `rmSync(target)` + `removeBundle` / 否则 pnpm `remove` 面（**解析门**判据句见 §2.2.14——D2 不重述）。**「裸纯包名」的实际去向** = ② 的「源不存在」支（`bundled-plugins/` 内无同名目录 ⇒ 落回 pnpm 面，同改前）；判定者 = `existsSync(bundledSource)`（`shell-plugins.js:314` / `:360`，同改前）。用例 = TC-87（TC-68 / TC-72 并列）。
 - **零误拒实测（设计者本轮亲跑，2026-09-17）**：把注册表 3727 项按两条既有推导链（`normalizePlugin` `market.js:95-107` / `pluginUpdateSpecOf` `shell-plugins.js:130-141`）展开，得 **3725** 个不同的安装标识形态 ⇒ 对拟议白名单判定 **误拒 0**；
   其中含 1832 个 `github:`（139 个为 `github:…#path:/…` 子目录形态）、491 个 scoped；注册表 `npm` 字段非纯包名的条目 = **0**；`version` 字段形态异常 = **0**。
-- 攻击形态判定（同一次实测）：`../../..` / `builtin:../../..` / `..\..\..` / `/abs/path` / `C:\Windows` / `@scope/..` / `..` / `a/../../b` / `\\srv\share` / `file:/etc/passwd` / `link:../x` / `git+https://x/y` / `builtin:/abs` / `a\b` ⇒ **全部拒**。
+- 攻击形态判定（同一次实测）：`../../..` / `builtin:../../..` / `..\..\..` / `/abs/path` / `C:\Windows` / `@scope/..` / `..` / `a/../../b` / `\\srv\share` / `file:/etc/passwd` / `link:../x` / `git+https://x/y` / `builtin:/abs` / `a\b` / `github:../..` ⇒ **全部拒**。
+
+**卸载面解析门判据句（修正轮 1 #1；US-14 契约第一层的卸载面补充）**：
+
+> `uninstallPlugin(spec)` 在**通过入参门之后、任何动作之前**追加一道解析门：`realName = resolveInstalledName(spec)`（`:109-123`，既有函数）——
+> `realName === null`（**无法解析**）**或** `!isPluginInProfile(realName)`（**未安装**）⇒ `{ ok:false, message: '未安装或无法解析：<入参前 60 字符>' }`，**不触文件系统、不起子进程**。
+> 白名单**不缩窄**：`github:` 形态仍属入参门白名单成员（US-14 原文把三形态同时授予两函数）——被拒的不是形态，而是「**解析不到已装对象**」这一动作前提；卸载面合法输入 = 已装真实包名（纯包名）。
+> 与既有调用链同源：`marketUninstall` 本就在下传前做同一解析（`shell-market.js:112`，解析失败时把原始标识原样下传）⇒ 解析门承接的正是该「解析失败」剩余面。
+> 判据可达性（不引入死面）：市场页「卸载」按钮只在 `isInstalled(p)` 为真时渲染（`market.js:265-273`），其判定按**仓库名精确匹配**（`market.js:164-175` / `repoBase` `:157-162`），与壳侧 `resolveInstalledName` **同源同启发式** ⇒ 按钮可见 ⇒ 解析门必过。
 
 **越界校验判据句（纵深防御；US-14 契约第二层）**：
 
@@ -996,12 +1077,22 @@ startCompletionWatcher()
 > 不满足 ⇒ 与入参门同形拒绝（`{ ok:false, message }`），**且在 `fs.existsSync` / `rmSync` / `cpSync` / `mkdirSync` 之前返回**。
 > **判定为词法归一化（`path.relative`），不 `realpath`**：pnpm 的 `node_modules` 是链接布局（本机 `~/.dsh/profiles/web/node_modules` 顶层 4 条目含 `.pnpm` / `.modules.yaml` 元数据）
 > ⇒ `realpath` 会把合法的 store 链接判成越界（误拒合法安装），且路径不存在时 `realpathSync` 抛错（新增失败面）；威胁源 = 远端注册表字符串（无法在本地创建链接）⇒ 符号链接不在本条威胁面内（登记 **L-B12-1**）。
+> **面标号与执行先后（修正轮 2 N2）**：§2.2.14「越界校验判据句」的 ① / ② 为**按面标号**（① `target` 面 / ② `bundledSource` 面），非执行先后；**执行先后** = 「分支通路」①→②→③（`bundledSource` 面判定先于 `target` 面）——AC27 ③ 的结构判据按该顺序判读。
 
-**两层关系（为何保留第二层）**：白名单 ⇒ 包含性是**蕴含**关系（纯包名不含分隔符与归一化件 ⇒ `path.join` 结果必在基准之下）⇒ 当前形态下第二层**不会**成为决定层。保留理由 = **判据独立性**：白名单判「形态」、包含判定判「位置」；形态演进（新增前缀 / 放新字符集 / 新增拼接点）时位置判据仍守得住——本 bug 的后果等级（递归删除用户凭据）不值得只挂一层。可机检面 = 函数级（`isInsideDir` 真值表）+ 调用点在场（`installPlugin` / `uninstallPlugin` 各 1 处）。
+**两层关系（为何保留第二层）**：白名单 ⇒ 包含性是**蕴含**关系（三形态的段集均不含 `..` / 全点段 / 盘符 ⇒ `path.join` 结果必在基准之下）⇒ 当前形态下第二层**不会**成为决定层。保留理由 = **判据独立性**：白名单判「形态」、包含判定判「位置」；形态演进（新增前缀 / 放新字符集 / 新增拼接点）时位置判据仍守得住——本 bug 的后果等级（递归删除用户凭据）不值得只挂一层。
+- **可机检面（修正轮 3 计数口径）**：函数级 = `isInsideDir` 真值表（§3.1「AC27 判据细化」①——只回指不重述）；调用点计数 = **每函数 2 处**（`bundledSource` 面 + `target` 面），两函数共 **4** 处判定面（口径见 §3.1「AC27 判据细化」②）。
+- **已知事实（不可达面；修正轮 3）**：白名单在场时，第二层的拒绝分支在当前形态下**不可达**——保留为**纵深防御**（形态演进时守位）；**其可达性不得作为验收面**（AC31 对应前缀的取证面 = 函数级 + 静态，见 §3.1「AC31 判据细化」）。
+
+- **逐形态论证（修正轮 1 #4；两处 `path.join` = `bundledSource`（`:313` / `:359`）与 `target`（`:316` / `:361`））**：
+  - ① 内置形态（`builtin:` / 裸纯包名）：`bundledName` = 去掉 `builtin:` 前缀 ⇒ 段集 = `[name]` 或 `[@scope, name]`（纯包名判据内不含 `..` / 全点段 / 盘符）⇒ 两处结果**严格落在**基准之下 ✓。
+  - ② GitHub 形态：**进入第一处 `path.join`**（**计算面全形态**——「分支通路」①；**动作面**落 npm / pnpm 面——同条 ②）——`bundledName` 原样携带 `github:owner/repo`，段集 = `[github:owner, repo]` 或 `[github:owner, repo#path:, x]` ⇒ 排除 `..` / 全点段后仍严格落在基准之下 ✓；
+    未排除时 `github:../..` 会被 `path.join` 把末段 `..` 弹掉 ⇒ `bundledSource` 归一化到基准**之外**（第二层兜得住，但主防线不应放过——故 ② 的 `owner` / `repo` 显式排除）。
+  - ③ npm 形态：段集 = `[name@版本]` 或 `[@scope, name@版本]`（版本后缀不产生特义段——`..` 仅当整段恰为 `..`，而该段永带包名前缀）⇒ 两处结果严格落在基准之下 ✓。
+  - `target`（第二处）**仅在内置分支内可达**（`kind === 'bundled'` ∧ `bundledSource` 存在）⇒ 必经第一处的包含判定。
 
 **拒绝消息形态（US-14 契约第四层）**：
 
-> `{ ok:false, message: '无效的插件标识：<入参前 60 字符>' }`（越界校验命中 ⇒ `'插件标识越界，已拒绝：<入参前 60 字符>'`）。
+> `{ ok:false, message: '无效的插件标识：<入参前 60 字符>' }`（入参门命中）；越界校验命中 ⇒ `'插件标识越界，已拒绝：<入参前 60 字符>'`；**卸载面解析门命中 ⇒ `'未安装或无法解析：<入参前 60 字符>'`**（修正轮 1 #1——共三类拒绝消息）。
 > **消息内不出现任何绝对路径**——不拼 `profileDir()` / `dshHome()` / `bundledPluginsDir()` 的解析值（渲染层会把 `res.message` 原样显示在 toast 上；含路径的消息会把用户主目录暴露给持有 `marketAPI` 的渲染进程）。判据 = 桩测正则：message 不含盘符形态 `[A-Za-z]:[/\\]`、不含三个基准目录的取值子串。
 
 **弹窗文本化判据句（US-14 契约第三层）**：
@@ -1041,16 +1132,16 @@ startCompletionWatcher()
 | 情形 | 改前 | 改后 | 依据 |
 |---|---|---|---|
 | `installPlugin('../../..')` / `uninstallPlugin('../../..')` | 递归删 / 拷（可达 `<DSH_HOME>`） | `{ ok:false, message:'无效的插件标识：…' }`，零 fs 改动 | US-14（本批目标） |
-| `installPlugin('<合法名>')` / `'<名>@<版本>'` / `'@scope/name'` / `'github:owner/repo#path:/x'` | 走内置面或 pnpm 面 | **同**（3725 形态零误拒实测） | US-14 P2 |
-| `uninstallPlugin('<未安装的 github: 标识>')`（`resolveInstalledName` 解析失败后的剩余面） | 走 `pnpm remove <github:…>`（多为 not-found 后清 bundles） | `{ ok:false, message:'无效的插件标识：…' }`——该形态不在白名单内 | 有意收紧：卸载面的合法输入 = 已装真实包名（纯包名）；「解析失败」时本就不存在可卸载对象（渲染层按钮亦不出现——`market.js:164-175`） |
+| `installPlugin('<合法名>')` / `'<名>@<版本>'` / `'@scope/name'` / `'github:owner/repo#path:/x'` | 走内置面或 pnpm 面 | **同**（3725 形态零误拒实测）——过门后 `bundledSource` 不存在 ⇒ 落回 pnpm 面（与改前 `existsSync` 假分支同径；用例 TC-87） | US-14 P2 |
+| `uninstallPlugin('<未安装的 github: 标识>')`（解析失败后的剩余面——`shell-market.js:112` 下传） | 走 `pnpm remove <github:…>`（多为 not-found 后仍回 `ok:true`） | `{ ok:false, message:'未安装或无法解析：…' }`（**解析门**命中——形态**仍过白名单**；修正轮 1 #1） | 有意收紧：卸载面合法输入 = 已装真实包名；解析不到 ⇒ 无可卸载对象（按钮只在已装态渲染——`market.js:265-273`） |
 | 同一 IPC 请求内 profile 被并发修改 | 各次读取可能看到不同状态（撕裂） | 快照一致（一次读） | US-15（单次扫描的自然结果） |
-| 拒绝消息文本 | 无（原路径无拒绝分支） | 新增两类拒绝消息（不含绝对路径；走既有失败 toast 渲染面） | US-14 契约第四层（无新用户面文案） |
+| 拒绝消息文本 | 无（原路径无拒绝分支） | 新增**三类**拒绝消息（`无效的插件标识：` / `插件标识越界，已拒绝：` / `未安装或无法解析：`；不含绝对路径；走既有失败 toast 渲染面） | US-14 契约第四层（无新用户面文案） |
 
 **改动面清单（本批；行号为 as-of 2026-09-17）**：
 
 | 文件 | 改动点 | 说明 |
 |---|---|---|
-| `shell-plugins.js` | 新增 `installSpecKind()` / `isInsideDir()` / `scanProfile()`；六个既有函数增可选 `ctx`（清单见注 S8）；`installPlugin`（`:311-322`）/ `uninstallPlugin`（`:358-365`）加入参门 + 越界校验；导出面 +3 | 判定语义零变更（等价性论证见上） |
+| `shell-plugins.js` | 新增 `installSpecKind()` / `isInsideDir()` / `scanProfile()`；六个既有函数增可选 `ctx`（清单见注 S8）；`installPlugin`（`:311-322`）/ `uninstallPlugin`（`:358-365`）加入参门 + 越界校验，`uninstallPlugin` 另加**卸载面解析门**（修正轮 1 #1）；导出面 +3 | 判定语义零变更（等价性论证见上）；卸载面解析门 = 有意收紧（行为差异表第 3 行） |
 | `shell-market.js` | `marketList`（`:80-91`）/ `marketState`（`:95-102`）改为建一次快照并下传 | 零契约变更（返回字段不变） |
 | `market.js` | `el()`（`:43-48`）改变参 + 新增 `frag()` 与段落 helper；`confirmModal`（`:286-290`）改收节点；三处调用点（`:296-302` / `:326-330` / `:354-358`）改节点构造；`body.innerHTML` 清空三处（`:76` / `:203` / `:219`）改 `textContent = ''` | `innerHTML` 归零；外观 / 文案逐字不变；**行数 ≤ 500 硬限**（`market-update.js:4` 已记录该上限） |
 | `tests/b12-plugin-guards.test.js`（新） | 三层夹具：守卫面（穿越枚举 + 形态正负例）/ XSS 面（`vm` + 极简 DOM 桩）/ 扫描面（计数器 + 黄金样本对照） | 开发期工具（§3.3 手段 13；`package.json` / `build.files` 零改动） |
@@ -1062,6 +1153,10 @@ startCompletionWatcher()
 - **L-B12-1**：越界校验为词法判定、不含 `realpath` ⇒ 若 `node_modules/<name>` 被替换为**本地符号链接**（需本机写权限，不在本 bug 威胁面），删除面可经链接指向外部；触发条件 = 实际观察到链接逃逸 ⇒ 另批评估「链接感知」收口面（须同时处理 pnpm 合法链接）。
 - **L-B12-2**：注入面消除后，市场页仍是**展示第三方内容**的窗口；本批不做「URL 宿主白名单 / 链接协议守卫 / 图片源限制」（超批次边界）——登记 **O20**。
 - **L-B12-3**：`scanProfile` 快照在同一请求内是一致视图；若未来引入「安装后不重启即刷新」的流程，需重评快照时点（当前消费面 = 一次 IPC 一次快照，无跨调用复用）。
+- **L-B12-4**：**卸载面 `builtin:<名>` 假成功**（实施期实测，2026-09-17；实施后收口轮登记）——现象 = `uninstallPlugin('builtin:<已装名>')` 过入参门（`shell-plugins.js:325` 判 `'bundled'`）与解析门（`:410`——`resolveInstalledName` `:143` 去 `builtin:` 前缀 ⇒ 命中 `<已装名>`）之后，
+  动作面仍返回 `{ ok:true, message:'已卸载 builtin:<名>（pnpm 有警告，已清理注册）' }`（`:425`），而**实际未删目录、未注销 bundles**（`:417` / `:424` 用原始入参）。
+  触发面 = `builtin:` 前缀形态经 `market:uninstall` IPC（渲染面对已装条目一般传纯包名 ⇒ 该形态属**边角入口**）；根因 = 动作面（`bundledSource` / `target` 拼接 `:412` / `:415`、`pnpm remove` 实参 `:421`、失败分支注销 `:424`）用**原始入参**而非解析门已得的 `realName` ⇒ `existsSync(bundledSource)` 判假、落 pnpm 面后 `pnpm remove builtin:<名>` 失败却仍按原样返回成功。
+  **与改前逐字同源（非本批回归）**；本批不改的理由 = 修它即变更 `pnpm remove` 的**实参语义**（行为差异表未覆盖该面，属设计面裁定）；**修法方向** = 动作面改用**解析门已得的 `realName`**（解析结果）而非原始入参。台账承接 = **T32**（`docs/TODO.md`，主 agent 已登记；与 T22 同族）。
 
 **边界（不做）**：不改 IPC 通道名 / 参数契约 / 返回字段；不改注册表来源与回退链；不改更新判定语义（入选条件 / 版本比较 / `github:` 重装口径 / 日志行）；不做签名校验、宿主白名单、`will-navigate` / `setWindowOpenHandler` 守卫；不引新依赖、不新增构建步骤；不改 `market.html`（含其 CSP 与文案）。
 
@@ -1123,45 +1218,86 @@ startCompletionWatcher()
 
 | 文件 | 当前行数 | 改动点（现状行号） | 预计改动量 | 末行数（预估） |
 |---|---|---|---|---|
-| `shell-notify.js` | 163 | §2.2.12：新增 `completionGate()` + 三份状态/常量（`:13-24` 注入面与状态区）；tick 内插入判定分支（`:132` 条件处改为「短阈值 + 判定」两步）；头注释（`:86-96`）补判定面口径 | +约 70 / −约 6 | ≈227 → **实施期实测回填** |
-| `main.js` | 204 | §2.2.12：`:49` 阈值 30 s → 8 s + 新增 `IDLE_NOTIFY_FALLBACK_MS`(30 s) + env 解析 `idleNotifyMs()`（承 `shell-backend.js:66-74` 形）；`:61` 注入面 +1 键 | +约 12 / −约 2 | ≈214 → **实施期实测回填** |
+| `shell-notify.js` | 163 | §2.2.12：新增 `completionGate()` + 四份状态/常量（`:13-24` 注入面与状态区）；新增 `require('./shell-backend.js')`（取 `writeDiag`；修正轮 1 #2）；tick 内插入判定分支（`:132` 条件处改为「短阈值 + 判定」两步）；头注释（`:86-96`）补判定面口径 | +约 78 / −约 6 | ≈235 → **308**（**实施期实测已回填**，+73；越 300 软档——**体量裁定见下**；< 500 硬限） |
+| `shell-backend.js` | 322 | §2.2.13（B10）：`module.exports` 增 `writeDiag`（`:311-322`，1 行——函数体不动）；**B09 复用同一行**（修正轮 1 #2）⇒ 两批共用、**先落者建立**（不得重复添加） | +1 / −0（与 B10 同行） | 323 |
+| `main.js` | 204 | §2.2.12：`:49` 阈值 30 s → 8 s + 新增 `IDLE_NOTIFY_FALLBACK_MS`(30 s) + env 解析 `idleNotifyMs()`（承 `shell-backend.js:66-74` 形）；`:61` 注入面 +1 键 | +约 12 / −约 2 | ≈214 → **217**（**实施期实测已回填**，+3） |
 | `docs/requirements/SHELL.md` | 196 | 本批追加 US-12 / NFR-5 B09 注记 / §二 范围 / 头部关联指针 / 变更记录 2 行 | +21 / −0（实测） | **217**（落档实测） |
 | `docs/design/SHELL-UX.md` | 972 | 本档修订：§一 回指表 +2 行 / §2.1 选型 K / §2.2.12 / §2.2.6 注 S6 + 锚点 B09 附注 / §2.3 B09 表 / §2.4 DD-29…DD-33 / §2.5 C27…C31 + O15·O16 + L-B09 指针 / §2.6 U-13 与 B09 追认块 / §3.1 AC17–AC20 / §3.2 TC-46–TC-55 / §3.3 手段 11 / 变更记录 | +193 / −0（实测） | **1165**（落档实测） |
 
 > 本批**零新增文件**（桩测手段若采用须经主 agent 裁定——§3.3 手段 11 ③ 已标注）：`package.json` 的 `build.files` 与 `dependencies` 均不动（P3）。
 > 不触碰（明确）：`shell-tray.js`（175 行，`setNotify` 面不变）/ `shell-settings.js`（60，`notifyOnComplete` 默认值不变）/ `shell-affinity.js`（305，其读面失效 = 技术待办 T14，归 **B10**）/ 其余 `shell-*.js` / `docs/TODO.md` 与 `docs/README.md`（主 agent 写域）。
-> 单函数体量核对：`completionGate()` 预估 ≈40 行、`startCompletionWatcher()` 163 → ≈178 行——均 **<<300**，无 >300 函数面，无需拆分裁定（NFR-3 的 500 行硬限亦无影响）。
+> 单函数体量核对（**修正轮 1 #5**；口径 = 函数体起止行）：`shell-notify.js:97-139` `startCompletionWatcher()` 现 **43** 行（实施期实测口径同 B07 表 `:1117`）→ 本批在 tick 内插入判定分支 / 抑制上界 ⇒ 预估 **≈60** 行；
+> `completionGate()` 为新增函数，预估 **≈40** 行；两者均 **<<300**，无 >300 函数面，无需拆分裁定（NFR-3 的 500 行硬限亦无影响）。
+> **实施后收口轮实测**：`startCompletionWatcher()` **47** 行（`:238-284`）、`completionGate()` **42** 行（`:117-158`）——上述预估（≈60 / ≈40）为高估，结论（均 <<300、无需拆分裁定）不变。
+> 原记「`completionGate()` 预估 ≈40 行、`startCompletionWatcher()` 163 → ≈178 行」为**口径错误**（163 = 本档文件行数、178 与本表末行数不符）——已按实测重写。
+> **>300 软档 体量裁定（`shell-notify.js` 预估 ≈235 → **实测 308**；实施后收口轮补，形式承 B07 `shell-backend.js` 先例）**：① 事实 = 越 300 软档但**未触 400 消解线**（NFR-3 的 500 硬限亦无影响）；实施期增量 = 判定函数 `completionGate()` + 辅助函数 5 名 + 档内常量与两份状态机标记 + `require('./shell-backend.js')` 边 + tick 判定分支（详见注 S6 / §2.2.12）；
+> ② 理由 = **纯增量、职责未增**（档内既有域「完成提醒」不变：busy 记法 + 通知 + 判定；无新文件 / 无新依赖 / 无新落盘机制——诊断行复用 B07 / B10 既有的 `writeDiag` 落盘面）；最长函数 = `startCompletionWatcher()` **47** 行（`shell-notify.js:238-284`）· `completionGate()` **42** 行（`:117-158`——设计者亲测）⇒ **无 >300 函数面**；
+> ③ 消解路径 = **保持单文件、不拆分**——触发条件（**消解期**）= 该档**逼近 400**（> 380），或再获增量批次 ⇒ 该批立案时先做拆分复核（候选切面 = busy 记法与判定面 vs 通知发送面）。
+>
+> **B09 修正轮 1 补正注（受影响文件面）**：① `shell-notify.js` 预估改动量 70 → **78**（新增 `require` 边 + 第二条诊断行 + 抑制上界状态机），末行数 227 → **235**（227 / 235 = **该轮落档预估**；**实施后收口轮实测终值 = 308**——权威面 = 本表「末行数」列）；
+> ② 新增 `shell-backend.js` 行（`writeDiag` 导出行 = **与 B10 §2.2.13 / DD-40 同一行**——两批共用，先落者建立；修正轮 1 #2）；
+> ③ 单函数体量核对行按实测重写（#5）；④ 本表两处文档自指行的本轮实测值见下文「文档行数补正注」。
+>
+> **文档行数补正注（B09 修正轮 1 落档实测；换行符计数口径）**：`docs/design/SHELL-UX.md` **1601 → 1649**（本轮 +48）；`docs/requirements/SHELL.md` **299 → 303**（本轮 +4）。
+> 本表原文的 217 / 1165 为该轮 as-of 快照（后经 B10 / B12 段落到 299 / 1601）；两档本轮行宽实测均 ≤ 300 字符（不含行尾 CR；本档最宽 **300**，`docs/requirements/SHELL.md` 最宽 **299**）。
 
 **B10 受影响文件（as-of 2026-09-17；行数口径 = 换行符计数，见 §2.3 行数口径注；行数为设计者亲测）**：
 
 | 文件 | 当前行数 | 改动点（现状行号） | 预计改动量 | 末行数（预估） |
 |---|---|---|---|---|
-| `shell-affinity.js` | 305 | §2.2.13：`sumSessionTokens()` 重写（`:68-83`）+ JSDoc / 头注释口径句（`:25-30` / `:67`）+ 档内常量与诊断标记 + 导出面 +1（`:292-305`） | +约 60 / −约 14 | ≈351 → **实施期实测回填** |
-| `shell-backend.js` | 322 | §2.2.13：`module.exports` 增 `writeDiag`（`:311-322`，1 行——函数体不动） | +1 / −0 | 323 |
-| `docs/requirements/SHELL.md` | 217 | 本批追加 US-13 / §一 B10 批次目标 / §二 B10 条目与层级注 / 头部关联批次与条目区间 / 变更记录 2 行 | +33 / −0（实测） | **250**（落档实测） |
-| `docs/design/SHELL-UX.md` | **1282** | 本档修订：§一 回指 +1 行 / §2.1 选型 L / §2.2.13 / §2.2.6 注 S7 + B10 附注 / §2.3 B10 表 / §2.4 DD-34…DD-40 / §2.5 C32–C35 + O17–O19 + L-B10 指针 / §2.6 U-14 与 B10 追认块 / §3.1 AC21–AC25 / §3.2 TC-56–TC-67 / §3.3 手段 12 / 变更记录 | +约 170 / −0（估算；口径见下注） | **1349**（落档实测） |
+| `shell-affinity.js` | 305 | §2.2.13：`sumSessionTokens()` 重写（`:68-83`）+ JSDoc / 头注释口径句（`:25-30` / `:67`）+ 档内常量与诊断标记 + 导出面 +1（`:292-305`）+ **调用面基线重建分支**（`startAffinityWatcher()`，`:116-147`；修正轮 2） | +约 64 / −约 14（含重建分支 ≈4 行） | **354**（实测已回填；换行符计数） |
+| `shell-backend.js` | 322 | §2.2.13：`module.exports` 增 `writeDiag`（`:311-322`，1 行——函数体不动） | +1 / −0 | **323**（实测已回填；换行符计数） |
+| `docs/requirements/SHELL.md` | 217 | 本批追加 US-13 / §一 B10 批次目标 / §二 B10 条目与层级注 / 头部关联批次与条目区间 / 变更记录 **2 行**（B10 落笔；as-of 2026-09-17 累计 B10 相关 = **3 条 / 6 行**——落笔 + 修正轮 1 + 修正轮 2；修正轮 3 #4 同步） | +33 / −0（实测） | **250**（落档实测） |
+| `docs/design/SHELL-UX.md` | **1282** | 本档：§一 回指 / §2.1 选型 L / §2.2.13 / §2.2.6 注 S7·B10 附注 / §2.3 B10 表 / §2.4 DD-34…DD-40 + DD-50 / §2.5 C32–C35 + O17–O19 + L-B10 / §2.6 U-14·追认块 / §3.1 AC21–AC25 / §3.2 TC-56…TC-67 + TC-67A·TC-67B·TC-67C / §3.3 手段 12 / 变更记录 | **+67 / −0**（见下注） | **1349**（as-of） |
 
-> **行数口径注（B10）**：`docs/design/SHELL-UX.md` 的「当前行数」= **1282**（本批前段落笔后、后续段落落笔前的实测值）；本批自有增量（估算，含本批全部段落）= **+约 170 / −0**（其中可分离面 = **1282 → 1349（+67）**，前段增量已含在 1282 内）；总增量 1165 → **1349** = **+184**（含 **B09 同档在途**改动——本档为两批并行写入，两批增量不可逐行分离）。行宽判据（不含行尾 CR）实测 **0** 行超 300（改后最宽 300——B06 旧行）。
+> **行数口径注（B10；修正轮 1 #10 统一 delta 口径）**：本行「当前行数」**1282** = 本批首段落笔前实测（as-of）——**本表「预计改动量」与「末行数」同用这一基线**（单值口径，与 B07 / B12 表同形）；本批可分离面增量 = **+67**（1282 → 1349，落档实测）。
+> 另存合计口径（**不是本表的 delta**）：1165 → **1349** = **+184**——含 **B09 同档在途**改动，本档为两批并行写入，**两批增量不可逐行分离**（该值仅作跨批合计留档）。行宽判据（不含行尾 CR）实测 **0** 行超 300（改后最宽 300——B06 旧行）。
 
-> 本批**零新增文件**（桩测脚本若采用须经主 agent 裁定——§3.3 手段 12 ③ 已标注）：`package.json` 的 `build.files` 与 `dependencies` 均不动（P3）。
+> 本批**零新增文件**（载具裁定 = **仓外一次性开发期脚本**、不入仓——§3.3 手段 12 ②；主 agent 裁定 2026-09-17）：`package.json` 的 `build.files` 与 `dependencies` 均不动（P3）。
 > 不触碰（明确）：`shell-notify.js`（B09 判定面——同一目录 family 的另一条读面，本批只引用不改）/ `shell-tray.js` / `shell-settings.js` / `main.js`（`startAffinityWatcher` 的调用与注入面不变）/ 其余 `shell-*.js` / `docs/TODO.md` 与 `docs/README.md`（主 agent 写域）。
+>
+> **单函数体量核对（B10；修正轮 1 #4 + 修正轮 2）**：`sumSessionTokens()` 重写后预估 ≈45 行（<<300）；`startAffinityWatcher()`（`:116-147`，32 行——设计者亲读）本批新增**基线重建分支**（修正轮 2）⇒ 预估 **≈36** 行——两者均 **<<300**，无 >300 函数面。
+>
+> **>300 软档 体量裁定（`shell-affinity.js` 305 → **354**（修正轮 4 实测回填）；修正轮 1 #4 补 + 修正轮 2 更新，形式承 B07 `shell-backend.js` 先例）**：① 事实 = 越 300 软档但**未触 400 消解线**（NFR-3 的 500 硬限亦无影响；增量 = 单函数重写 + 档内常量 + 导出面 1 行 + 调用面重建分支 ≈4 行）；
+> ② 理由 = **纯增量、职责未增**（读面仍属原域：壳读 Harness 落盘物；无新文件 / 无新依赖 / 无新落盘机制；调用面改动 = 1 个条件分支），最长函数 = `sumSessionTokens()` ≈45 行（见上条核对）；
+> ③ 消解路径 = **保持单文件、不拆分**——触发条件 = 该档**逼近 400**（> 380），或再获增量批次 ⇒ 该批立案时先做拆分复核（候选切面 = 读面 helper vs 好感度 / 兑换逻辑）。
+>
+> **>300 软档 体量裁定（`shell-backend.js` 322 → 323；修正轮 1 #4 补——B07 触发判定的显式判定）**：① 事实 = 越 300 软档、**< 400** 消解线；本批改动 = `module.exports` 增 **1 行**（`writeDiag`）；
+> ② **触发判定（对照 §2.3 B07 表的消解路径句「后续再有增量使该档逼近 400、或新增独立职责（新增导出面 / 新增落盘机制）时，另批做拆分复核」）= 不触发**——`writeDiag` 是**档内既有函数**（`shell-backend.js:61-64`，设计者亲读），本批仅把它补进导出面（测试缝 / 诊断落盘面复用），**无新职责、无新落盘机制、无新文件**；323 距 400 尚远；
+> ③ 消解路径 = 保持单文件；触发条件 = 后续增量使该档 > 380，或新增独立职责 ⇒ 另批做拆分复核。B09 复用同一导出行（§2.3 B09 表；**先落者建立，不得重复添加**）。
+>
+> **文档行数补正注（B10 修正轮 1 落档实测；换行符计数口径）**：本档 **1690 → 1731**（修正轮 1 +41）；`docs/requirements/SHELL.md` **306 → 308**（US-13 措辞行改述 + 变更记录 2 行）。本表自指行（1282 / 1349）与 `docs/requirements/SHELL.md`（217 → 250）均为该批 as-of 快照；本轮行宽实测见 §3.3 / 变更记录。
+> **文档行数补正注（B10 修正轮 2 落档实测；换行符计数口径）**：本档 **1731 → 1754**（修正轮 2 +23）；`docs/requirements/SHELL.md` **308 → 310**（变更记录 2 行；契约面零改动）。行宽实测（不含行尾 CR）：两档均 **0** 行超 300（本档最宽 300 = B06 旧行 / 需求档最宽 299）。
+> **文档行数补正注（B10 修正轮 3 落档实测；换行符计数口径）**：本档 **1754 → 1768**（修正轮 3 +14——含本注与变更记录补正行）；`docs/requirements/SHELL.md` **310**（本轮**未改**该档：裁定契约面不动）。行宽实测（不含行尾 CR）：本档 **0** 行超 300（最宽 300 = B06 旧行）。
+> **文档行数补正注（B10 修正轮 4 落档实测；换行符计数口径）**：本档 **1801 → 1824**（修正轮 4 +23——含本条与本轮变更记录补正行）；`docs/requirements/SHELL.md` **310 → 312**（US-13 消解期现状行按实况改述 + §五 变更记录 2 行）。行宽实测（不含行尾 CR）：本档 **0** 行超 300（最宽 300 = B06 旧行）；需求档 **0** 行超 300（最宽 299）。
+> **实施期行数回填（源 = 批次档 §5 / 本表 #7）**：`shell-affinity.js` 末值 **354** · `shell-backend.js` 末值 **323**（实施后实测，换行符计数）——本表两行「实施期实测回填」标记由此完成（另见下「>300 软档 体量裁定（`shell-affinity.js` …）」条）；另：§2.2.13「旧面可用判据」的实施侧改动落地后该档行数将再变，届时按实测回填。
 
 **B12 受影响文件（as-of 2026-09-17；行数口径 = 换行符计数，见 §2.3 行数口径注；行数为设计者亲测）**：
 
 | 文件 | 当前行数 | 改动点（现状行号） | 预计改动量 | 末行数（预估） |
 |---|---|---|---|---|
-| `shell-plugins.js` | 396 | §2.2.14：新增三 helper（`installSpecKind` / `isInsideDir` / `scanProfile`）；六个既有函数增可选 `ctx`；两处入口加门 + 越界校验；`module.exports` +3 | +约 95 / −约 30 | ≈461 → **实施期实测回填**（<500 硬限） |
-| `shell-market.js` | 196 | §2.2.14：`marketList` / `marketState` 各建一次快照并下传 | +约 6 / −约 4 | ≈198 |
-| `market.js` | **500** | §2.2.14：`el()` 变参（+2）/ 新增 `frag()`（+6）与段落 helper（+1）/ `confirmModal` 改收节点（±0）/ 三处调用点（−9）/ 三处清空改 `textContent = ''`（±0） | 净 **≤ 0**（−4 … +4） | **≤ 500**（**硬限**——NFR-3；实施后实测回填） |
-| `tests/b12-plugin-guards.test.js` | 0（新） | §3.3 手段 13 / §3.2 TC-68…TC-85 | +约 260 | ≈260（**不入** `build.files`） |
+| `shell-plugins.js` | 396 | §2.2.14：新增三 helper（`installSpecKind` / `isInsideDir` / `scanProfile`）；六个既有函数增可选 `ctx`；两处入口加门 + 越界校验 + 卸载面解析门；`module.exports` +3 | +约 95 / −约 30 | **454**（**实施期实测已回填**，+58；越 300 软档——**体量裁定见下**；< 500 硬限） |
+| `shell-market.js` | 196 | §2.2.14：`marketList` / `marketState` 各建一次快照并下传 | +约 6 / −约 4 | **198**（**实施期实测已回填**，+2） |
+| `market.js` | **500** | §2.2.14：`el()` 变参（+2）/ 新增 `frag()`（+6）与段落 helper（+1）/ `confirmModal` 改收节点（±0）/ 三处调用点（−9）/ 三处清空改 `textContent = ''`（±0） | **净 ≤ 0**（**单值约束**——修正轮 1 #5；越限处置见下注） | **500**（**实施期实测已回填**，净 0 = 改 20 / 删 20；**硬限**——NFR-3） |
+| `tests/b12-plugin-guards.test.js` | 0（新） | §3.3 手段 13 / §3.2 TC-68…TC-87 | +约 260 | **491**（**实施期实测已回填**，新建；**不入** `build.files`） |
 | `docs/requirements/SHELL.md` | 250 | 本批追加 US-14 / US-15 / NFR-6 / NFR-7 / B12 批次目标与层级注 / 头部关联与条目区间 / 变更记录 2 行 | **+49 / −0**（落档实测） | **299**（落档实测） |
 | `docs/design/SHELL-UX.md` | 1349 | 本档修订：§一 回指 +3 行 / §2.1 选型 M（M-1…M-5）/ §2.2.14 / §2.2.6 注 S8 + 锚点 B12 附注 / §2.3 B12 表 / §2.4 DD-41…DD-47 / §2.5 C36–C39 + O20–O23 + L-B12 指针 / §2.6 U-15 与 B12 追认块 / §3.1 AC26–AC31 / §3.2 TC-68–TC-86 / §3.3 手段 13 / 变更记录 | **+252 / −0**（落档实测） | **1601**（落档实测） |
 
 > 本批**新增 1 个文件**（`tests/b12-plugin-guards.test.js`）：`package.json` 的 `dependencies` 与 `build.files` **零 diff**（测试不入包）；`market.html` / `market-preload.js` / `market-update.js` / `exchange.js` / `plugins.json` **零改动**。
 > 不触碰（明确）：`docs/TODO.md` / `docs/README.md`（主 agent 写域）；`docs/design/AUTO-UPDATE.md` / `docs/requirements/UPDATE.md`（B08 面，本批硬约束禁碰）；`docs/design/PET*.md`；其他批次档；`dsh-bundle/` 与 `bundled-plugins/`（只读）。
-> 单函数体量核对：改动后最长函数 = `installPlugin`（预估 ≈55 行）· `computePluginUpdates`（≈40）· `scanProfile`（≈35）——均 **<<300**，无拆分裁定。
+> 单函数体量核对：`installPlugin`（预估 ≈55 行）· `computePluginUpdates`（≈40）· `scanProfile`（≈35）——均 **<<300**，无拆分裁定。
 > 行宽判据（不含行尾 CR）：本批新增段落 ≤ 300 字符/行；落档后实测行数与超宽行数随本表回填（承 D6 / D7）。
-> 单函数体量核对：`sumSessionTokens()` 重写后预估 ≈45 行（<<300）；`startAffinityWatcher()`（`:116-147`，32 行）**不改**——无 >300 函数面，无需拆分裁定（NFR-3 的 500 行硬限亦无影响）。
+>
+> **B12 修正轮 1 补正注（受影响文件面；评审 #5 / #6 / #11）**：① `market.js` 的预计改动量收敛为**单值约束「净 ≤ 0」**（原文「−4 … +4」区间作废——上界 +4 ⇒ 504 即破 NFR-3 硬限）；
+> **越限处置** = 实施期实测 > 500 行 ⇒ **停手上报**（不自行破 NFR-3——DD-47 已否决本批拆分），第一优先削减序 = `frag()` / 段落 helper 内联复用（纯形态手段、语义不变）；
+> ② `shell-plugins.js` 的 **>300 软档 体量裁定**见下条；③ `tests` 行用例区间 `TC-68…TC-85` → **TC-68…TC-87**（原行笔误 + 修正轮 1 新增 TC-87）。
+>
+> **>300 软档 体量裁定（`shell-plugins.js` 396 → ≈461；评审修正轮 1 #6，形式承 B07 `shell-backend.js` 先例）**：① 事实 = 越 300 软档但**未触 NFR-3 的 500 硬限**（余量 ≈39 行）；本批增量 = 三个新 helper + 六个既有函数增可选 `ctx` + 两处入口加门，最长函数 = `installPlugin`（预估 ≈55 行，见上「单函数体量核对」条）；
+> ② 理由 = **纯增量、职责单一**（插件引擎：profile 读写 + 内置拷贝 + pnpm 通道 + 扫描快照）——本批的 `ctx` 快照面被两处入口与六个消费面共享，拆档会把同一契约面切成跨档耦合（收益低于成本）；§2.2.6 的「>300 档结论」以「≈370 + R7『只搬不改』窗口期」为据，**对该档已不适用**（本条即补作裁定）；
+> ③ 消解路径 = **本批保持单文件、不拆分**；触发条件（**消解期**）= 实施期实测 **> 480**（余量 < 20 行），或该档再获增量批次 ⇒ **该批立案时先做拆分复核**（候选切面 = 内置拷贝 / pnpm 通道 vs 扫描快照面），使各档回到 ≤ 300。
+>
+> **B12 实施期实测回填（2026-09-17，源 = 批次档 §5；主 agent 亲跑）= 实施后收口轮**：本表代码 / 测试四行按实测回填——`shell-plugins.js` **454**（396 → +58）· `shell-market.js` **198**（196 → +2）· `market.js` **500**（±0 = 改 20 / 删 20，贴 NFR-3 硬限零余量）· `tests/b12-plugin-guards.test.js` **491**（新建；`node --test` = 19/19 绿、退出码 0）。
+> 同族一致性面同步（上条体量裁定条内数值）：其「396 → ≈461」为**落档预估**，按实测 = **454**（偏差 −7；余量 **46** 行）；其消解期触发条件（实施期实测 **> 480**）**未触发** ⇒ 该条裁定结论（本批保持单文件、不拆分）不变——**条件句逐字未动**。
 
 ### 2.4 关键决策记录
 
@@ -1204,8 +1340,8 @@ startCompletionWatcher()
 | DD-35（B10） | 聚合口径 = **全量累加**（目录下全部可解析记录；不按 workspace / 不按会话过滤） | 语义 = 用户终身消耗，与旧实现同源（旧面 `tables.sessions[*]` 即全量）；水位单调性最好（新会话只增不减）⇒ 不触发不必要的重基线 | 仅当前会话（切换即水位暴跌 ⇒ 漏计）；按 workspace（口径变更 + 壳侧无「当前工程」概念）；时间窗（新口径、不可机检） |
 | DD-36（B10） | 计费口径 = **B**：`uncachedInput + cacheRead + cacheWrite + output`（只读 `totals`，不读 `last.buckets`） | 用户 2026-09-17 12:19 裁定；与 Harness 计费口径同源（批次档 §1.3 ⑦）；现口径漏掉 `cacheRead`（本机样本 37504，占口径 B 的 75.6%） | 现口径（`uncached + output`——本机样本低估 ≈4.1 倍）；只加 `cacheRead` 不加 `cacheWrite`（选择性对齐无依据） |
 | DD-37（B10） | 目录面**逐条容错**（单条损坏跳过），可用判据 = **可解析记录数 ≥ 1** | per-record 布局的固有优点 = 故障域收窄到单条；整面 `null` 会让一条坏记录废掉全部读数——与本次事故同型（一处形态变化 ⇒ 长期静默失效） | 整面 `null`（故障域放大到全量）；「读到第一条即用」（记录间无可比优先级） |
-| DD-38（B10） | 返回 `null` 而非 `0`（读不到任何有效记录时）；读面 = **幂等水位**，累计值由调用方按水位差累加 | `0` 会把基线降到 0 ⇒ 读数回升时此前已计入的消耗被**重复计入**；`null` 使基线保持不变（安全侧）。水位语义使「重启不重复计入」由「`usage` 持久化 + 基线每次启动重置」自然成立（既有机制，逐字保留） | 返回 `0`（重复计入面显著放大）；读面自行持久化 / 记账（新增持久化状态与失败面，超本批） |
-| DD-39（B10） | 旧布局兜底 = **带消解期的条件性保留**：保留至 **B08 收口点**，到期条件 = 内置 bundle ≥ 0.1.5 ∧ 活跃副本无 < 0.1.5 | 兜底**当前仍是出厂路径的活跃形态**（内置 Harness = `0.1.0-rc.6`，单文件布局）——不是历史包袱；到期条件可机检（版本枚举） | 无期限保留（永久先例——纪律禁止）；立即剔除（离线用户永久失效） |
+| DD-38（B10） | 返回 `null` 而非 `0`（无有效记录时）；读面 = **幂等水位**，累计值由调用方按水位差累加 | `0` 会把基线降到 0 ⇒ 读数回升时此前已计入的消耗被**重复计入**；`null` **不触发 0 回退**（安全侧）——调用方语义 = 不累加、不改基线；启动期 `null` ⇒ 首次读到非 `null` 时**重建基线**（只重建、不计 delta；修正轮 2 更正，见 DD-50）。水位语义使「重启不重复计入」由「`usage` 持久化 + 基线重置」成立 | 返回 `0`（重复计入面显著放大）；读面自行持久化（新增状态与失败面，超本批） |
+| DD-39（B10） | 旧布局兜底 = **带消解期的条件性保留**：保留至 **B08 收口点**，到期条件 = 内置 bundle 产出 per-record 布局 ∧ 活跃副本枚举中无产出旧布局的版本 | 保留理由（**修正轮 4 按实况更正**）= 第一分句**已满足**（出厂 bundle 已钉 `0.1.5-rc.1` ⇒ 产出 per-record 布局）、第二分句**不可从仓内验证** ⇒ 兜底与消解期保留、下次发版复核（§2.2.13）；两分句同口径（行为面）、可机检（副本枚举 + 形态判定） | 无期限保留（永久先例——纪律禁止）；立即剔除（离线用户永久失效） |
 | DD-40（B10） | 诊断行经 `backend.writeDiag`（console + `bigfish.log` 双写）；`shell-backend.js` 导出面 +1 行 | 本 bug 的伤害来自**静默**；B07 已建立单一诊断落盘面（§2.2.8 / §2.2.9 A5 / DD-27），复用优于新造；打包版 stdout 不可见 ⇒ console-only 诊断价值低 | console-only（打包版不可见）；另起日志文件（新增落点）；不加诊断（静默缺陷型保持不变） |
 | DD-41（B12） | 入参门 = **三形态白名单**（`builtin:`·`github:owner/repo[#片段]`·`[scope/]name[@版]`；名字复用 `isPlainPackageName`）；面 = `installPlugin` / `uninstallPlugin`（含 `market:` 四链） | 判据单值可机检；对真实数据零误拒（3725 形态实测）；一处门守住四条 IPC 链 | 黑名单（追不上形态全集）；只封 `builtin:` 分支（npm 面裸奔）；只做越界校验（拒绝点晚）——选型 M-1 |
 | DD-42（B12） | 越界校验 = **`path.relative` 词法包含判定**（不做 `realpath`） | 判据独立于白名单（位置 vs 形态）；不 `realpath` 的理由 = pnpm 链接布局（本机实测）会误拒合法安装 + 路径不存在时抛错；威胁源为远端字符串，本地链接不在威胁面 | 字符串前缀比较（未归一化即比较）；`realpath` 比较（误拒合法安装）；不设第二层（本 bug 后果等级不值得只挂一层）——选型 M-2 / L-B12-1 |
@@ -1214,6 +1350,13 @@ startCompletionWatcher()
 | DD-45（B12） | 扫描复用 = **请求内单次快照**（`ctx` 参数下传），**不引入跨请求缓存** | 失效面为零（快照随调用生灭）；同一请求内的一致性优于「多次读」；既有调用点缺省自建快照 ⇒ 零改动 | TTL 缓存（新增失效面且无实证需求）；只改 `computePluginUpdates`（主线程仍付两次全扫）；异步化改造（改动面超本批）——选型 M-4 |
 | DD-46（B12） | 验证落 `tests/b12-plugin-guards.test.js`（`node --test` + 加载器注入假 `electron` / 假 `shell-backend` + 临时 `DSH_HOME` 夹具；XSS 面用 `node:vm` + 极简 DOM 桩） | 三项修复的主判据均为**行为面**（fs 零改动 / 计数相等 / 无元素节点），静态判据不可达；仓内已有 `tests/` 先例；零依赖、零框架 | `.thincoder/` 一次性脚本（批后即失，与安全面长期价值相抵）；只做静态判据（证明不了行为面）——选型 M-5 |
 | DD-47（B12） | XSS 结构面修**净行数 ≤ 0**（helper 内聚 + 调用点变参压缩），守住 `market.js` 的 500 行硬限 | `market.js` 现 **500** 行（NFR-3 硬限贴线；`market-update.js:4` 已为同一原因把更新逻辑外置）——任何净增都破线 | 允许越限（违 NFR-3）；本批拆 `market.js`（结构改造超本批边界，归 T2 评估面） |
+| DD-48（B09 修正轮 1） | 诊断行落盘面 = **`backend.writeDiag(line)`**（console + `bigfish.log` 双写） | AC17 / TC-50 的机检需要 `grep` 目标；打包版 console 不可见（B07 同类缺口已由 DD-27 用 `writeDiag` 解决、B10 复用同一落盘面 DD-40）⇒ 复用优于新造；判据随之落 `bigfish.log`（console 仅作辅证） | console-only（打包版不可见 ⇒ 判据落空）；另起日志文件（新增落点）；不加诊断（降级静默） |
+| DD-49（B09 修正轮 1） | 判定面定稿 = **四态**（`open` / `stale` / `unavailable` / `done`）；`stale` 与降级**各有诊断行**（各一条/生命周期）；持续 `stale` ≥ 30 s ⇒ 按 `unavailable` 处置（抑制上界） | 评审 #1 🔴：需求侧原把 `stale` 并入「降级」与规则③ 相抵——取设计侧（保守不误报）并改需求句；上界兜「写路径 fail-soft ⇒ 持续 stale」（L-B09-5） | `stale` 改降级（与 AC18 相抵）；`stale` 静默；不设上界（长期抑制） |
+| DD-50（B10 修正轮 2） | 启动期读数为 `null` ⇒ **基线重建**（`lastTokenSum === null ∧ s2 !== null` ⇒ 只设基线、不计 delta）；调用面口径 = 「除该分支外零改动」（替代「零 diff」） | 台账 T27（用户裁定并入本批）：原状态 = 基线停 `null`、累加永久暂停（与 T14 同型的静默失效）；不补算 delta = 保住「不重复计入」；改口径 = 修复必然触碰调用面（详见下注） | 谁都不修（永久漏计）；补算 delta（重复计入）；重建放读面内；`null` 时清零基线——后两条违 DD-38 |
+
+> **DD-50 注（B10 修正轮 2；台账 T27）**：① **为何修**——新装 / 会话记录未产生 / 缓存清空后首启 ⇒ 基线被置 `null`（`shell-affinity.js:125`）且此后不再重建（`:128` 守卫只读不写；**修正轮 3：重建行落于守卫之前**——见 §2.2.13「落位与守卫处置」）⇒ 本进程累加永久暂停（仅重启可解）；
+> ② **为何不补算 delta**——补算会把「暂停期间跨进程 / 跨会话的消耗」记成一次跳变（与 L-B10-2 同族的重复计入面）；只设基线即保住「不重复计入」性质（方向 = 保守）；
+> ③ **为何改调用面口径**——修复的必要条件 = tick 内新增一个分支（`startAffinityWatcher` 属调用面）⇒ 「调用面零 diff」不可达；替代口径 + 双判据见 §3.1 AC23 判据细化 / TC-67B；残余 = 暂停期消耗不补算（L-B10-5 修订版）。
 
 ### 2.5 与既有纪律 / 既有实现的冲突点核对
 
@@ -1250,7 +1393,7 @@ startCompletionWatcher()
 | C29（B09） | NFR-5 的静态判据（探测域无 `*Sync(`）+「5 s 定时器回调纯算术（无文件系统 I/O）」 | 判定读异步且在阈值触发时才发生（每静默窗至多一次）；5 s 回调体内**不新增**同步调用；NFR-5 判据文字不动，口径补充落需求档 NFR-5 B09 注记 | 不冲突（有界新增） |
 | C30（B09） | NFR-2 「新增代码零平台分支」（B07 注记） | 本批判定面零 `process.platform`（只读路径与 JSON 字段） | 不冲突 |
 | C31（B09） | 投影缓存目录读面**已在 0.1.5 变过一次**（T14：`shell-affinity.js:70` 读的聚合文件在 per-record 布局下不存在；归 **B10**） | 判定读以形态守卫 + 降级封口：形态不符 / 解析失败 / 记录缺失 ⇒ 「判定源不可用」⇒ 退回 30 s（不猜、不默认回合已闭合）；**不代 B10 修读面** | 风险已知（有界耦合 + 安全降级） |
-| C32（B10） | NFR-5 的「探测域无 `*Sync(`」判据的**适用面** = `shell-notify.js`（`docs/requirements/SHELL.md` §四 NFR-5 度量方式原文） | `shell-affinity.js` 保留同步读（与现状同口径；10 s 周期一次小读，本机 1 档 / 7827 B）；**不把 NFR-5 的判据扩到本档**（扩面 = 语义变更，须另立条目） | 不冲突（口径界定；读量上界与再议触发见 §2.2.13 / L-B10-1） |
+| C32（B10） | NFR-5 的「探测域无 `*Sync(`」判据的**适用面** = `shell-notify.js`（`docs/requirements/SHELL.md` §四 NFR-5 度量方式原文） | `shell-affinity.js` 保留同步读（与现状同口径；10 s 周期一次小读，本机 1 档；**档大小随会话增长而变**——B10 落笔时 7827 B，口径见 §2.2.13「读面开销」）；**不把 NFR-5 的判据扩到本档**（扩面 = 语义变更，须另立条目） | 不冲突（口径界定；读量上界与再议触发见 §2.2.13 / L-B10-1） |
 | C33（B10） | B09 判定面（§2.2.12）读同一目录 family（`session_projcache/sessions/*.json` 的 `rows.turnBoundary`） | 本批只改 `shell-affinity.js` 的另一条读面：**不触碰** `shell-notify.js`（判定面 + 降级封口逐字保留）；同族两条读面**互不依赖** | 不冲突（同族解耦；同族再变的风险登记 O17） |
 | C34（B10） | 计费口径现状 = `uncachedInput + output`（`shell-affinity.js:78`；头注释同口径） | 口径 B 落地（用户裁定）——**有意变更**：好感度与**可兑换余额**增长更快（本机样本 ≈4.1 倍）；常量（`AFFINITY_RATE` / `EXCHANGE_RATE` / `LEVEL_THRESHOLDS` / `FOODS`）与文案逐字不变 | 有意变更（用户裁定；后果披露于 §2.6 U-14） |
 | C35（B10） | 批次档 §1.4 边界：不改喂食 / 兑换 / 好感度 UI 交互 | 逐条核对：`openExchangeWindow` / `handleAffinity*` / `affinityView` / `broadcastAffinity` / 渲染面通道 `pet-affinity` / `exchange.html` 零改动（diff 判据） | 不冲突（有界变更） |
@@ -1258,6 +1401,7 @@ startCompletionWatcher()
 | C37（B12） | 批次档 §1.3 边界「不改 IPC 通道名 / 参数契约 / 返回值形态」 | 逐条核对：通道名与参数个数零改动（`shell-ipc.js` 零 diff）；返回字段零改动——新增的只是 `ok:false` 取值下的两条 message 文本（属既有形态内的取值） | 不冲突 |
 | C38（B12） | `market.js` 500 行贴线（B06 观察项 O3 + `market-update.js:4` 的显式记录） | 本批改动**净行数 ≤ 0**（helper 内聚 + 调用点变参压缩：三处调用点 −9 行 / helper +9 行）——NFR-3 硬限守住（实测回填 §2.3） | 不冲突（红线守住） |
 | C39（B12） | `exchange.js:39-46` 同形 `innerHTML` 插值 | 插值源 = 主进程硬编码常量 `FOODS`（`shell-affinity.js:34-38`）+ 本地数字 ⇒ **常量源、非外部数据**；本批**不改**（判据与裁定落 §2.2.14） | 不冲突（有界变更：只改外部数据面） |
+| C40（B09 修正轮 1） | §2.2.6 依赖方向规则 1（`require` 只指向**同层或更低层** + 全图**无环**）与 `shell-notify.js` 的依赖面 | 新增 `require('./shell-backend.js')`（取 `writeDiag`）：两者同层（L1，§2.2.6 注 M-迁移 ②）+ 无环（`shell-backend.js:9-17` 的 require 面 = `electron` / node 内置 / `harness-store.js`）⇒ 合规；登记落注 S6 与 §2.2.12 | 不冲突（同层 + 无环） |
 
 > **口径注（评审修正轮 1 #9）**：上表 C1（B03 写域冲突）的解消动作 = B03 错开后**实施起点重测 `main.js` / `package.json` 行数并回填批次档 §5**（测量口径与 as-of 值见 §2.3 表注）。
 
@@ -1269,7 +1413,8 @@ startCompletionWatcher()
 - **L4**：模式选择弹窗仍可能在首启 / 版本更新后自动弹出（一次性；§二 范围已声明保持现状）。
 - **L5**：拆分后 `main.js` 及引用其行号的既有文档指针全面漂移（as-of 口径容忍；映射表见 §2.2.6）。
 - **L-B07-1 / L-B07-2 / L-B07-3 / L-B07-4（B07 新增；正文定义在机制节——本处只登记号与指针，不重述（D2）**：L-B07-1（tee 处理 `drain`）见 §2.2.9；L-B07-2（回落路径全树异步扫描）/ L-B07-3（watch 缓冲溢出漏事件）/ L-B07-4（`~/.dsh` 不存在时不自身修复）见 §2.2.10。
-- **L-B09-1 / L-B09-2 / L-B09-3 / L-B09-4（B09 新增；正文定义在机制节——本处只登记号与指针，不重述（D2）**：L-B09-1（等待用户确认期间不提醒 = U-13）· L-B09-2（多会话并行的判定对）· L-B09-3（判定源为 Harness 内部形态）· L-B09-4（判定前提失效时的误报面：兜底已部分抵消、残余已接受、本批不另修）——四条均见 §2.2.12「已知限制」。
+- **L-B09-1 / L-B09-2 / L-B09-3 / L-B09-4 / L-B09-5（B09 新增；正文定义在机制节——本处只登记号与指针，不重述（D2）**：L-B09-1（等待用户确认期间不提醒 = U-13）· L-B09-2（多会话并行的判定对）· L-B09-3（判定源为 Harness 内部形态）· L-B09-4（判定前提失效时的误报面：兜底已部分抵消、残余已接受、本批不另修）· L-B09-5（修正轮 1：持续 `stale` 的静默抑制面——缓解 = 规则③′ 抑制上界 + `stale` 诊断行）——五条均见 §2.2.12「已知限制」。
+- **L-B10-1 / L-B10-2 / L-B10-3 / L-B10-4 / L-B10-5（B10 新增；正文定义在机制节——本处只登记号与指针，不重述（D2）**：L-B10-1（同步读量级随会话记录数增长）· L-B10-2（水位回升可能重复计入）· L-B10-3（`null` 与 `0` 的区分是安全前提）· L-B10-4（可解析记录 ≥ 1 但四桶全缺 ⇒ 静默归零，修正轮 1 #5）· L-B10-5（启动期读数 `null`：本批已修，残余 = 暂停期消耗不补算）——五条均见 §2.2.13「已知限制」（形态对齐 B07 / B09 / B12 三行）。
 - **L-B12-1 / L-B12-2 / L-B12-3（B12 新增；正文定义在机制节——本处只登记号与指针，不重述（D2）**：三条均见 §2.2.14「已知限制」（越界校验不含 `realpath` / 注入面消除后仍展示第三方内容 / 快照时点的再评条件）。
 
 **观察项（既有语义缺口 / 批次外协调项）**
@@ -1295,8 +1440,8 @@ startCompletionWatcher()
   且代码期望的形状（`j.tables.sessions[*].rows`）与实际（`{version, record:{identity, rows}}`）不符 ⇒ `sumSessionTokens()` 恒 `null`（per-record 布局，0.1.5-rc.1）。
   **该项已登记为技术待办 T14 / 批次 B10（2026-09-17 三批并行立案）**——本批只引用不处置（读面修复属 B10；本批判定读已按 §2.2.12 规则② 封口）。
 - **O16（B09 发现即报告）**：本档 §2.2.10 结构块 ③ 与 §3.1 AC13 / TC-38 的「静默 30 s」读数在本批后**与生效口径不一致**（批次硬约束：不改 B07 已核销判据行）——建议在下一批解除该锁定或做一次口径重述；本批以 §2.2.12 显式登记修订面（C28），不自行改写 B07 原文。
-- **O17（B10 发现即报告）**：B09 判定面（§2.2.12）与本批读面（§2.2.13）**同读一族 Harness 落盘物**（`session_projcache`）——本批只修 `shell-affinity` 一条；
-  形态若再变（承 T14 一类的第三次），两条读面会**各自**失效（B09 侧有降级封口、本批侧有诊断行与 `null` 安全侧）。建议后续批次评估「同族形态守卫」的统一收口；本批不处置。
+- **O17（B10 发现即报告；修正轮 1 #5 限定断言面）**：B09 判定面（§2.2.12）与本批读面（§2.2.13）**同读一族 Harness 落盘物**（`session_projcache`）——本批只修 `shell-affinity` 一条；
+  形态若再变（承 T14 一类的第三次），两条读面会**各自**失效——**本断言只覆盖「路径 / 解析失效」类变更**（文件不存在 / 目录不可读 / 非法 JSON：B09 侧有降级封口、本批侧有诊断行与 `null` 安全侧）；**「文件可解析但四桶全缺」类变更不在此断言范围**（本批侧无诊断行、返回 0 —— 见 **L-B10-4**）。建议后续批次评估「同族形态守卫」的统一收口；本批不处置。
 - **O18（B10 发现即报告）**：`docs/requirements/PET.md:214` 有 **1** 行超 300 字符（321 字符，不含行尾 CR 口径）——行宽债；该档**不在本角色写域**（本批写域 = SHELL.md / SHELL-UX.md / 批次档 §2）⇒ 随报告提请主 agent 处置。
 - **O19（B10 发现即报告）**：`docs/requirements/PET.md:33` 与 `docs/requirements/SHELL.md:45` 同持「桌宠其余机制（好感度…）的功能性需求…本档不代其立需求」句——本批在 SHELL.md 侧加**层级注**（不改原句，见该档 §二）；
   PET.md 侧是否需同款注记 = 主 agent 写域裁定项（本批不改）。
@@ -1326,7 +1471,7 @@ startCompletionWatcher()
 | U-12（B07） | URL 未捕获时的**用户面提示** | **open**——建议不加（与「日志 + 401 页可排查」一致，且不引入未审文案）；待评审 / 用户裁定 |
 | U-13（B09） | 「等待你的确认」是否单独提醒（审批 / ask-user / 计划模式期间回合在途 ⇒ 现状 30 s 后发一条语义错误的「已完成」，本批后不发） | **open**——建议本批不做（新增通知类型 / 新文案，超批次边界；依据 = §2.2.12 边界 + L-B09-1）；待评审 / 用户裁定 |
 | U-14（B10） | 用户可见后果：好感度与兑换屋余额按**口径 B** 增长更快（`cacheRead` 计入——本机样本 ≈4.1 倍） | 有意变更（用户 2026-09-17 裁定）；**无新 UI / 无新文案**；`affinityView()` 字段与渲染面零改动；`wallet` 与 `usage` 同源（同一 `delta`，不拆两套口径） |
-| U-15（B12） | 用户可见面：市场页外观 / 文案 / 交互 | **无新增**——三处弹窗同标签同文案（`<code>` / `<b>` / `margin-top` 保留）；拒绝只走既有失败 toast（消息 = 「无效的插件标识：…」，不含路径）；「不可一键安装」标签保持现状（O22 的现存缺口不在本批处置） |
+| U-15（B12） | 用户可见面：市场页外观 / 文案 / 交互 | **无新增**——三处弹窗同标签同文案（`<code>` / `<b>` / `margin-top` 保留）；拒绝只走既有失败 toast（**三类**消息：「无效的插件标识：…」/「插件标识越界，已拒绝：…」/「未安装或无法解析：…」，均不含路径）；「不可一键安装」标签保持现状（O22 的现存缺口不在本批处置） |
 
 **open 项（B07）**：**U-12**（URL 未捕获时是否加用户面提示）——设计建议不加（依据 = DD-18）；待用户 / 评审裁定。
 
@@ -1338,8 +1483,9 @@ startCompletionWatcher()
 
 - **DD-35 / 选型 L-2**：聚合口径 = **全量累加**（不按 workspace / 不按会话过滤；单条损坏只跳过该条）；
 - **DD-37**：目录面逐条容错（可解析记录数 ≥ 1 即可用）；
-- **DD-40**：新增 1 条条件诊断行（经 `writeDiag` 双写 `bigfish.log`）+ `shell-backend.js` 导出面 +1 行；
-- **L-B10-1 / L-B10-2**：同步读量随会话记录数增长（再议触发 = 记录数 > 100 或读量 > 5 MB）；水位回升可能重复计入（现状不修）。
+- **DD-39**：旧布局兜底 = **带消解期的条件性保留**——保留至 B08 收口点；到期条件 = 内置 bundle ≥ `0.1.5-rc.1`（或任意产出 per-record 布局的版本） ∧ 活跃副本枚举中无产出旧布局的版本（两分句同口径 = 行为面；版本号只作举例）；条件不成立 ⇒ 顺延并重新登记（不得默认永久）——落点 §2.2.13「消解期（旧布局兜底）」（修正轮 1 #1 补）；
+- **DD-40**：新增 1 条条件诊断行（经 `writeDiag` 双写 `bigfish.log`；行内含 `dir=yes|no` 区分字段——修正轮 1 #8）+ **导出面 +2**（`shell-backend.writeDiag` 1 行 · `shell-affinity.sumSessionTokens` 1 项——桩测机检用；`shell-affinity.js:9` 的 require 边既有 ⇒ 零新增依赖——修正轮 1 #3 补登）；
+- **L-B10-1 / L-B10-2 / L-B10-4 / L-B10-5**：同步读量随会话记录数增长（再议触发 = 记录数 > 100 或读量 > 5 MB）；水位回升可能重复计入（现状不修）；「记录 ≥ 1 但四桶全缺 ⇒ 静默归零」（L-B10-4，修正轮 1 #5）；启动期读数 `null` ⇒ **基线重建**（只重建、不计 delta；L-B10-5，修正轮 1 #9 / 修正轮 2 修订——残余 = 暂停期消耗不补算）；读面返回 `null` 的 tick：本次不累加、不改基线（`s2 === null` 不进任何分支）。
 
 **open 项（B12）**：无未决设计项。
 
@@ -1385,32 +1531,54 @@ startCompletionWatcher()
 | AC14（B07） | US-7 补注（T12） | 静态：`shell-mode.js` 无 `notifier` 符号（0 处），两处为 `notify(...)`；同类未绑定命名空间引用全扫 = **0 处**（方法 = §2.2.11）。真机：托盘「更换背景…」/「恢复默认背景」均出通知、无异常 | 半机检（静态全机检 + 真机点菜单） |
 | AC15（B07） | US-9、US-10、NFR-3 | 机检：B04 / B05 锚点逐条在场 + URL 诊断行每次启动至少命中一条（不要求单次两条齐备）+ 日志无 U+FFFD + `node --check` 全绿（对照方式与行形细目见本表后「AC15 判据细化」） | 机检（日志对照 + 语法） |
 | AC16（B07） | NFR-2（B07 注记）、NFR-1…NFR-5 | 真机十面回归（B06 AC1–AC6 判据沿用，不新增）：启动形态 / 托盘 11 项 / 桌宠左右键 / 主窗口 / 兑换屋 / 市场 / 插件 / 更新门禁 / 通知 / 背景更换；新增：主窗口 URL 捕获面（AC9/AC10） | 半机检（B06 静态面复跑 + 真机回归） |
-| AC17（B09） | US-12、NFR-5（B09 注记） | **阈值与判定面生效 + 降级面**：① 静态——常量关系 `IDLE_NOTIFY_MS`(8000) > 5000、注入面两键、判定函数单一实现（含 `ver !== 2` 守卫）、无 `*Sync(` / 无 `process.platform`；② 降级——判定源不可用 ⇒ 30 s 面 + 诊断行；③ 真机：TC-46 / TC-49 / TC-50 / TC-55 | 机检（静态）+ 半机检（真机构造） |
-| AC18（B09） | US-12 | **误报边界**：① 真机——执行 ≥15 s 工具调用（或长构建）⇒ 静默期内**零**提醒、回合结束后一次提醒（现状对照：30 s+ 静默同样会误报）；② 构造 / 桩测——回合在途（规则④）与快照落后于日志（规则③）分别构造 ⇒ 均不提醒 | 半机检（真机 + 构造） |
+| AC17（B09） | US-12、NFR-5（B09 注记） | **阈值与判定面生效 + 降级面**：① 静态——常量关系 `IDLE_NOTIFY_MS`(8000) > 5000、注入面两键、判定函数单一实现（含 `ver !== 2` 守卫）、`GATE_*` 三常量在场、无 `*Sync(` / 无 `process.platform`；② 降级——判定源不可用 ⇒ 30 s 面 + 诊断行（取证面 = `bigfish.log`；细目见后「AC17 判据细化」）；③ 真机：TC-46 / TC-49 / TC-50 / TC-55 | 机检（静态）+ 半机检（真机构造） |
+| AC18（B09） | US-12 | **误报边界**：① 真机——执行 ≥15 s 工具调用（或长构建）⇒ 静默期内**零**提醒、回合结束后一次提醒（现状对照：30 s+ 静默同样会误报）；② 构造 / 桩测——回合在途（规则④）与快照落后于日志（规则③）分别构造 ⇒ 均不提醒，且规则③ 恰发一条 `stale` 诊断行；③ 持续 `stale` ≥ 30 s（规则③′）⇒ 按降级处置（30 s 面 + 降级行） | 半机检（真机 + 构造） |
 | AC19（B09） | US-11（口径修订见 US-12） | **既有语义不回退**：`notifyOnComplete=false` 零提醒 / 关闭期活动重开不补发 / 一个活动周期一次提醒 / 回落路径同判定面 / 通知文案三串逐字不变；静态判据 = 既有守卫行与清忙态调用零 diff（改动只落判定块与注入面） | 半机检（静态 diff + 真机） |
 | AC20（B09） | US-12、US-11 | **真机时延量化**：记录「回合末次写入（= 投影缓存记录 mtime，强制落盘点）→ 通知可见」的实测区间，期望 **8–13 s**（5 s 周期对齐；现状对照 30–35 s）；用户判「显著更快」 | 真机人工（秒表 / 通知中心时间戳） |
-| AC21（B10） | US-13 | **per-record 读面生效**：静态——`sumSessionTokens()` 含目录面分支（`storages` / `session_projcache` / `sessions` 段在场）+ 导出在场 + 无目录递归；夹具——构造 1 条记录（四桶 = 批次档 §1.3 ⑤ 样本值）⇒ 返回值 = **49604**；真实目录 ⇒ 与独立复算一致 | 全机检（夹具 + 桩电子） |
-| AC22（B10） | US-13 | **旧单文件兜底 + 并存判据**：夹具——旧布局单文件（`tables.sessions[*]`，两条会话）⇒ 返回值 = 两条之和；目录缺 / 空 / 全损坏 ⇒ 走旧面；两形态并存 ⇒ 只读目录（返回值 ≠ 两形态之和）；兜底消解期登记在场（§2.2.13 + DD-39 + §2.6 追认块） | 全机检 |
-| AC23（B10） | US-13 | **失败语义不回退**：夹具——两形态均缺 / 目录不可读 / 全部记录损坏 ⇒ 返回 `null`（**非 0**）且不抛；调用面零改动（diff：`startAffinityWatcher` / `affinityView` / `handleAffinity*` 逐句一致）；真机——读面失败下喂食 / 兑换 / 好感度 UI 正常；诊断行：两形态不可用 ⇒ 1 条（每生命周期），正常态 ⇒ 0 条 | 机检 + 真机 |
+| AC21（B10） | US-13 | **per-record 读面生效**：静态——`sumSessionTokens()` 含目录面分支（`storages` / `session_projcache` / `sessions` 段在场）+ 导出在场 + **读面内零递归**（判据面见本表下「AC21 判据细化」）；夹具——构造 1 条记录（四桶 = 批次档 §1.3 ⑤ 样本值）⇒ 返回值 = **49604**；真实目录 ⇒ 与独立复算一致 | 全机检（夹具 + 桩电子；载具与可复跑命令 = §3.3 手段 12 ②） |
+| AC22（B10） | US-13 | **旧单文件兜底 + 并存判据**：夹具——旧布局单文件（`tables.sessions[*]`，两条会话）⇒ 返回值 = 两条之和；目录缺 / 空 / 全损坏 ⇒ 走旧面；两形态并存 ⇒ 只读目录（返回值 ≠ 两形态之和）；兜底消解期登记在场（§2.2.13「消解期（旧布局兜底）」+ DD-39 + §2.6 追认块）；旧面**可用判据**（可解析 ≠ 可用）= §2.2.13 判据 ③ + TC-67C（修正轮 4） | 全机检（载具见 §3.3 手段 12 ②） |
+| AC23（B10） | US-13 | **失败语义不回退 + `null` 分支**：夹具——两形态均缺 / 目录不可读 / 全损坏 ⇒ 返回 `null`（**非 0**）且不抛；调用面 = 除 `startAffinityWatcher` 内新增的基线重建分支外零改动（细化见本表下注）；**`null` 分支**——本次不累加、不改基线、`usage` / `wallet` 不变（§2.2.13）；真机——读面失败下喂食 / 兑换 / UI 正常；诊断行：不可用态 1 条（含 `dir=` 字段）/ 正常态 0 条——**两态各在独立进程内评估**（细化⑤） | 机检 + 真机 |
 | AC24（B10） | US-13 | **计费口径 B 的累加判据**：静态——四桶标识符逐条在场（`uncachedInputTokens` / `cacheReadTokens` / `cacheWriteTokens` / `outputTokens`）、`last` 不参与求和；夹具——构造 `last.buckets` 与 `totals` 不同值的记录 ⇒ 返回值取 `totals`；样本复核 9666+37504+0+2434 = **49604** | 全机检 |
-| AC25（B10） | US-13 | **聚合口径 + 水位语义**：夹具——3 条记录 ⇒ 返回值 = 三条之和（不按会话 / workspace 过滤）；幂等——同一夹具连续两次调用相等；空目录 ⇒ `null`（非 0）；重启不重复计入——预置 `affinity.json`（`usage > 0`）+ 固定夹具 ⇒ 启动后 `usage` 不因读面值变化 | 全机检 |
-| AC26（B12） | US-14 | **穿越封口（行为面）**：桩测——`installPlugin` / `uninstallPlugin` 对穿越形态枚举（见注①）⇒ 全部 `{ ok:false }`；**两侧夹具文件系统零改动**（存在性与内容哈希 / profile manifest 不变）；无子进程（计数器 = 0） | 全机检（桩测 + 计数器） |
-| AC27（B12） | US-14、NFR-6 | **两层防御**：① 白名单——正负例见注②；② 越界校验——`isInsideDir` 真值表（`nm/a` true · `nm/../..` false · `nm` 自身 false · `bundled/x` true · `bundled/../profiles` false）；③ 结构——两处 `path.join` 之后各有一次包含判定调用（grep） | 全机检 |
-| AC28（B12） | US-14、NFR-6 | **弹窗文本化**：① 静态——`market.js` 全文 `innerHTML` **0** 处；`confirmModal(` 三处调用的第二实参均为节点构造；② 桩测——`node:vm` + DOM 桩驱动弹窗与卡片渲染，恶意 `name`（注③）只产生**文本节点**；③ 真机人工——注入恶意条目 ⇒ 弹窗只显文本、无脚本执行 | 机检 + 真机人工（③） |
+| AC25（B10） | US-13 | **聚合口径 + 水位语义**：夹具——3 条记录 ⇒ 三条之和（不按会话 / workspace 过滤）；幂等——同夹具连续两次调用相等；空目录 ⇒ `null`（非 0）；重启不重复计入——预置 `affinity.json`（`usage > 0`）+ 固定夹具 ⇒ 启动后 `usage` 不因读面值变化；**水位下降 / 转 `null`**——清掉记录 ⇒ `usage` / `wallet` **不减**、该 tick **不改基线**（TC-67A）；累加恢复 = TC-67B | 全机检（载具见 §3.3 手段 12 ②） |
+| AC26（B12） | US-14 | **穿越封口（行为面）**：桩测——`installPlugin` / `uninstallPlugin` 对穿越形态枚举（见注①）⇒ 全部 `{ ok:false }`；**两侧夹具文件系统零改动**（存在性与内容哈希 / profile manifest 不变）；无子进程（计数器 = 0；夹具加载顺序见 §3.3 手段 13 ②） | 全机检（桩测 + 计数器） |
+| AC27（B12） | US-14、NFR-6 | **两层防御 + 卸载面解析门**：① 白名单——正负例见注②；② 越界校验——`isInsideDir` 真值表；③ 结构——包含判定位于 fs 调用**之前**；④ 卸载面解析门——解析不到已装对象 ⇒ 拒（四项细目见本表下「AC27 判据细化」） | 全机检 |
+| AC28（B12） | US-14、NFR-6 | **弹窗文本化**：① 静态——`market.js` 全文 `innerHTML` / `insertAdjacentHTML` / `outerHTML` / `document.write` 各 **0** 处（NFR-6 第二分句同宽——#8）；`confirmModal(` 三处调用的节点构造实参见细化 ④；② 桩测——`node:vm` + DOM 桩驱动弹窗与卡片渲染，恶意 `name`（注③）只产生**文本节点**；③ 真机人工——注入恶意条目 ⇒ 弹窗只显文本、无脚本执行 | 机检 + 真机人工（③） |
 | AC29（B12） | US-15、NFR-7 | **扫描常数次 + 判定零回退**：① 计数器——同一夹具下 N=2 与 N=3727 的 `readdirSync` / `statSync` / `readFileSync` 计数**相等**，且 `node_modules` 的 `readdirSync` = 1 / 次调用；② 黄金样本——`computePluginUpdates(夹具)` 的返回值逐字段与改前一致、`updaterLog` 行序列逐字一致 | 全机检（计数器 + 黄金样本） |
 | AC30（B12） | NFR-3（B12 面）、US-14、US-15 | **零回退面**：① 零新依赖（`package.json` 零 diff）；② 改动文件 `node --check` 全绿；③ `market.html` / `market-preload.js` / `market-update.js` / `exchange.js` 零 diff；④ `market.js` ≤ **500** 行（实测）；⑤ `shell-ipc.js` 零 diff；⑥ `plugin update …` 行形与条数不变 | 机检 |
-| AC31（B12） | NFR-6 | **拒绝消息形态**：两类拒绝消息均匹配 `^无效的插件标识：` / `^插件标识越界，已拒绝：`，且不含盘符形态 `[A-Za-z]:[/\\]` 与三个基准目录的取值子串（桩测正则） | 全机检 |
+| AC31（B12） | NFR-6 | **拒绝消息形态（三类）**：`无效的插件标识：…`（TC-70 · TC-71）与 `未安装或无法解析：…`（TC-76）各至少一例命中；`插件标识越界，已拒绝：…` 取**函数级 + 静态**面（TC-74 + 静态命中——**运行时不可达**，§2.2.14「已知事实（不可达面）」；细目见本表下「AC31 判据细化」）；三串均不含盘符形态 `[A-Za-z]:[/\\]` 与三个基准目录的取值子串（桩测正则） | 全机检 |
 
-> **B12 判据细化（AC26–AC28 的枚举面，承 AC17 细化先例）**：① **穿越形态枚举**（AC26 输入集）= `../../..` · `builtin:../../..` · `..\..\..` · `/abs/path` · `C:\Windows` · `@scope/..` · `..` · `a/../../b` · `\\srv\share` · `file:/etc/passwd` · `git+https://x/y` · `builtin:/abs`；
-> ② **形态正负例**（AC27）= 正例 `名` / `@scope/name` / `<名>@<版本>` / `github:owner/repo` / `github:owner/repo#path:/x`；负例 = 注① 全量 + `link:` / `file:` / `git+` / 非字符串入参；
+> **AC23 判据细化（B10 修正轮 2——原「调用面零 diff」口径的替代；台账 T27 并入面）**：① 调用面口径 = **除 `startAffinityWatcher` 内新增的基线重建分支外零改动**（`stopAffinityWatcher` / `affinityView` / `handleAffinity*` / 渲染面通道 `pet-affinity` 与常量 `EXCHANGE_RATE` / `AFFINITY_RATE` / `LEVEL_THRESHOLDS` / `FOODS` 逐字不变）；
+> ② 机检①（**优先，行为面**）= 桩测 **TC-67B**——启动期读面不可用 ⇒ `startAffinityWatcher()` 后先驱动一次 tick ⇒ 注入记录（读面转非 `null`）⇒ 继续驱动 ⇒ 断言「首个非 `null` tick 只重建基线（`usage` / `wallet` 不变）」+「后续 tick 的新消耗**计入**」（= 累加恢复）；
+> ③ 机检②（辅，形态面）= `git diff` 的调用面 hunk 白名单——**白名单面 = `startAffinityWatcher` 内的基线重建分支，形态 = 新增 1 行（落于既有守卫行 `:128` 之前；见 §2.2.13「落位与守卫处置」）**；**守卫行 `:128` 与既有累加 / 重基线块的处置 = 不改 ⇒ 其任何改动均不在白名单内（出现即停手上报）**；该分支以外的调用面 hunk = 0（基线 = 实施起点）；
+> ④ `null` 的基线语义 = 该 tick **本次不改基线**（`s2 === null` 不进任何分支；修正轮 2 更正原 TC-67A 的「基线重置为空档」表述——见 TC-67A）；
+> ⑤ 逐例进程隔离（修正轮 3；判据可达性）= 诊断标记 `affinityDiagLogged` 的口径为**每进程至多一条**（§2.2.13「诊断行」）⇒ 诊断行的每个断言（TC-67① 的 `dir=no` / `dir=yes` 两态、本行「正常态 0 条」）**各在独立进程内评估**（载具手段见 §3.3 手段 12 ②）；同进程复用法（清 `require.cache` + 复位档内标记）仅在无法起新进程时使用，**且「0 条」断言不得在同进程内先跑过失败态后再评估**（否则 0 条来自标记已置位 = 空过）。
+
+> **B12 判据细化（AC26–AC28 的枚举面，承 AC17 细化先例）**：① **穿越形态枚举**（AC26 输入集 = **13 形**——#4 补 `github:../..`）= `../../..` · `builtin:../../..` · `..\..\..` · `/abs/path` · `C:\Windows` · `@scope/..` · `..` · `a/../../b` · `\\srv\share` · `file:/etc/passwd` · `git+https://x/y` · `builtin:/abs` · `github:../..`；
+> ② **形态正负例**（AC27）= 正例 `名` / `@scope/name` / `<名>@<版本>` / `github:owner/repo` / `github:owner/repo#path:/x`；负例 = 注① 全量 + `link:` / `file:` / `git+` + 畸形 / 含 `..` 的 `github:` 形（`github:` / `github:owner` / `github:../..`——修正轮 1 #4）+ 非字符串入参；
 > ③ **恶意 name 形态**（AC28）= `<img src=x onerror=…>` / `<script>…</script>` / `"><svg onload=…>`。
+> ④ **`confirmModal` 实参面枚举**（AC28 ①）= 三处调用点的节点构造实参 = 新签名 `confirmModal(title, okLabel, ...parts)` 的 **`parts` 形参（第三实参起）**；第二实参 `okLabel` 为字符串（修正轮 2 N3——按新签名记序，不按旧签名 `(title, html)`；AC28 ① 与 TC-79 同指此处）。
+
+> **AC27 判据细化（修正轮 1 #1 · #4 · #10）**：① `isInsideDir` 真值表 = `nm/a` true · `nm/../..` false · `nm` 自身 false · `bundled/x` true · `bundled/../profiles` false（**严格包含**——`rel === ''` 不算通过）；
+> ② 结构——**每函数两处 `path.join`**（`bundledSource` 面 + `target` 面）**之后各一次包含判定调用**（grep）⇒ 两函数共 **4** 处判定面（`installPlugin` 2 + `uninstallPlugin` 2）；**且四处判定均先于其后的任何 fs 调用（`existsSync` / `rmSync` / `cpSync` / `mkdirSync`）**（执行先后见 §2.2.14「分支通路」①②③；逐行静态核对——批次档 §1.4 AC3 的「不执行任何 fs 写/删」半句由此承重）；
+> ③ 卸载面解析门——`realName === null`（无法解析）或 `!isPluginInProfile(realName)`（未安装）⇒ `{ ok:false, message:'未安装或无法解析：…' }`，零 fs 改动 / 零子进程（桩测 TC-76）；
+> ④ 形态 ② 的 `owner` / `repo` 显式排除 `..` 与全点段（负例见注②——`github:../..`）。
+> **AC31 判据细化（B12 修正轮 3；三前缀逐条的取证面与可达性）**：① `无效的插件标识：…` —— 取证面 = 穿越形态枚举（TC-70 · TC-71）；可达性 = **可达**（注① 全 13 形均在入参门被拒，§2.2.14「入参门判据句」）；
+> ② `插件标识越界，已拒绝：…` —— 取证面 = **函数级**（`isInsideDir` 真值表 = TC-74，只回指不重述）+ **静态命中**（该前缀字符串在 `shell-plugins.js` 内存在，且走既有失败 toast 渲染面 = `{ ok:false, message }` 返回面）；可达性 = **运行时不可达**（§2.2.14「已知事实（不可达面）」）⇒ **不得**为构造命中而新增「过门但越界」输入（= 给白名单开口）；
+> ③ `未安装或无法解析：…` —— 取证面 = 卸载面解析门（TC-76）；可达性 = **可达**（依据 = §2.2.14 卸载面解析门判据句的「判据可达性（不引入死面）」条——`market.js:265-273`）；
+> ④ 三前缀共同面 = 不含盘符形态 `[A-Za-z]:[/\\]` 与三个基准目录的取值子串（桩测正则）；TC-75 的「两类（穿越入参）」为**形态面限定**（列举形态，不构成「各至少一例命中」判据），与 AC31 三类不矛盾——本轮**逐字未动**。
 
 > **B07 回指口径（三方条目一致——硬）**：批次档 §2 本批条目（I1–I6）= 本表 AC 回指条目 = `docs/requirements/SHELL.md` 条目（US-9 / US-10 / US-11 / NFR-5 / US-7 补注）。
 > **B09 回指口径（三方条目一致——硬）**：批次档 §2 本批条目（I1–I4）= 本表 **AC17–AC20** 回指条目 = `docs/requirements/SHELL.md` **US-12**（并含 NFR-5 的 B09 注记与对 US-11 的显式修订面）。批次档 §1.6 的 AC1–AC4 与设计 AC17–AC20 的映射：**AC1 → AC17 · AC2 → AC18 · AC3 → AC19 · AC4 → AC20**。
 > **B10 回指口径（三方条目一致——硬）**：批次档 §2 本批条目（I1）= 本表 **AC21–AC25** 回指条目 = `docs/requirements/SHELL.md` **US-13**。批次档 §1.6 的 AC1–AC4 与设计 AC21–AC25 的映射：**AC1 → AC21 · AC2 → AC22 · AC3 → AC23 · AC4 → AC24**；**AC25** = 批次档 §1.5 ②（多会话聚合口径）的裁定面（§1.6 未列，本批新增）。
+> **AC21 判据细化（B10 修正轮 4——「无目录递归」收窄为判据可达形态；源 = 批次档 §5 残余 #1）**：① **读面内零递归**（本判据的静态面）= `sumSessionTokens()` 的目录枚举调用 `fs.readdirSync(dir)` **不带任何选项**（递归选项在场即不满足；as-of `shell-affinity.js:113`）+ 行为面佐证 = 载具 `static` / `read` 用例（读面只列单层 `sessions/*.json`）；
+> ② **全档 `recursive` 计数不作判据**：档内 **3** 处既有 `recursive` 全在本批**禁改的冻结函数**内（`shell-affinity.js:63` `mkdirSync`（好感度档落盘面）· `:268` / `:300` `rmSync`（重置 / profile 清理面））⇒「全档 0 处」按字面不可满足，且判据不得以改动冻结函数为代价（本批批准清单不含这三处）；
+> ③ 判据面由此限定为**读面**（面限定口径，与 §3.3 手段 13 ① 的「四处守卫面」同法）；**判据编号与条目计数不变**（AC21–AC25 与 US-13 逐条不动，未增删验收面）。
 > **B12 回指口径（三方条目一致——硬）**：批次档 §2 本批条目（I1–I6）= 本表 **AC26–AC31** 回指条目 = `docs/requirements/SHELL.md` **US-14 / US-15**（并含 NFR-6 / NFR-7）。
 > 批次档 §1.4 的 AC1–AC6 与设计 AC26–AC31 的映射：**AC1 → AC26 · AC2 → AC27 · AC3 → AC27 · AC4 → AC28 · AC5 → AC29 · AC6 → AC30**（AC2 与 AC3 同落 AC27——门与越界校验同属「两层防御」）；**AC31** = 本批新增（拒绝消息形态）。
-> **AC17 判据细化（B09）**：① env 钩子 `BIGFISH_IDLE_NOTIFY_MS` 解析面在场（组合根，承 `webUrlWaitMs()` 形：空 / 非有限数 / 负数 ⇒ 取默认 8000）；② 判定四态与三条条件句在场（`turnBoundary` · `openTurnStartSeq` · `ver !== 2` · mtime 比较）；③ 判定读的异步性与「每静默窗至多一次」（`completionGateMemo` 按 `lastBusyAt` 记忆 + `completionGateProbeRunning` 防重叠）静态核对。
+> **AC17 判据细化（B09）**：① env 钩子 `BIGFISH_IDLE_NOTIFY_MS` 解析面在场（组合根，承 `webUrlWaitMs()` 形：空 / 非有限数 / 负数 ⇒ 取默认 8000）；
+> ② 判定四态与条件句在场（四态标识符 `open` / `stale` / `unavailable` / `done` + `turnBoundary` · `openTurnStartSeq` · `ver !== 2` · mtime 比较）；
+> ③ 常量组在场（`GATE_FRESH_TOLERANCE_MS` / `GATE_TURN_BOUNDARY_VER` / `GATE_STALE_MAX_MS`——**符号名与 §2.2.6 注 S6 同名**，修正轮 1 #7）+ 发射面 = `backend.writeDiag`（`require('./shell-backend.js')` 边在场——#2）；
+> ④ 判定读的异步性与「每静默窗至多一次」（`completionGateMemo` 按 `lastBusyAt` 记忆 + `completionGateProbeRunning` 防重叠）+ 两条诊断行封口各自独立（`completionGateDiagLogged` / `completionGateStaleLogged`）静态核对。
 > **AC13 / TC-38 · TC-39 读数修订（B09）**：B07 判据中的「静默 30 s」读数按 §2.2.12 修订为「静默达 8 s + 回合已闭合」；**AC13 原文与 TC-38 · TC-39 原文按批次硬约束保持不动**（修订面登记见 §2.5 C28 / 观察项 O16）。
 > **AC9 补充判据（回落 / 旧版两子面）**：① `BIGFISH_WEB_URL_WAIT_MS=0` 启动（URL 行晚到）→ `not captured … reason=no-line` + 窗口先加载裸地址，行到达后补一次加载自愈为对话 UI（DD-28；不接受的行形见 TC-32）；② harness 无令牌输出 → captured `token=no` 仍可用（旧版兼容，用例 TC-33）。
 > **AC15 判据细化（AC15 行压行后的细则面，内容与原行等价）**：① 对照方式 = 改动前后**同一启动序列**的 `bigfish.log`；② 在场锚点 = `harness activate …` / `harness install phase=…` / `update …`（B04 / B05）；③ URL 诊断行形 = `captured`，或 `not captured` + `reason`——不要求单次两条齐备；④ 「两条齐备」判定并入 TC-31（晚到序列）；⑤ 日志无 U+FFFD = 分片注入 TC-36。
@@ -1469,9 +1637,9 @@ startCompletionWatcher()
 | TC-45（B07） | 正常 | 真机十面回归 + B06 静态面复跑 | 各面零回退（启动形态 / 托盘 11 项 / 桌宠左右键 / 主窗口 / 兑换屋 / 市场 / 插件 / 更新门禁 / 通知 / 背景更换） | NFR-2 / AC16 |
 | TC-46（B09） | 正常 | 真机：一轮带工具调用的任务跑完（记录回合末次写入时刻与通知可见时刻） | 提醒落在末次写入后 **8–13 s**（对照现状 30–35 s）；全程仅一次提醒 | US-12 / AC17·AC20 |
 | TC-47（B09） | 边界 | 真机：一轮含 ≥15 s 工具调用（长命令 / 构建）的任务 | 静默期内**零**提醒；回合结束后 8–13 s 一次提醒（不早报、不漏报） | US-12 / AC18 |
-| TC-48（B09） | 边界 | 构造 / 桩测：回合在途 + 静默达阈值（规则④）；快照落后于会话日志（规则③） | 两种情况均**不提醒**（判定 `open` / `stale`）；新写入到达后重判 | US-12 / AC18 |
-| TC-49（B09） | 边界 | 构造：`BIGFISH_IDLE_NOTIFY_MS=0`（把判定提到静默窗起点）；非法值（`abc` / `-1` / 空串） | `0` ⇒ 达阈值即判定（可用于构造）；非法值 ⇒ 取默认 8000 | US-12 / AC17 |
-| TC-50（B09） | 错误 | 构造：隔离 `DSH_HOME`（无会话记录 / 记录损坏 / `rows.turnBoundary.ver !== 2`） | 退回 30 s 阈值（行为 = 现状）+ 诊断行一条（`grep "completion gate unavailable"`）；不误报为「已完成」 | US-12 / AC17 |
+| TC-48（B09） | 边界 | 构造 / 桩测：回合在途 + 静默达阈值（规则④）；快照落后于会话日志（规则③）；持续 `stale` ≥ 30 s（规则③′） | 前两种均**不提醒**（判定 `open` / `stale`），规则③ 另发一条 `stale` 诊断行；第三种 ⇒ 按降级处置（30 s 面 + 降级行）；新写入到达后重判 | US-12 / AC18 |
+| TC-49（B09） | 边界 | 构造：`BIGFISH_IDLE_NOTIFY_MS=0`（把判定提到静默窗起点）；非法值（`abc` / `-1` / 空串） | `0` ⇒ 达阈值即判定（可用于构造）；非法值 ⇒ 取默认 8000。**注（修正轮 1 #9）**：钩子置 `0` 使阈值 ≤ 写后阈值 5000 ms ⇒ **故意违反判定前提**（§2.2.12）——仅用于**驱动四态**，不得用于时延 / 误报面断言 | US-12 / AC17 |
+| TC-50（B09） | 错误 | 构造：隔离 `DSH_HOME`（无会话记录 / 记录损坏 / `rows.turnBoundary.ver !== 2`） | 退回 30 s 阈值（行为 = 现状）+ 诊断行一条——**取证面 = `bigfish.log`**（`grep "completion gate unavailable"`；经 `writeDiag` 双写，console 仅辅证 / 桩测面——修正轮 1 #2）；不误报为「已完成」 | US-12 / AC17 |
 | TC-51（B09） | 正常 | 真机：托盘关闭「任务完成时通知」→ 产生活动 → 重新开启 → 静默达阈值 | 关闭期间零提醒；重开**不补发**；重开后新一轮活动仍按判定面提醒一次 | US-11 / AC19 |
 | TC-52（B09） | 正常 | 构造：回落路径（强制 `fs.watch` 抛错 / 非 Windows） | 判定面同样生效（回合在途不提醒 / 待回合结束提醒一次）；首扫不误报 | US-11 / AC19 |
 | TC-53（B09） | 边界 | 真机 / 构造：多会话并行（subagent 在途） | 子会话在途（回合未闭合）期间不提醒；全部回合结束后一次提醒（已知限制 L-B09-2：可推迟、不误报） | US-12 / AC18 |
@@ -1488,19 +1656,22 @@ startCompletionWatcher()
 | TC-64（B10） | 正常 | 夹具：旧布局单文件 + 两条会话（`tables.sessions[*]`） | 返回值 = 两条四桶之和（口径 B） | US-13 / AC22·AC24 |
 | TC-65（B10） | 边界 | 夹具：记录内 `last.buckets` 与 `totals` 取不同值 | 返回值取 `totals`（不叠加 `last`） | US-13 / AC24 |
 | TC-66（B10） | 正常 | 夹具固定 + 预置 `affinity.json`（`usage > 0`）；同一夹具连续两次调用 | 两次返回值相等（幂等）；启动后 `usage` 不因读面值变化（重启不重复计入） | US-13 / AC25 |
-| TC-67（B10） | 正常 / 异常 | 诊断行：① 两形态均不可用；② 正常夹具 | ① `bigfish.log` / console 出现 1 条 `affinity token source unavailable`（每生命周期至多一条）；② 0 条 | US-13 / AC23 |
+| TC-67（B10） | 正常 / 异常 | 诊断行：① 两形态均不可用（分「目录不存在」与「目录在但空 / 全损坏」两态）；② 正常夹具 | ① **每例新进程**内 `bigfish.log` / console 出现 1 条 `affinity token source unavailable`（每生命周期至多一条），`dir=no` / `dir=yes` **各起独立进程**分别命中对应态（修正轮 1 #8 / 修正轮 3 #2）；② **新进程**内 0 条 | US-13 / AC23 |
+| TC-67A（B10） | 边界 | 夹具：高水位（1 条记录）→ 驱动 tick（`usage` 增长）→ 清掉该记录（水位转 `null`）→ 再驱动 tick | `affinity.usage` / `wallet` **不减**（不扣好感）、不抛错；`null` tick **不改基线**（`s2 === null` 不进任何分支 ⇒ 基线保持原值——修正轮 2 更正原「基线重置为空档」表述） | US-13 / AC25 |
+| TC-67B（B10 修正轮 2） | 边界 | 夹具：启动期读面不可用（空目录 + 无旧面文件 ⇒ `null`）⇒ `startAffinityWatcher()`（基线置 `null`）→ 注入 1 条记录（读面转非 `null`）→ 驱动 tick；第二次前再增消耗 | 首个非 `null` tick **只重建基线**（`usage` / `wallet` / `affinity.json` 不变）；后续 tick 新消耗按差值**计入**（`usage` / `wallet` 增长）= **累加恢复**；不抛（台账 T27 / DD-50） | US-13 / AC23 |
+| TC-67C（B10 修正轮 4） | 异常 | 夹具：目录面缺失（无 `sessions/` 目录）+ 旧面文件**可解析但无有效会话条目**（`{}` / `tables.sessions` 空 / 条目无 `rows.tokenUsage.val.totals`） | 返回 **`null`**（**非 0**）、不抛；诊断行 1 条（两形态均不可用，含 `dir=` 字段） | US-13 / AC22·AC23 |
 | TC-68（B12） | 正常 | 夹具：`bundled-plugins/<name>/package.json` 存在 + `profiles/web/package.json`（含 `dsh.profile.bundles`）⇒ `installPlugin('builtin:<name>')` | `{ ok:true }`；目标目录与源逐文件一致（内容哈希）；bundles 含该名（内置面零回退，= 黄金样本对照） | US-14 / AC26 |
 | TC-69（B12） | 正常 | 同上夹具 ⇒ `uninstallPlugin('<name>')` | `{ ok:true }`；目标目录不存在；bundles 不含该名 | US-14 / AC26 |
-| TC-70（B12） | 异常 | `installPlugin` 入参枚举：`../../..` · `builtin:../../..` · `..\..\..` · `/abs/path` · `C:\Windows` · `@scope/..` · `\\srv\share` · `file:/etc/passwd` · `git+https://x/y` | 全部 `{ ok:false }`；夹具外部目录与 profile manifest **零改动**；子进程计数 = 0 | US-14 / AC26 |
-| TC-71（B12） | 异常 | `uninstallPlugin` 同枚举 | 同上（含「目标目录未被删除」的哈希断言——旧实现下 `../../..` 会递归删） | US-14 / AC26 |
+| TC-70（B12） | 异常 | `installPlugin` 入参枚举 = **注① 全量（13 形）**（§3.1「B12 判据细化」；含 `github:../..`） | 全部 `{ ok:false }`；夹具外部目录与 profile manifest **零改动**；子进程计数 = 0 | US-14 / AC26 |
+| TC-71（B12） | 异常 | `uninstallPlugin` 同枚举（= **注① 全量 13 形**；§3.1「B12 判据细化」） | 同上（含「目标目录未被删除」的哈希断言——旧实现下 `../../..` 会递归删） | US-14 / AC26 |
 | TC-72（B12） | 边界 | 形态正例：`<名>` · `<名>@<版本>` · `@scope/name` · `@scope/name@<版>` · `github:owner/repo` · `github:owner/repo#path:/packages/x` | `installSpecKind` 均非 `null`（npm / github 面只做谓词级断言——不触发子进程） | US-14 / AC27 |
-| TC-73（B12） | 边界 | 形态负例：`link:../x` · `file:/etc/passwd` · `git+https://x/y` · `@scope/..` · 空串 · `null` · `42` · `{}` | 均 `null`（非字符串入参不得抛错） | US-14 / AC27 |
-| TC-74（B12） | 边界 | `isInsideDir` 真值表：(`nm/a`, `nm`) · (`nm/../..`, `nm`) · (`nm`, `nm`) · (`bundled/x`, `bundled`) · (`bundled/../profiles`, `bundled`) | `true` · `false` · `false`（严格包含）· `true` · `false` | US-14 / AC27 |
+| TC-73（B12） | 边界 | 形态负例：`link:../x` · `file:/etc/passwd` · `git+https://x/y` · `@scope/..` · `github:` · `github:owner` · `github:../..` · 空串 · `null` · `42` · `{}` | 均 `null`（非字符串入参不得抛错；`github:../..` = 形态 ② 的排除面——修正轮 1 #4） | US-14 / AC27 |
+| TC-74（B12） | 边界 | `isInsideDir` 真值表：(`nm/a`, `nm`) · (`nm/../..`, `nm`) · (`nm`, `nm`) · (`bundled/x`, `bundled`) · (`bundled/../profiles`, `bundled`) | `true` · `false` · `false`（严格包含）· `true` · `false` | US-14 / AC27·AC31 |
 | TC-75（B12） | 异常 | 两类拒绝消息（穿越入参） | 形如 `无效的插件标识：…` / `插件标识越界，已拒绝：…`；不含 `[A-Za-z]:[/\\]` 与基准目录取值 | US-14 / AC31 |
-| TC-76（B12） | 边界 | `uninstallPlugin('github:owner/repo')`（`resolveInstalledName` 解析失败态） | `{ ok:false }`（有意收紧——§2.2.14 行为差异表第 3 行；旧实现走 `pnpm remove`） | US-14 / AC27 |
+| TC-76（B12） | 边界 | `uninstallPlugin('github:owner/repo')` / `uninstallPlugin('<未装纯包名>')`（**解析不到已装对象**） | `{ ok:false, message:'未安装或无法解析：…' }`（**解析门**命中——形态**仍过白名单**）；零 fs 改动 / 零子进程；旧实现走 `pnpm remove` 并回 `ok:true`（§2.2.14 行为差异表第 3 行；修正轮 1 #1） | US-14 / AC27 |
 | TC-77（B12） | 正常 | `node:vm` + DOM 桩载入 `market.js` ⇒ 驱动三处弹窗构造；恶意 `name`：`<img src=x onerror=alert(1)>` · `<script>alert(1)</script>` · `"><svg onload=alert(1)>` | 弹窗正文内**只多出文本节点**（元素节点数与合法输入相同）；无 `img` / `script` / `svg` 元素；字符串逐字可见 | US-14 / AC28 |
 | TC-78（B12） | 边界 | 同上沙箱：`api.list()` 桩返回含恶意 `name` / `desc` / `owner` / `url` 的条目 ⇒ 走 `refresh()` 渲染卡片 | 无新增元素节点（恶意串只作文本）；`href` 赋值不产生脚本执行（静态面） | US-14 / AC28 |
-| TC-79（B12） | 正常 | 静态判据组：`market.js` 的 `innerHTML` 计数；`confirmModal(` 三处调用的第二实参 | `innerHTML` = **0** 处；三处均为 `el(...)` / `frag(...)` 构造（无模板字符串实参） | US-14 / AC28 |
+| TC-79（B12） | 正常 | 静态判据组：`market.js` 的 `innerHTML` 计数；`confirmModal(` 三处调用的 `parts` 形参（**第三实参起**——细化 ④） | `innerHTML` = **0** 处；三处均为 `el(...)` / `frag(...)` 构造（无模板字符串实参） | US-14 / AC28 |
 | TC-80（B12） | 正常 | 黄金样本对照：同一夹具下 `computePluginUpdates` 的返回值与 `updaterLog` 行序列 | 逐字段相等 / 逐字相等（改前 vs 改后）；`plugin update …` 行条数与顺序不变 | US-15 / AC29 |
 | TC-81（B12） | 正常 | 计数器桩：同一夹具，注入 N=2 与 N=3727 两组注册表条目（同内容重复） | `readdirSync` / `statSync` / `readFileSync` 计数**相等**；`node_modules` 的 `readdirSync` = 1 / 次调用 | US-15 / AC29·AC31 |
 | TC-82（B12） | 边界 | 夹具：profile 无 `package.json` / `node_modules` 为空 / 无目录 | 不抛；`listInstalledPlugins` 返回空数组；`computePluginUpdates` 返回 `[]`（与改前同法） | US-15 / AC29 |
@@ -1508,6 +1679,7 @@ startCompletionWatcher()
 | TC-84（B12） | 边界 | 夹具：`bundled-plugins/@scope/name/`（嵌套目标）⇒ `installPlugin('builtin:@scope/name')` | `{ ok:true }`；目标 = `node_modules/@scope/name`（含中间目录创建）；两处包含判定均过 | US-14 / AC26·AC27 |
 | TC-85（B12） | 正常 | 零回退面机检：`git diff --stat` 于 `package.json` / `market.html` / `market-preload.js` / `market-update.js` / `exchange.js` / `shell-ipc.js`；行数实测；`node --check` | 六个文件**零 diff**；`market.js` ≤ **500** 行；改动 js 语法全绿 | US-14·US-15 / AC30 |
 | TC-86（B12） | 正常 | **真机人工**：本地 `plugins.json` 注入恶意 `name`（带事件处理器 / `javascript:` 形态）⇒ 开市场并点开该条目 | 弹窗只显文本；无脚本执行、无新增元素节点（DevTools Elements / Console 断言） | US-14 / AC28 |
+| TC-87（B12） | 边界 | 夹具：`bundled-plugins/` 下**无**同名目录（裸纯包名 ⇒ `installSpecKind` 判 `'bundled'` 但源不存在）⇒ `installPlugin('<名>')` | 走 **npm / pnpm 面**（与改前同径）：`spawn` 计数 = 1（args 含 `add` + 入参）、`cpSync` / `rmSync` 计数 = 0；`bundledSource` 包含判定通过（#3；与 TC-68 / TC-72 并列） | US-14 / AC26·AC27 |
 
 > **TC-31 的可达性口径（评审修正轮 1 #3）**：本用例强制宽限耗尽；若该序列中 URL 行在 `waitForWebUrl` 返回前已到达（捕获早已锁定），则只命中 `captured` 一条、不产生 `not captured` 行——此时「两条齐备」面**未构造到**，记为未覆盖该态（不伪报），回归主判据仍为 AC15 的「每次启动至少命中一条」。
 
@@ -1522,24 +1694,49 @@ startCompletionWatcher()
 4. **真机清单**：按 §3.2 逐条执行；冷启动类用例用隔离 `--user-data-dir` + 隔离 `DSH_HOME`（承 B02 §6.7 / B05 手法），并预置 `settings.json`（`modeChosen:true`、`mode:'whale'`）。
 5. **锚点 grep 清单**：§2.2.6 表逐条（含 `updater.log` 15 条主格式行与变体、`pet-*` 日志、console 行、env 开关）。
 6. **纯迁移 diff 判据**：P1 起点提交为基线——各层迁移提交除样板（require / exports / 限定 / 访问器）外，逐句一致；行为变更（F1–F5）不得混入 P1 各提交。
-7. **本批不引入**：测试框架 / `test` script / 新增 `tests/` 文件（T4 认账不排期；判据口径承 B05 §3.3 手段 8）。
+7. **本批不引入（B06 口径）**：测试框架 / `test` script / 新增 `tests/` 文件（T4 认账不排期；判据口径承 B05 §3.3 手段 8）。
+   **B12 例外（修正轮 1 #2）**：本批**新增 1 个仓内测试文件** `tests/b12-plugin-guards.test.js`（= 手段 13 的落点；不登记 `package.json`、不入 `build.files`）——全档对本批只保留**一种读法**。
 8. **B07 静态核对清单（新增项）**：① `shell-mode.js` 无 `notifier` 符号（`grep -n "notifier" shell-mode.js` = 0 处）；② `shell-notify.js` 无 `*Sync(`（含 `readdirSync` / `statSync`）且无 `latestMtime` 符号（**词边界**，`latestMtimeAsync` 不计入）；
    ③ 主窗口 URL 单入口——`grep -n "browserUrl()" *.js` 命中点均合法，**窗口 URL 出口面**的裸地址拼接仅 1 处；④ 日志流常驻 `error` 监听在场；⑤ watcher 常驻 `error` 监听 + `useWatch=false` 分支在场；⑥ busy 过滤谓词为单一实现且被两路复用（无第二份 skip 集）。
 9. **B07 扫描脚本（开发期一次性，不入仓、不登记 `package.json`）**：未绑定命名空间引用全扫（方法见 §2.2.11）——期望 0 处。
 10. **B07 日志取证**：`bigfish.log`——`backend web url captured|not captured` 行；`dsh web:` 行（带 / 不带 `token=`）；`dsh web: opening the default browser` 行**缺失**（AC11）；B04 / B05 锚点行在场（AC15）。
-11. **B09 判定面判据（新增）**：① 静态——`grep -n "turnBoundary\|openTurnStartSeq" shell-notify.js`（判定在场）、`grep -n "process.platform" shell-notify.js` = 0、`grep -n "Sync(" shell-notify.js` = 0、注入两键在场、常量关系 8000 > 5000；
-    ② 真机构造——`BIGFISH_IDLE_NOTIFY_MS`（默认 8000；`0` 用于把判定提到静默窗起点）+ 隔离 `DSH_HOME`（空目录 ⇒ 判定源不可用 ⇒ 30 s 面 + 诊断行；构造记录 ⇒ 四态可分别驱动）；
-    ③ 桩测（**可选，须经主 agent 裁定**——本批边界声明「零新增文件」）：开发期一次性脚本（若采用，落 `.thincoder/`（gitignore）面，承 B03 `b03-pet-calibrate-stub.mjs` 先例）——
+11. **B09 判定面判据（新增）**：① 静态——`grep -n "turnBoundary\|openTurnStartSeq" shell-notify.js`（判定在场）、四态标识符与 `GATE_*` 三常量在场（`GATE_FRESH_TOLERANCE_MS` / `GATE_TURN_BOUNDARY_VER` / `GATE_STALE_MAX_MS`——与 §2.2.6 注 S6 同名）、
+   `grep -n "shell-backend" shell-notify.js`（`writeDiag` 边在场——修正轮 1 #2）、`grep -n "process.platform" shell-notify.js` = 0、`grep -n "Sync(" shell-notify.js` = 0、注入两键在场、常量关系 8000 > 5000；
+    ② 真机构造——`BIGFISH_IDLE_NOTIFY_MS`（默认 8000；`0` 用于把判定提到静默窗起点——**仅供驱动四态，不得用于时延 / 误报面断言**：阈值 ≤ 写后阈值 5000 ms，故意违前提）+ 隔离 `DSH_HOME`（空目录 ⇒ 判定源不可用 ⇒ 30 s 面 + 诊断行；构造记录 ⇒ 四态可分别驱动）；
+       诊断行取证面 = `bigfish.log`（`grep "completion gate unavailable"` / `grep "completion gate stale"`——经 `backend.writeDiag` 双写）；`logStream` 不可用（后端未起 / 流失败）时只到 console ⇒ 该情形以 console / 桩断言取证（修正轮 1 #2）；
+    ③ 桩测（**载具裁定 = 仓外一次性开发期脚本**——**实施后收口轮按实况更正**：原记落 `.thincoder/`（gitignore）面，实落**仓外** `%TEMP%\b09-gate-stub.mjs`；承 B10 §3.3 手段 12 ② 先例；本批边界「零新增文件」保持）——
        注入假 `electron`（`Notification` 桩）+ 构造 `DSH_HOME` + `init({ IDLE_NOTIFY_MS: 0, IDLE_NOTIFY_FALLBACK_MS: 0 })` 驱动 `startCompletionWatcher()`，断言四态；不入仓、不登记 `package.json`、不进 `build.files`。
-12. **B10 读面判据（新增）**：① 静态——`grep -n "session_projcache" shell-affinity.js`（两侧路径段在场）、`grep -n "uncachedInputTokens\|cacheReadTokens\|cacheWriteTokens\|outputTokens" shell-affinity.js`（四桶逐条在场）、`recursive` **0** 处（无目录递归）、`grep -n "sumSessionTokens" shell-affinity.js`（实现 + 导出各 1 处）；
-    ② 夹具机检（AC21–AC25 的主力手段）——桩电子（`require.cache` 注入假 `electron`）+ `DSH_HOME=<夹具目录>`（`shell-backend.js:286-290` 已支持该 env）+ `require('./shell-affinity.js').sumSessionTokens()` 断言 TC-56…TC-67；
-    ③ 桩测脚本（**可选，须经主 agent 裁定**——本批边界声明「零新增文件」）：开发期一次性脚本，若采用则落 `.thincoder/`（gitignore）面（承 B03 `b03-pet-calibrate-stub.mjs` / 手段 11 ③ 先例），不入仓、不登记 `package.json`、不进 `build.files`。
+       **可复跑命令**（Windows）：`node "%TEMP%\b09-gate-stub.mjs"`（脚本自建夹具、逐例独立子进程；夹具根 `%TEMP%\b09-fix\<case>`、`B09_FIX` 可覆盖）——退出码 **0 = 全绿**、非 0 = 有断言失败（规模 = 12 用例 / 80 断言，源 = 批次档 §5）。
+       **执行约束（实施后收口轮；主 agent 实测登记——判据前提，非缺陷）**：该载具多条断言为**墙钟时间窗**（8–13 s / 30–36 s）⇒ **并发负载下时序断言不可采信**（实测并发 2 个子代理时 4 条 FAIL、空闲单跑全绿）——**复跑须在空闲机器上单跑、与并发任务隔离**。
+12. **B10 读面判据（新增）**：① 静态——`grep -n "session_projcache" shell-affinity.js`（两侧路径段在场）、`grep -n "uncachedInputTokens\|cacheReadTokens\|cacheWriteTokens\|outputTokens" shell-affinity.js`（四桶逐条在场）、
+    **读面内零递归**（结构面 = `sumSessionTokens()` 的 `fs.readdirSync(dir)` 不带任何选项，as-of `:113`；**全档 `recursive` 计数不作判据**——档内 3 处既有 `recursive` 在冻结函数内 `:63` / `:268` / `:300`，本批禁改；细目见 §3.1「AC21 判据细化」）、
+    `grep -n "sumSessionTokens" shell-affinity.js` = **实现 / 导出各 ≥ 1 处**（**调用点不计入**——档内两处调用点 `:118` / `:127` 不构成计数；修正轮 1 #6）、`grep -n "affinityDiagLogged" shell-affinity.js`（一次性诊断标记在场）、`grep -n "writeDiag" shell-backend.js`（函数体 + 导出各 ≥ 1 处）；
+    ② **载具裁定（主 agent 裁定，2026-09-17）= 仓外一次性开发期脚本**（不入仓、不登记 `package.json`、不进 `build.files`——本批边界「零新增文件」保持；承 B07 §3.3 手段 9「开发期一次性，不入仓」先例）。AC21–AC25 的「全机检」由它承重。
+       **可复跑命令**（Windows）：`node "%TEMP%\b10-affinity-stub.mjs"`（脚本自建夹具于 `%TEMP%\b10-fix\`、退出时清理；`B10_FIX` 可覆盖夹具根）——退出码 **0 = 全绿**、非 0 = 有断言失败。
+       **夹具定义**（`<FIX>` = 夹具根）：① `<FIX>/home/storages/session_projcache/sessions/<会话 ID>.json`——形态 = 活样本实测（`{ version:7, record:{ identity, rows:{ tokenUsage:{ val:{ totals, last } } } } }`；本机样本 7191 B / 1 档）；
+       ② `<FIX>/home/storages/session_projcache.json`——旧面（`{ tables:{ sessions:{ <key>:{ rows:{ tokenUsage:{ val:{ totals } } } } } } }`）；③ `<FIX>/userData/affinity.json`（预置 `usage > 0`）。
+       **驱动**（零等待、可复跑）：`require` 前注入假 `electron`（`app.getPath('userData') → <FIX>/userData`；`BrowserWindow` / `screen` / `dialog` 桩）+ 设 `process.env.DSH_HOME = <FIX>/home`（`shell-backend.js:286-290` 支持该 env）+ **定时器桩**（替换 `global.setInterval` / `clearInterval` 捕获 10 s 回调，**手动驱动 tick**）。
+       读面断言（AC21–AC24 / TC-56–TC-65 · TC-67①）= 直接调用 `require('./shell-affinity.js').sumSessionTokens()`；
+       水位断言（AC25 / AC23 / TC-66 · TC-67A · TC-67B）= `init({ getPetWindow: () => null, pet: <桩>, setQuitting(){}, APP_NAME: 'Bigfish' })` 后 `startAffinityWatcher()`，按上法驱动 tick 并读 `handleAffinityView().usage` / `wallet`；
+       **键 / 符号对应（修正轮 3 #3——设计档声明面 + 实现面逐字核对）**：`init(deps)` 的键 = `getPetWindow` / `pet` / `setQuitting` / `APP_NAME`（与 `main.js:66` 逐字同一形态）；§2.2.6 该行所列注入面 `petSay` / `setPetState` = **`pet` 对象的成员**（`shell-pet.js` 导出面），非 `init` 顶层键；
+       载具的 `pet: <桩>` 键名不动，**桩成员至少 `petSay`**（读面 / 水位面唯一调用点 = `shell-affinity.js:138`；喂食面另需 `setPetState` / `getPetState` / `setEatTimer` / `getEatTimer`——`:285-287`，本载具不驱动喂食面）；
+       视图符号取**导出名** `handleAffinityView()`（`shell-affinity.js:262` 的导出处理器，内部转发 `affinityView()`）——设计档调用面枚举（§2.2.13「调用方口径」）中的 `affinityView` 即此函数；内部函数不可从模块外触达 ⇒ 载具不得写 `affinityView()`。
+       TC-67B（累加恢复）需**两段夹具**：启动期读面不可用 ⇒ 先驱动一次 tick（基线仍 `null`）⇒ 注入记录后再驱动（无需改源码——载具同一脚本内切换夹具目录内容即可）。
+       **诊断行取证 = console 捕获**（`writeDiag` 的 `logStream` 只在 `startDsh()` 后方非空 ⇒ 桩内诊断只到 console，**不写主机 `bigfish.log` / 不动主机 userData**——夹具隔离）。
+       **逐例进程隔离（修正轮 3 #2；判据可达性）**：`affinityDiagLogged` = **每进程至多一条**（§2.2.13「诊断行」）⇒ 诊断用例**逐例起独立进程**（每例一次 `node` 调用；同进程内含 `require.cache` 清理 + 档内标记复位——仅作无法起新进程时的退路）：TC-67① 的 `dir=no` / `dir=yes` 两态与 AC23 的「正常态 0 条」均须在此前提下评估，否则「0 条」会因标记已置位而**空过**。
+    ③ 该脚本**不入仓**（仓外一次性）：脚本本体、夹具生成代码与断言数记批次档 §5；本批仍为**零新增文件**（`build.files` / `dependencies` 零 diff）。
 13. **B12 判据（新增；桩测落 `tests/b12-plugin-guards.test.js`——经主 agent / 批次档 §2 裁定的唯一新增文件）**：
-   ① 静态——`grep -c "innerHTML" market.js` = **0**；`grep -n "path.join" shell-plugins.js` 的每处后随包含判定；`installSpecKind\|isInsideDir\|scanProfile` 在场（实现 + 导出）；`shell-ipc.js` 零 diff。
+   ① 静态——`grep -c "innerHTML" market.js` = **0**；`market.js` 的兄弟符号（`insertAdjacentHTML` / `outerHTML` / `document.write`）各 **0** 处（与 NFR-6 第二分句三形态同宽——修正轮 1 #8；现状实测即 0）；
+      **四处守卫面**（`installPlugin` 的 `bundledSource` 面 + `target` 面；`uninstallPlugin` 的同两面）**之后各随一次包含判定**（grep 面限定 = 这四处，as-of `shell-plugins.js:313` / `:316` / `:359` / `:361`），**且该判定先于其后的任何 fs 调用**（顺序性逐行静态核对——修正轮 1 #10）；
+      判据**按面限定**——档内**其余** `path.join` 拼接点（`profileDir()` / `bundledPluginsDir()` / pnpm 面等既有拼接）**不在本判据面内**：其输入为常量段 / 既有解析值、**不以用户入参为输入** ⇒ 无注入点、无须包含判定（**故本判据不得按全档「每处」判读**——实测全档 **21** 处 vs 守卫面 **4** 处；面清单与执行先后同源 §2.2.14「逐形态论证」行 / §3.1「AC27 判据细化」②）；
+      **该计数只作 as-of 说明、不构成判据（B12 实施后收口轮）**：全档数字随实现重构而变（设计期 **26** → 实施后 **21**——实施期重构引入 `nodeModulesDir()` 等使既有拼接点去重），而判据按面限定、守卫面恒为 **4** 处 ⇒ 判据判读一律以「四处守卫面」为准、**不得援引全档计数**。
+      `installSpecKind\|isInsideDir\|scanProfile` 在场（实现 + 导出）；`shell-ipc.js` 零 diff。
    ② 桩测——加载器注入假 `electron`（`{ app: { isPackaged: false, getAppPath, getPath } }`）与假 `./shell-backend.js`（`{ dshHome() }`）+ 临时 `DSH_HOME` 夹具：
    - 守卫面：`installSpecKind` 正负例 + `installPlugin` / `uninstallPlugin` 穿越枚举（含两侧夹具零改动与子进程计数 = 0）；
    - XSS 面：`node:vm` 载入 `market.js` 源码（沙箱提供极简 DOM 桩与 `marketAPI` 桩）⇒ 驱动弹窗与卡片渲染，断言恶意 `name` 只产生文本节点；
-   - 扫描面：包装 `node:fs` 的 `readdirSync` / `statSync` / `readFileSync` 计数器（`fs` 为模块对象属性、调用期查表 ⇒ 加载后包装有效；`spawn` 在加载时被解构，但桩测不触发 npm 分支）；断言 N=2 与 N=3727 计数相等 + 黄金样本对照。
+   - 扫描面：包装 `node:fs` 的 `readdirSync` / `statSync` / `readFileSync` 计数器（`fs` 为模块对象属性、调用期查表 ⇒ 加载后包装有效）+ `node:child_process` 的 `spawn` 计数器（见下条加载顺序注）；断言 N=2 与 N=3727 计数相等 + 黄金样本对照。
+   - **夹具加载顺序（硬；修正轮 1 #9）**：`spawn` 是**加载时解构**（`shell-plugins.js:10` `const { spawn } = require('node:child_process')`）⇒ 子进程计数器必须在 `require('./shell-plugins.js')` **之前**就位——经 `require.cache` 预置假 `node:child_process` 模块（或加载器替换 `Module._load` / `--require` 预载）；
+     **不得**用「加载后包装 `child_process.spawn`」的写法（解构引用不受影响 ⇒ AC26 的「子进程计数 = 0」与 TC-87 的「`spawn` 计数 = 1」两子判据均不可达）。
    运行命令 = `node --test tests/b12-plugin-guards.test.js`（**不登记 `package.json`**——门禁接入属 T4；本文件不入 `build.files`）。
    ③ **黄金样本的来源与顺序（硬）**：先在**改前**代码上用同一夹具跑一次、把返回值与 `updaterLog` 行序列**冻结进测试常量**，再改代码（顺序倒置则样本不可信）——样本内容与夹具定义记批次档 §5。
 
@@ -1555,8 +1752,10 @@ startCompletionWatcher()
 
 - **DD-29**：阈值取 8 s（= 投影缓存写后阈值 5000 ms + 3000 ms 余量；有效时延 8–13 s）；
 - **DD-30 / DD-31**：判定源 = Harness 会话投影缓存（`turnBoundary.openTurnStartSeq`）；判定源不可用 ⇒ 退回 30 s + 一条诊断行；
+- **DD-48 / DD-49（修正轮 1）**：两条诊断行（降级 / `stale`）均经 `backend.writeDiag` 落 `bigfish.log`（console 仅辅证）；判定面为四态，`stale` 保守不提醒**但发诊断行**，持续 `stale` ≥ 30 s ⇒ 按降级处置（抑制上界）；
 - **DD-33 / L-B09-4**：mtime 新鲜度只作兜底、承重判据 = 「阈值 > 写后阈值」这一前提（Harness 侧配置变更即使其失效）；
-- **L-B09-1（U-13）**：等待用户确认期间不再收到提醒（现状会收到一条语义错误的「已完成」）——本批接受。
+- **L-B09-1（U-13）**：等待用户确认期间不再收到提醒（现状会收到一条语义错误的「已完成」）——本批接受；
+- **L-B09-5（修正轮 1）**：持续 `stale`（写路径 fail-soft 所致）在本批以抑制上界与诊断行兜底——上界生效前的窗口内提醒被推迟（方向 = 保守）。
 - **B07 不可机检 / 需构造的项**：TC-31（回落）靠 env 强制；TC-35（日志流打不开）靠隔离 userData 权限构造；TC-40 / TC-41（回落与 watcher 异常）在 Windows 上需人工构造（临时改路径 / 删监视根）——一律如实标注为人工执行，不伪报机检。
 - **B09 人工项**：AC18 / AC19 / AC20 的真机行为与时延计时（工具调用期零提醒、开关与补发、时延区间）——真机人工；其机器证据（诊断行 / 静态判据）如 §3.1 所列。
   TC-48 / TC-53（规则③·④ 构造与多会话时序）在 Windows 上需人工构造或桩测，一律如实标注，不伪报机检；TC-49 / TC-50 的构造面仅需 env 与隔离 `DSH_HOME`（无源码改动）。
@@ -1597,5 +1796,67 @@ startCompletionWatcher()
 |  | §2.2 增 **2.2.14**（插件市场安全与扫描契约：三项缺陷证据表 / 入参门判据句与 3725 形态零误拒实测 / 越界校验判据句与「不做 realpath」理由 / 两层关系 / 拒绝消息形态 / 弹窗文本化判据与「外部数据 vs 常量」裁定表 / 扫描契约与等价性论证 / 行为差异表 / 改动面清单 / L-B12-1…3）；§2.2.6 增注 **S8** 与**锚点 B12 附注**（零新增日志行 + 导出面 +3）；
 |  | §2.3 增 **B12 受影响文件表**（含 `market.js` 500 行硬限的净行数 ≤ 0 约定）；§2.4 增 **DD-41…DD-47**；§2.5 增 **C36–C39** · **O20–O23** · **L-B12 指针**；§2.6 增 **U-15** 与 **B12 追认块**； |
 |  | §3.1 增 **AC26–AC31** 与 B12 回指口径；§3.2 增 **TC-68–TC-86**；§3.3 增手段 13 与 B12 人工项。需求档修订同步落 `docs/requirements/SHELL.md`（US 13 → **15**、NFR 5 → **7**）。 |
-|  | 补正（2026-09-17，落档实测）：B12 新增段落行宽 ≤ 300 字符（不含行尾 CR；全文实测 **0** 行超 300、最宽 **300**）；§2.3 B12 表两处自指行按实测回填（`docs/requirements/SHELL.md` **250 → 299** / 本档 **1349 → 1601**——口径同 §2.3 B10 行数口径注）。 |
+|  | 补正（2026-09-17，落档实测）：B12 新增段落行宽 ≤ 300 字符（不含行尾 CR；全文实测 **0** 行超 300、最宽 **300**）；§2.3 B12 表两处自指行按实测回填（`docs/requirements/SHELL.md` **250 → 299** / 本档 **1349 → 1601**——口径同 §2.3 B10 行号口径注）。 |
+| 2026-09-17 | **B09 修正轮 1**（源 = `docs/batches/B09-notify-latency.md` §3 轮次 1 发现 #1–#9；主 agent 裁决 = 全部 Dispatched）：① 🔴 判定面定稿**四态**（`open` / `stale` / `unavailable` / `done`）——`stale` 保守不提醒但**发诊断行**、持续 `stale` ≥ 30 s ⇒ 按降级处置（需求档 US-12 契约句同步修订为四态；DD-49）； |
+|  | ② 诊断行发射面改经 **`backend.writeDiag`**（console + `bigfish.log` 双写；DD-48）+ `shell-notify → shell-backend` 同层无环合规登记（注 S6 / §2.5 C40 / 锚点 B09 附注：诊断行 1 → **2** 条）；③ 规则① 取档谓词**具名化**（深度 3 段 + 文件名 `session.v3.jsonl.zstd`）； |
+|  | ④ 承重前提**源码补证**（事实 #6 → **#7**：write-behind 节流 + 尾部追写；两态配置落点）+ 残余失效面登记 **L-B09-5**（含规则③′ 抑制上界）；⑤ §2.3 受影响文件表：`shell-notify.js` 70 → **78** / 227 → **235**、新增 `shell-backend.js` 行（与 B10 同一导出行）、单函数体量核对按实测重写（#5）； |
+|  | ⑥ 头部回指区间与关联批次同步（US-1…US-15、NFR-1…NFR-7；B09 / B10 / B12 批次指针）；⑦ 常量符号名统一为 `GATE_FRESH_TOLERANCE_MS`（#7）；⑧ 需求档 NFR-5 标题验收指针补 AC17（#8）；⑨ TC-49 补钩子边界注（#9）。§3.1 AC17 / AC18 与 §3.2 TC-48–TC-50、§3.3 手段 11 判据同步（计数与枚举同改——D3）。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1601 → 1649**、`docs/requirements/SHELL.md` **299 → 303**（换行符计数）；两档行宽 ≤ 300 字符（不含行尾 CR；实测最宽 **300** / **299**，均 0 行超宽）。 |
+| 2026-09-17 | **B12 修正轮 1**（源 = `docs/batches/B12-market-security-blocking.md` §3 轮次 1 发现 #1–#11；#12 主 agent 判 Not an issue 不改）：① 🔴 卸载面互斥 ⇒ **卸载面解析门**（形态仍过白名单；解析不到已装对象 ⇒ `{ ok:false, message:'未安装或无法解析：…' }`）——判据句 + 行为差异表第 3 行 + AC27 ④ + AC31 三类 + TC-76； |
+|  | ② 🔴 验证手段互斥 ⇒ 手段 7 加批次限定与 B12 例外注（1 个仓内测试文件）；③ 内置分支通路闭合（「源不存在 ⇒ 落回 npm / pnpm 面」+ TC-87）；④ 形态 ② 显式排除 `..` / 全点段 + 两层关系逐形态论证 + 负例枚举补三形（注① 12 → **13 形**）； |
+|  | ⑤ `market.js` 预算收敛为**单值「净 ≤ 0」** + 越限处置（> 500 ⇒ 停手上报）；⑥ 补 `shell-plugins.js` **>300 软档 体量裁定**（事实 / 理由 / 消解路径，承 B07 先例）；⑦ 头部区间与关联批次已由 B09 修正轮 1 同步（本轮实测核对 = US-1…US-15 / NFR-1…NFR-7 + B09/B10/B12 指针）⇒ 跳过； |
+|  | ⑧ AC28 ① / 手段 13 ① 判据面补兄弟符号（`insertAdjacentHTML` / `outerHTML` / `document.write`；需求档 NFR-6 度量方式同步同宽）；⑨ 手段 13 ② 写明夹具加载顺序（`spawn` 加载时解构）；⑩ AC27 ③ 补结构判据（包含判定在 fs 调用之前）；⑪ `tests` 行用例区间 `TC-68…TC-85` → **TC-68…TC-87**。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1649 → 1690**、`docs/requirements/SHELL.md` **303 → 306**（换行符计数）；两档行宽 ≤ 300 字符（不含行尾 CR；实测最宽 **300** / **299**，均 0 行超宽）。 |
+| 2026-09-17 | **B10 修正轮 1**（源 = `docs/batches/B10-affinity-token-source.md` §3 轮次 1 发现 #1–#11；主 agent 裁决 = 11 条全部 Dispatched）：① 消解期句落 §2.2.13「消解期（旧布局兜底）」（到期条件 + 顺延重登，与需求档 US-13 逐字同源）+ DD-39 补进 §2.6 追认块 + 修 `§2.1 L-1` / AC22 两处悬空指针（#1）； |
+|  | ② 载具裁定 = **仓外一次性开发期脚本** + 可复跑命令 + 夹具定义 + 驱动方式落 §3.3 手段 12 ②（#2）；③ `sumSessionTokens` 副作用口径统一为「返回值幂等；诊断行为 = 每进程至多一条、非持久状态」+ 发射点定死为函数内 + §2.6 追认块补 `shell-affinity` 导出面（#3）； |
+|  | ④ `shell-affinity.js` / `shell-backend.js` 两行 >300 软档 体量裁定 + B10 单函数体量核对行由 B12 段末移回本表下（#4）；⑤ 登记 **L-B10-4**（记录 ≥ 1 但四桶全缺 ⇒ 静默归零）+ 限定 O17 的断言面（#5）；⑥ 手段 12 ① 的 grep 计数口径改「实现 / 导出各 ≥ 1 处、调用点不计入」（#6）； |
+|  | ⑦ 补 **TC-67A**（水位下降 ⇒ 不扣好感 + 基线重置；#7）；⑧ 诊断行加 `dir=` 区分字段（#8）；⑨ §2.2.13 明写 `null` 分支的调用方语义 + 派生登记 **L-B10-5**（#9）；⑩ §2.3 B10 表 delta 口径统一为可分离面单值（#10）；⑪ 头部区间与关联批次经核对**已由 B09 修正轮 1 同步** ⇒ 跳过（#11；与 B09 #6 / B12 #7 同一行）。另：§2.5 补 L-B10 指针行（D2 形态与 B07 / B09 / B12 三条对齐）。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1690 → 1731**、`docs/requirements/SHELL.md` **306 → 308**（含 US-13 措辞行与变更记录 2 行）；两档行宽 ≤ 300 字符（不含行尾 CR，实测 0 行超宽）。 |
+| 2026-09-17 | **B10 修正轮 2（范围扩展轮——台账 T27 并入本批；用户 2026-09-17 裁定「把你上一轮报的 N-1 并进 B10 一并修掉」）**：① §2.2.13「增量语义（水位）」新增**基线重建**条（tick 内 `lastTokenSum === null ∧ s2 !== null` ⇒ 只重建基线、不计 delta）+ `null` 分支改写（该 tick **不改基线**）+ 调用方口径改「除该分支外零改动」；L-B10-5 由「已知限制」改写为「**本批已修** + 残余 = 暂停期消耗不补算」（证据链与触发场景保留）； |
+|  | ② §2.4 新增 **DD-50**（为何修 / 为何不补算 delta / 为何改调用面口径 + 表下注）+ **DD-38 按新规则更正**（`null` 的调用方语义）；③ §3.1 **AC23** 调用面口径改写（「调用面零 diff」→「除基线重建分支外零改动」）+ 新增 **AC23 判据细化**（行为面 **TC-67B** 优先 / diff hunk 白名单为辅）+ **AC25** 水位面同步； |
+|  | ④ §3.2 新增 **TC-67B**（启动期读面 `null` ⇒ 恢复非 `null` 后**累加恢复**）+ **TC-67A 更正**（`null` tick 不改基线——原「基线重置为空档」表述与实现不符）；⑤ §2.3 B10 表 `shell-affinity.js` 行（≈351 → **≈355**、delta 含重建分支）+ 单函数体量核对 / >300 体量裁定同步；⑥ §3.3 手段 12 补 TC-67B 的两段夹具驱动注； |
+|  | ⑦ 需求档 `docs/requirements/SHELL.md` 只加变更记录一轮注记（**US-13 契约面逐字未改**——基线重建是既有「按水位差累加」机制在 `null` 恢复态的延伸，不构成契约语义变更）；⑧ §2.5 L-B10 指针行与 §2.6 追认块同步。**条目计数不变（US 13 / NFR 5；AC21–AC25 不变、TC +1、DD +1）**。 |
+| 2026-09-17 | **B10 修正轮 3（收尾轮——源 = 批次档 §3 轮次 2 发现 #1–#7；主 agent 裁决 = 7 条全部 Dispatched）**：① §2.2.13「基线重建」条补**落位与守卫处置**（分支落于守卫行 `:128` **之前**、形态 = 新增 1 行；守卫行与既有累加 / 重基线块**不改**）+ `null` 分支 / L-B10-5 / DD-50 注的守卫表述统一为**合取**； |
+|  | ② 诊断行判据**逐例进程隔离**（AC23 + 判据细化⑤ / TC-67① / §3.3 手段 12 ②）；③ §3.3 手段 12 ② 补载具 `init` 键与视图符号的**对应关系**（`pet` 对象 / 导出名 `handleAffinityView`）；④ §2.3 B10 表自指行枚举同步（+ DD-50 / + TC-67B）与需求档变更记录计数； |
+|  | ⑤ 批次档段边界与指针实测补正（记录落批次档 §2.13）；⑥ §2.5 C32 的样本档大小改**变动口径 + as-of**；⑦ 「基线重建」条末补**需求侧回指注**（US-13 契约面逐字不动）。**条目计数不变（US 13 / NFR 5；AC21–AC25 / TC / DD 均不变）**。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1754 → 1768**（换行符计数，+14；含本行与 §2.3 表下修正轮 3 补正注）；行宽实测 **0** 行超 300（不含行尾 CR，最宽 300 = B06 旧行）；`docs/requirements/SHELL.md` **310**（本轮未改该档）。批次档 §2 的段边界 / 行宽 / 超宽分布实测见批次档 §2.13。 |
+| 2026-09-17 | **B09 修正轮 2（收尾轮；源 = 批次档 §3 轮次 2 发现 N1；主 agent 裁决 = Dispatched）**：§2.2.12「判定前提」块的兜底句由「前提失效 ⇒ 规则②」拆写为**两路兜底**——① **形态换代**（域 v7 / 行 `ver` ≠ 2）⇒ **规则②** 降级（= `unavailable`：阈值退回 30 s + 降级行）； |
+|  | ② **配置被改**（`writeIntervalMs` ≥ 阈值）⇒ **规则③** 抑制（`stale` ⇒ 本轮不提醒），持续超 `GATE_STALE_MAX_MS`(30000) 未转 `done` ⇒ 由 **③′** 转降级（退回 30 s + 降级行）；L-B09-4（§2.2.12「已知限制」）同步补 **③′**（原只写规则③）。规则 ①–⑤ / ③′ 的实质行为、DD-33、§2.4 口径**均未改**；批次档 §2.3 原文按 append-only 保留，生效口径以本档 §2.2.12 为准。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1768 → 1774**（换行符计数；+6 = 判定前提块 1 → 4 行 / 本记录 3 行）；`docs/requirements/SHELL.md` **310**（本轮未改该档）；两档行宽 ≤ 300 字符（不含行尾 CR，实测 0 行超宽）。 |
+| 2026-09-17 | **B12 修正轮 2（收尾轮——源 = 批次档 §3 轮次 2 发现 N1–N4；主 agent 裁决 = 4 条全部 Dispatched）**：① **N1**——行为差异表「拒绝消息文本」行的「新增**两类**拒绝消息」→ **三类**（三条前缀逐条列出，与判据句 `:1074` / AC31 / AC27 判据细化 ③ 同源同步）； |
+|  | ② **N2**——「分支通路」条重写为**一条流程**（① 计算面对全形态：`bundledName` ⇒ 第一处 `path.join` ⇒ `bundledSource` 面包含判定；② 动作面按 `kind` 分派；③ 第二处 `path.join` ⇒ `target` 面包含判定），并补「越界校验判据句 ①② 为**按面标号**、执行先后另见」注 + 逐形态论证 ② 行标注「计算面 / 动作面」归属 + AC27 判据细化 ② 改「两处判定均先于其后的任何 fs 调用」； |
+|  | ③ **N3**——AC28 ① 与 TC-79 的实参序号按**新签名** `confirmModal(title, okLabel, ...parts)` 更正（节点构造实参 = `parts` 形参，**第三实参起**；原文按旧签名记「第二实参」），细节下沉为判据细化 ④（一处定义、两处回指）；④ **N4**——TC-70 / TC-71 的输入集由 9 形列举改为「**注① 全量（13 形）**」指针式表述（消除两处各自枚举的漂移面）。**条目计数不变（AC26–AC31 / TC-68…TC-87 / DD / C / O 均不变）**。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1774 → 1782**（换行符计数；+8 = 分支通路条 3 → 5 行 / 判据句面标号注 +1 / 判据细化 ④ +1 / 本记录 4 行）；行宽实测 **0** 行超 300（不含行尾 CR，最宽 300 = B06 旧行）；EOL 全档 CRLF（原文两行 LF-only 随本轮写入归一，形态合规）。 |
+| 2026-09-17 | **B09 修正轮 3（收尾轮 · 单条——源 = 本档 §2.11「发现即报告」末条（§2.1 K-1 被否决候选 2 的归属句）；主 agent 复核裁定 = 修）**：§2.1 K-1 候选 2（5 s）判据句的「规则②兜底」→ **规则③** 兜底（抑制；持续超 `GATE_STALE_MAX_MS`(30000) 由 **③′** 转降级）——与 §2.2.12「判定前提」块的**两路兜底**分路（形态换代 ⇒ ②；参数 / 配置 ⇒ ③ / ③′）口径统一；候选取值 / 结论、规则 ①–⑤ / ③′ 的实质行为**均未改**。 |
+|  | 全档 `规则②` / `规则③` 归属**逐处自查**：`≤ :1781` 面上含 ② / ③ 族符号的行 **22** 行——除 `:184`（本轮修正）外其余 **21** 行均与 `:846–849` 分路一致（逐处表见批次档 §2.12）；DD-33（`:1304`）与 TC-49 注（`:1600` / `:1663`）的「前提失效」表述**未声明规则归属** ⇒ 与分路无相抵。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1782 → 1785**（换行符计数；+3 = 本记录 3 行；`:184` 为等行数单行替换）；行宽实测 **0** 行超 300（不含行尾 CR，最宽 300 = B06 旧行）；`docs/requirements/SHELL.md` **310**（本轮未改该档）。 |
+| 2026-09-17 | **B12 修正轮 3（收尾轮 · 2 条——源 = 批次档 §2.11 报而不改的 F-B12-3 / F-B12-4；主 agent 亲验两条为真并裁定「均 Dispatched」）**：① **F-B12-3（判据不可满足）**——AC31 第二条前缀（`插件标识越界，已拒绝：…`）取证面改为**函数级 + 静态**（`isInsideDir` 真值表 = TC-74 回指 + 该前缀字符串在 `shell-plugins.js` 静态命中）； |
+|  | §2.2.14 增「已知事实（不可达面）」条（白名单在场 ⇒ 第二层拒绝分支不可达 = 纵深防御，可达性不得作验收面）；§3.1 增「AC31 判据细化」（三前缀逐条取证面 + 可达性）；TC-74 映射列补 AC31（其真值表面即该前缀的取证面）。 |
+|  | ② **F-B12-4（计数口径不符）**——§2.2.14「两层关系」的调用点计数改为**每函数 2 处**（`bundledSource` 面 + `target` 面）、两函数共 **4** 处判定面；AC27 判据细化 ② 同口径改写（D3 计数与枚举同改）。**条目计数不变（AC26–AC31 / TC-68…TC-87 / DD / C / O 均不变；TC-75 / TC-76 逐字未动）**。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1785 → 1795**（换行符计数，+10 = 「可机检面」/「已知事实」2 行 + 「AC31 判据细化」4 行 + 本记录 4 行——含本补正行）；行宽实测 **0** 行超 300（不含行尾 CR，最宽 300 = B06 旧行）；EOL 全档 CRLF（本轮无 LF-only 行）；`docs/requirements/SHELL.md` **310**（本轮未改该档）。 |
+| 2026-09-17 | **B12 修正轮 4（收尾轮 · 单条——源 = 批次档 §2.12 报而不改的 N5；主 agent 复核并裁定 = 修）**：§3.3 手段 13 ① 判据句「`grep -n "path.join" shell-plugins.js` 的**每处**后随包含判定」改为**面限定**口径—— |
+|  | 新句 = 「**四处守卫面**（`installPlugin` 的 `bundledSource` 面 + `target` 面；`uninstallPlugin` 的同两面）**之后各随一次包含判定**（grep 面限定 = 这四处，as-of `:313` / `:316` / `:359` / `:361`）」，并保留「且该判定先于其后的任何 fs 调用」； |
+|  | 并加一句**为何不能按全档判**（其余拼接点输入为常量段 / 既有解析值、**不以用户入参为输入** ⇒ 无注入点、无须包含判定）+ 判据句内计入实测（全档 **26** 处 vs 守卫面 **4** 处）——改前口径按字面**不可满足**（同类第二次：判据的「全量面」未随收紧面同步）。同源面 = §2.2.14「逐形态论证」行 / §3.1「AC27 判据细化」②（两函数共 4 处判定面）。**条目计数不变（AC26–AC31 / TC-68…TC-87 / DD / C / O 均不变；白名单语义未动、未新增构造输入）**。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1795 → 1801**（换行符计数，+6 = 手段 13 ① 单行 179 字 → 3 行（+2）+ 本记录 4 行——含本补正行）；行宽实测 **0** 行超 300（不含行尾 CR，最宽 300 = B06 旧行）；EOL 全档 CRLF（本轮无 LF-only 行）；`docs/requirements/SHELL.md` **310**（本轮未改该档）。 |
+| 2026-09-17 | **B10 修正轮 4（实施后收口轮——源 = 批次档 §5 残余 #1 / #2 / #3 / #7；主 agent 裁决 = 4 条全部 Dispatched）**：① **判据可达性**——AC21 与 §3.3 手段 12 ① 的「无目录递归 / 全档 `recursive` 0 处」收窄为**读面面限定**判据 |
+|  | （读面内零递归 = `sumSessionTokens()` 的 `readdirSync(dir)` 不带任何选项 + 行为面佐证），并新增「AC21 判据细化」（档内 3 处既有 `recursive` 在冻结函数内 `:63` / `:268` / `:300`，本批禁改 ⇒ 全档计数不作判据）； |
+|  | ② §2.2.13 新增**旧面可用判据**（可解析 ≠ 可用：`tables.sessions` 缺失 / 空 / 无有效会话条目 ⇒ 该形态不可用 ⇒ 判据 ④ 的 `null`、**不得返回 `0`**）+ 容错表新增该行 + §3.2 新增 **TC-67C** + L-B10-4 对照条指针（**实施侧改动归下一轮 eng-coder**——本批批准清单外）； |
+|  | ③ **US-13 消解期现状按实况更正**（内置 Harness `0.1.0-rc.6` → `0.1.5-rc.1`；第一分句已满足 / 第二分句不可仓内验证 ⇒ 兜底与消解期保留、下次发版复核）——本档 §2.2.13「消解期」+ DD-39 与需求档同句同步（需求档 §五 加变更记录 2 行）； |
+|  | ④ §2.3 B10 表两行「实施期实测回填」完成（`shell-affinity.js` **354** · `shell-backend.js` **323**——换行符计数）+ 本表自指行枚举同步（+ TC-67C）。**条目计数：AC21–AC25 不变；TC +1（TC-67C）；US 13 / NFR 5 不变**。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1801 → 1824**（换行符计数，+23）；行宽实测 **0** 行超 300（不含行尾 CR，最宽 300 = B06 旧行）；EOL 全档 CRLF；`docs/requirements/SHELL.md` **310 → 312**（消解期现状行改述 + 变更记录 2 行）。 |
+| 2026-09-17 | **B10 修正轮 5（单条 · 判据字面口径收口——源 = 批次档 §2.14 报而不改的 N-1；主 agent 复核裁定 = 修）**：§2.2.13「消解期（旧布局兜底）」的**到期条件第一分句字面**由「内置 bundle ≥ 0.1.5」改写为「≥ `0.1.5-rc.1`（或任意产出 per-record 布局的版本）」——按 semver 严格比较，预发布版 `0.1.5-rc.1` < `0.1.5` ⇒ 原字面**自身永假**（与「已满足」的结论相抵）； |
+|  | 判据语义 / 保留期 / 第二分句 / 顺延重登 / 到期核对口径**均未变**；§2.2.13 新增「修正轮 5」说明条 2 行（改后 `:1026-1027` 区），需求档 US-13 同句同步（需求档 §五 +1 条 / 2 行）。**条目计数不变（AC21–AC25 / TC-56…TC-67C / DD-34…DD-40·DD-50 / C / O 均不变；US 13 / NFR 5 不变）**。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1824 → 1829**（换行符计数；+5 = §2.2.13「修正轮 5」说明条 2 行 + 本记录 3 行——含本补正行）；行宽实测 **0** 行超 300（不含行尾 CR）；EOL 全档 CRLF；`docs/requirements/SHELL.md` **312 → 316**（消解期同源行 +1 行 + 「修正轮 5」注 1 行 + §五 变更记录 +1 条 / 2 行）。 |
+| 2026-09-17 | **B10 修正轮 6（判据字面口径 · 家族全清——源 = 批次档 §2.14 报而不改的 N-2 + 主 agent 列全的家族剩余面；主 agent 复核裁定 = 修、并授权扩写域）**：到期条件**两分句统一为行为面口径**——§2.2.13「消解期（旧布局兜底）」的**第二分句字面**由「活跃副本枚举中无 < 0.1.5」改为「无产出旧布局的版本」（判据 = 逐副本「是否产出 per-record 布局」，不以版本号比较为判据）；
+|  | 同族逐处收口：§2.4 **DD-39 决策表行**左格 / 理由格、§2.6 **追认块 DD-39 条**同步为行为面字面（版本号只作举例），可机检口径由「版本枚举」改为「副本枚举 + 形态判定」；需求档 US-13 同字面同步（US-13 内新增「修正轮 6」注 1 行 + 需求档 §五 +1 条 / 2 行）。**结论 / 保留期 / 顺延重登 / 到期核对口语义零改动**；**条目计数不变（AC21–AC25 / TC-56…TC-67C / DD-34…DD-40·DD-50 / C / O 均不变；US 13 / NFR 5 不变；本轮不新增 TC）**。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1829 → 1834**（换行符计数；+5 = §2.2.13「修正轮 6」说明条 2 行 + 本记录 3 行——含本补正行）；行宽实测 **0** 行超 300（不含行尾 CR；最宽 = DD-39 行 298）；EOL 全档 CRLF；`docs/requirements/SHELL.md` **316 → 319**（US-13 内注 +1 行 + §五 变更记录 +1 条 / 2 行）。 |
+| 2026-09-17 | **B12 实施后收口轮（源 = 批次档 §5 残余 3 / 4 / 6；主 agent 裁决 = 3 条全部 Dispatched）**：① **说明性计数过期**——§3.3 手段 13 ① 的「全档 `path.join` 实测 **26** 处 vs 守卫面 **4** 处」按**实施后实测**更正为 **21** 处（守卫面恒 **4** 处）并加注「只作 as-of 说明、**不构成判据**」；**判据句按面限定的语义与 4 处守卫面清单逐字未动**； |
+|  | ② **§2.3 B12 表「实施期实测回填」完成**——`shell-plugins.js` **454** · `shell-market.js` **198** · `market.js` **500**（净 0）· `tests/b12-plugin-guards.test.js` **491**；同族体量裁定条内落档预估（≈461）按实测同步（454 / 余量 46；消解期触发条件 **未触发**，裁定结论不变）； |
+|  | ③ **设计面缺口登记（只登记、不改行为）**——§2.2.14「已知限制」新增 **L-B12-4**（卸载面 `builtin:<名>` 假成功：现象 / 触发面 / 与改前同源 / 为何本批不改 / 修法方向 = 动作面改用**解析门已得的 `realName`**；台账承接 **T32**）。**条目计数不变（AC26–AC31 / TC-68…TC-87 / DD / C / O 均不变；未新增 TC、未改白名单语义、未新增构造输入）**。 |
+|  | ④ **历史行取代说明**：「B12 修正轮 4」行所记「全档 **26** 处」为**设计期实测值**（已被本轮 **21** 处取代）——该行按 append-only 保留；权威面 = §3.3 手段 13 ①（D2 单一权威源）。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1834 → 1847**（换行符计数，+13 = §3.3 手段 13 ① as-of 注 +1 / §2.2.14 L-B12-4 +4 行 / §2.3 B12 表四行回填（±0）+ 回填注 +3 行 / 本记录 5 行——含本补正行 / 行宽压行 +1）；行宽实测 **0** 行超 300（不含行尾 CR）；EOL 全档 CRLF；`docs/requirements/SHELL.md` **319**（本轮**未改**该档）。 |
+| 2026-09-17 | **B09 实施后收口轮（源 = 批次档 §5 残余 3 / 4 + advisor 裁决 #1 / #7；主 agent 裁决 = 全部 Dispatched）**：① §2.3 B09 表两行「实施期实测回填」完成（`shell-notify.js` **308** · `main.js` **217**——换行符计数）+ 新增 **>300 软档 体量裁定**（`shell-notify.js` ≈235 → 308；纯增量 / 职责未增 / 保持单文件，消解期 = > 380 或再获增量批次）； |
+|  | ② §2.2.6 注 S6 按实装补齐（辅助函数 **5** 名逐名 + 职责一行；档内常量补 `SESSION_LOG_NAME` / `PROJCACHE_SEGMENTS`）；③ §2.2.12 规则② 成因枚举按实装补「`L` 读不出」与「无 `val`」（方向保守、**非新增判据**）+ 读次数上界补「**每记录 1 次 `stat`**」； |
+|  | ④ §3.3 手段 11 ③ 载具落点按实况更正（**仓外** `%TEMP%\b09-gate-stub.mjs` + 可复跑命令 + 夹具根 `B09_FIX` + 退出码语义，承 B10 手段 12 ② 先例）+ 新增**执行约束**（时序断言须空闲机器单跑、与并发隔离）。**判据句与计数逐字未动**（AC17–AC20 / TC-46…TC-55 / DD / C / O 均不变；未新增 TC）。 |
+|  | 补正（2026-09-17，落档实测）：本轮改后本档 **1847 → 1862**（换行符计数，+15 = §2.2.6 注 S6 +2 / §2.2.12 规则② +1 与读次数上界 +1 / §2.3 B09 表单函数核对 +2 与体量裁定 +3 / §3.3 手段 11 ③ +2 / 本记录 3 行 + 本补正行）；行宽实测 **0** 行超 300（不含行尾 CR，最宽 **300** = B06 旧行）；EOL 全档 CRLF；`docs/requirements/SHELL.md` **319**（本轮未改该档）。 |
 

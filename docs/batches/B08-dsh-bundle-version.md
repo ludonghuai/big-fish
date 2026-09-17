@@ -245,6 +245,95 @@
 2. **评审 #9 的前提已被本轮实测修正**：该发现称「`opening the default browser` 属后端树，unverified」——本轮亲测该串**确在内置树**（`dsh-bundle/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-web-app/lib/index.js:201`，分支 `:194`/`:200`），故辅证**有据**；主判据仍按裁决改为静态正向（不构成对裁决的偏离）。
 3. **B08 批次档 §2.5 表的两处行数**（`182` / `996`）为落档时点值，修正轮 1 后终值为 `186` / `1041`（本节为准；§2.5 上文按 append-only 不改写）。
 
+### 2.11 收口轮（实施后文档事实同步 + 实测回填；源 = §5 交付报告的「评审 `Deferred` 四条 + 残余 3/4」）
+
+> **口径**：本节为 **append-only** 追加段，上文（§2.1–§2.9）不改写。本轮 = **纯文档层修订**（零 `.js` 改动、零 `package.json` 改动——实施早于本轮收口）。
+> 四条均由主 agent 裁定 **`Dispatched`**；落点全部在本角色写域内（`AGENTS.md` / `docs/CONVENTIONS.md` / `docs/design/AUTO-UPDATE.md` / `docs/requirements/UPDATE.md` + 本段）。
+> **不夹带新语义 / 新判据**：AC16–AC21 判据结论、契约语义、条目清单（AC16–AC21 · US-11 / US-12 / NFR-5）一律不变；属**一致性面**（行锚 / 计数 / 留白补写）。
+
+#### 2.11.1 四条逐一落点（`file:line` = 本轮落笔后实测；「改前 → 改后」为逐处原文）
+
+**D1 行锚漂移（实施副作用 +「逐处以当次实测为准」——含 3 处更早批次陈旧值）**
+
+| # | 落点 | 改前 → 改后 |
+|---|---|---|
+| 1 | `AGENTS.md:38`（§三 ① 门禁现状 = 计数面 D3） | `package.json:13-24` 的 scripts（10 项列举）→ **`:13-26`**（**12 项**：补 `bundle:refresh` / `bundle:check`）；「无 `test`」结论与现状 0/3 **不变** |
+| 2 | `docs/design/AUTO-UPDATE.md:52`（§一 C11） | `package.json:23` → **`:27`**（`"dependencies": {}`） |
+| 3 | `docs/design/AUTO-UPDATE.md:875`（§3.1 AC20） | `package.json:25` → **`:27`** |
+| 4 | `docs/design/AUTO-UPDATE.md:991`（§3.3 手段 5） | `package.json:25` → **`:27`** |
+| 5 | `docs/design/AUTO-UPDATE.md:564`（§2.2.10 对象行） | `package.json:81-94`（`extraResources`）→ **`:83-96`** |
+| 6 | `docs/design/AUTO-UPDATE.md:567`（§2.2.10 关系行） | `package.json:91-93`（复制块）→ **`:93-94`**（= 复制块 from/to 两行） |
+| 7 | `docs/design/AUTO-UPDATE.md:621`（§2.2.10 产物链行） | `package.json:91-93` → **`:93-94`** |
+| 8 | `docs/design/AUTO-UPDATE.md:337` / `:744` / `:858`（§2.2.4 先例行 / §2.4 DD-14 / §3.1 AC5——3 处） | `package.json:85`（`runAfterFinish`）→ **`:110`**（该值系**更早批次**陈旧，非本批 +2 所致：HEAD 基线即 `:108`） |
+| 9 | `docs/design/AUTO-UPDATE.md:812`（§2.5 O7） | 所引 T4 行锚 `:13-21` **补现行值** `:13-26`（T4 原文按台账写权在主 agent，未动） |
+| 10 | `docs/requirements/UPDATE.md:162` / `:186`（NFR-4 / 修正轮 1 行） | `package.json:25` → **`:27`**（2 处） |
+| 11 | `docs/CONVENTIONS.md:160`（§八） | `package.json:39-80`（`build.files`）→ **`:41-82`** |
+
+> **计数与枚举同步（D3）**：① 4 档共 **9 处**行锚按实测更正（其中 design 档 8 处 = `:52` / `:337` / `:564` / `:567` / `:621` / `:744` / `:858` / `:875` / `:991`——共 9 处，其中 `runAfterFinish` 占 3 处）+ O7 补现行值 1 处（不属「更正」）；
+> ② 每一处均随改注「**行号只作 as-of 参考**」（D4）；③ `AGENTS.md` 的 scripts 行锚与**列举同改**（12 项 = 逐字列名）。
+
+**D2 设计档实测回填（只回填实测与成因，不改判据 / 不改契约语义）**
+
+| # | 落点 | 改前 → 改后 |
+|---|---|---|
+| 1 | `docs/design/AUTO-UPDATE.md:666`（§2.3 B08 子表 · 脚本行） | 末行数 `约 110` → **`290`（实测）**；「预计改动量」列照表口径保留预估值（对照） |
+| 2 | `docs/design/AUTO-UPDATE.md:665`（锁文件行） | 末行数 `预估 8000–9800` → **`8573`（实测）**；改动量列补「实测 8463 变更行 = +4486 / −3977」 |
+| 3 | `docs/design/AUTO-UPDATE.md:671-672`（表下新增块） | 新增「B08 实测回填」：4 档实测值（9 行 / 8573 行 348,259 字节 / 290 行 / 130 行 + 三联值） |
+| 4 | `docs/design/AUTO-UPDATE.md:678-682`（锁文件 diff 量级 · 基准） | `packages` **1106 → 554**、缺 `integrity` **767 → 215**（两数系同一计数口径偏差；复算依据 = 旧锁（HEAD）实测 554 / 339） |
+| 5 | `docs/design/AUTO-UPDATE.md:683`（补齐面预估） | `≈1500 行（2 × 767）` → **`≈430 行（2 × 215）`**（同一偏差的导出值） |
+| 6 | `docs/design/AUTO-UPDATE.md:685-687`（新增 · 实测回填） | 新增：diff **8463 变更行**（占 98.7%，**超**预估区间 1000–2500）+ 终值 8573 行（**在** 8000–9800 内）+ 成因三条（基准数偏差 / `replace-registry-host=always` 改写 `resolved`（339 → 584）/ 树 re-flatten（嵌套 184 → 32）） |
+| 7 | `docs/design/AUTO-UPDATE.md:798`（§2.5 L13） | 依据 O9 的 `1106 条目` → **`554 条目`**（L13 的「只作限制依据、不据此设判据」不变） |
+| 8 | `docs/design/AUTO-UPDATE.md:816-817`（§2.5 O9） | 计数更正 + **收口轮回填**：刷新后 **584 / 585** 条带 `integrity`（唯一缺者 = 根条目 `""`）——该现象**未复现**（成因仍未验证） |
+| 9 | `docs/design/AUTO-UPDATE.md:668` / `:669`（自指两行） | 末行数同步实测：需求档 `186 → 187`、本档 `1041 → 1056`（修正轮 1 +45 · 收口轮 +15） |
+
+**D3 契约留白（评审 #3）——`--check` 面的 `action=` 取值写进契约 ⑦**
+
+- 落点 = `docs/design/AUTO-UPDATE.md:600-601`（§2.2.10 契约块 ⑦ 摘要行之下，新增 2 行）。
+- 写入口径（**实测**，源 = `scripts/refresh-dsh-bundle.js:213-226`）：`none` = 已最新**且锁自洽** / `refresh` = 落后 / `repair` = **锁自洽不过**；失败面（取版本失败 / 参数错等）= **退出码 2 + `detail=<原因>`**；`repair-fail` 属刷新面、`--check` 面不产出。
+- **不新增第五值**（`action=` 仍为本契约已定义的四值域，`--check` 面取其子集）。
+
+**D4 冒烟判据的窄面风险（评审 #5）——保持逐字忠于契约 + 加已知窄面注**
+
+- 判决：**保持逐字忠于契约**（`输出含 target` = 子串匹配；收紧 = 语义变更，不夹带）。
+- 落点 = `docs/design/AUTO-UPDATE.md:596`（§2.2.10 契约块 ⑤ 之下，新增 1 行）：登记唯一窄面 = 「⑥ 锁自洽通过、而树实为**含该串的异版本**」（例：target `0.1.5-rc.1`、实装 `0.1.5-rc.10`）⇒ 标注「**已知取舍，非漏洞**」。
+
+#### 2.11.2 实测（本轮落笔后；口径 = 换行符计数 = `find /c /v ""`）
+
+| 档 | 行数（实测） | >300 字符行 | 说明 |
+|---|---|---|---|
+| `docs/design/AUTO-UPDATE.md` | **1056**（收口轮前 1041；+15） | **3**（`:57` 366 / `:840` 309 / `:1045` 321） | 3 行 = **B06 时期既有行宽债**（本轮新增行 0 行超宽；本轮首稿 2 行超宽已就地重排） |
+| `docs/requirements/UPDATE.md` | **187**（+1） | **0** | — |
+| `docs/CONVENTIONS.md` | **175**（+1） | **0** | 该档工作区含并发会话在途改动（B11 修正轮），本轮只加 1 行锚更正 + 1 变更记录行 |
+| `AGENTS.md` | **64**（+1） | **0** | — |
+| 本批次档 | 396（未改） | 4（§3 豁免面） | §3 的 4 行超宽 = 豁免面（§2.9.4 已登记） |
+
+- 独立复算（实施方证据，非引用）：`dsh-bundle/package.json` 钉版 = `0.1.5-rc.1`；锁根依赖串与锁内 dsh 条目版本同值；`git diff --numstat -- dsh-bundle/package-lock.json` = **+4486 / −3977**；旧锁（`git show HEAD:dsh-bundle/package-lock.json`）实测 = 8064 行 / `packages` **554** / 带 `integrity` **339**；新锁 = 8573 行 / 348,259 字节 / **585** 条目 / 带 `integrity` **584**。
+
+#### 2.11.3 自查（D1 全档 grep 逐处表；`package.json:1[0-9-]` / `13-24` / `10 项` / `1106` / `767 个`）
+
+| 命中 | 是否活计数 / 活指针 | 处置 |
+|---|---|---|
+| `AGENTS.md:38`（`:13-26`） | 活（已更正） | 已修 ✓ |
+| `AGENTS.md:64` / `docs/CONVENTIONS.md:175` / `docs/requirements/UPDATE.md:187` / `docs/design/AUTO-UPDATE.md:1052-1056` | 否（**变更记录行**：记「改前值 → 改后值」） | 保留（历史留痕，D7） |
+| `docs/design/AUTO-UPDATE.md` 的 9 处行锚（`:52` / `:337` / `:564` / `:567` / `:621` / `:744` / `:858` / `:875` / `:991`） | 活（已更正 + as-of 注） | 已修 ✓ |
+| `docs/design/AUTO-UPDATE.md:812`（`:13-21` + 现行 `:13-26`） | 半活（所引 T4 行锚本身仍是 `:13-21`——台账写权在主 agent） | 补现行值 ✓；T4 本体**不改**（写域外） |
+| `docs/design/AUTO-UPDATE.md:681` / `:687` / `:1055`（1106 / 554 对照） | 否（**偏差登记行**：原文值 vs 复算值） | 保留（偏差可见） |
+| `docs/design/AUTO-UPDATE.md:816`（`767 / 1106` 对照） | 否（同上，O9 偏差登记） | 保留 ✓ |
+| `docs/design/AUTO-UPDATE.md:122`（`dsh-bundle/.../package.json:22-83`） | 指针失准 + 语义过期（**非本批 +2 面**） | **不改**（语义面 → 单列报告，见 §2.11.4-1） |
+| `docs/design/AUTO-UPDATE.md:299`（`package.json:11` homepage） | 活且**正确**（`:11` 未随 +2 漂移） | 不动 ✓ |
+| `docs/design/AUTO-UPDATE.md:622`（`package.json:14` / `:15`） | 活且**正确**（scripts 前两项不受尾插影响） | 不动 ✓ |
+| `docs/requirements/UPDATE.md:64`（`package.json:11`） | 活且正确 | 不动 ✓ |
+| 写域外：`docs/TODO.md:29`（T4 = `:13-21`）/ `:34`（T10 = `dsh-bundle/package.json:7` 钉 `0.1.0-rc.6`） | 活 + 陈旧（主 agent 写域） | **报告**（T10 待勾销；其证据行钉版串亦已过期） |
+| 写域外：`docs/design/PET-ANIMATION.md:51` / `:73` / `:315` / `:370` / `:442` · `PET-MULTIMONITOR.md:668` / `:964` · `SHELL-UX.md:56` / `:162` / `:402` · `docs/requirements/PET.md:259` · `docs/batches/B02-auto-update.md:190` / `:295` · `B03-pet-multimonitor.md:340` · `B18-pet-animation-chain.md:169` / `:190` | 活 + 陈旧（他批文档） | **报告**（不跨批落笔；见 §2.11.4-2） |
+
+#### 2.11.4 本轮不落笔的新发现（单列，交主 agent / 用户裁决）
+
+1. **`docs/design/AUTO-UPDATE.md:122` 的行锚 + 语义双陈旧**：选型 B 候选 2（否决项）的括注「出厂冻结树是 `0.1.0-rc.6` 配套，`dsh-bundle/node_modules/@deepseek-ai/dsh/package.json:22-83`」——B08 刷新后该树实测 = `dsh` **`0.1.5-rc.1`**、其 `dependencies` 段 = **`:30-103`**。
+   属**语义面**（改版本陈述 = 改「说的是什么」）⇒ 本角色**不改**（§2.9 修正轮边界 + 本轮「不夹带新语义」硬约束）。建议：由主 agent 裁定是否按「历史时点值」加 as-of 注或改写该短语。
+2. **他批文档同源行锚漂移（写域外，一律只报告）**：`PET-ANIMATION.md`（`:13-24` → `:13-26`；`:39-80` → `:41-82`；`:74` → `:76`；`:78` → `:80`）· `PET-MULTIMONITOR.md`（`:36-58` → `:38-60`；`:13-21` → `:13-26`）· `SHELL-UX.md`（`:25-29` / `:25` / `:41-43` 三处）· `requirements/PET.md:259`（`:78` → `:80`）· 批次档 `B02:190` / `:295`（`:85` → `:110`）· `B03:340` · `B18:169` / `:190`。
+3. **`AGENTS.md:39` 的门禁现状 ② 行**：`.github/workflows/build.yml`（**75 行**）——本角色实测 `find /c /v ""` = **74**（差 1 = 末行空行口径；与 §2.3 行数口径注同源）。属**计数口径面**（非行锚面），本轮**未改**（不在四条范围内，避免夹带）；建议随 B16 门禁落档时统一口径。
+4. **§2.1 选型 I 取舍列的「≈110 行」**：为实施前预估（实测 290 行，已回填 §2.3）。按 §2.3「预计改动量列保留预估值作对照」同口径**未改**；如需全档统一「预估 → 实测」回填，请裁定（属范围增减）。
+
 ## §3 设计评审（评审子代理）
 
 ### 轮次 1（评审子代理）
@@ -275,6 +364,122 @@ VERDICT: pass
 ## §4 评审裁决与实施启动（主 agent）
 
 ## §5 实施记录（eng-coder）
+
+### 5.1 交付摘要
+
+**结论**：B08 实施完成，AC16–AC21 机检面全绿；`dsh-bundle` 钉版由 `0.1.0-rc.6` 刷新至 `0.1.5-rc.1`（精确串），锁文件同步重写，新增维护侧刷新脚本与两条 npm script 入口。
+
+| 文件 | 改动 | 末行数（换行符计数） | 证据 |
+|---|---|---|---|
+| `scripts/refresh-dsh-bundle.js` | 新增：刷新路径 + 只读判定（契约 = 设计 §2.2.10） | **290**（设计预估「约 110」——见 §5.3） | sha256 `b169f8c102653e85a5b0054f`；`node --check` 绿；行宽 >300 = 0 |
+| `dsh-bundle/package.json` | `:7` 钉版值变更 1 行（`0.1.0-rc.6` → `0.1.5-rc.1`） | 9（不变） | `git diff` = 1 行值变更（逐字节可见） |
+| `dsh-bundle/package-lock.json` | 随刷新重写（dsh 及其依赖闭包） | **8573**（原 8064） | 字节 313,029 → **348,259**；sha256 `e1507d5aac3b9d734ce04bae` |
+| `package.json` | `scripts` 增 `bundle:refresh`（`:24`）/ `bundle:check`（`:25`）两行 | 130（原 128） | `"dependencies": {}` 由 `:25` 移至 `:27`（**带动文档行锚漂移，见 §5.5 评审 #1/#2**） |
+
+**交付态三联值（回读核实，D6）**：钉版 = `0.1.5-rc.1` · 锁根依赖串 = `0.1.5-rc.1` · 锁内 `node_modules/@deepseek-ai/dsh` 条目版本 = `0.1.5-rc.1`；树实装版本 = `0.1.5-rc.1`。
+
+### 5.2 有序步骤执行与实测证据（§2.4 步骤 0–7）
+
+| # | 步骤 | 实际命令 | 实际输出（原文摘要） |
+|---|---|---|---|
+| 0 | 前置取证（刷新前，态 B） | dev + 隔离 userData + 隔离 DSH_HOME 启动 | `[bigfish] backend web url captured port=55648 token=no`；`dsh web: http://127.0.0.1:55648`（**无 token**）；探针 = HTTP 200 / 14,516 字节 HTML |
+| 1 | 新增脚本 + 两行 scripts | `node --check scripts/refresh-dsh-bundle.js` | `Syntax OK`；`npm run bundle:check` 可执行 |
+| 2 | 判定面先行 | `npm run bundle:check` | 退出码 **1**；`bundle refresh action=refresh pin=0.1.0-rc.6 -> 0.1.5-rc.1 tag=latest registry=npmmirror lock=313029 detail=behind` |
+| 3 | 执行刷新 | `npm run bundle:refresh` | 退出码 **0**（49 s）；`added 218 packages, removed 189 packages, and changed 277 packages`；冒烟输出 `0.1.5-rc.1`；`action=refresh pin=0.1.0-rc.6 -> 0.1.5-rc.1 … lock=348259` |
+| 4 | 幂等复跑 | 再跑 `npm run bundle:refresh` | 退出码 **0**（847 ms）；`action=none`；两文件 **sha256 不变**（零 diff） |
+| 5 | 静态验收 | AC16①②③ + AC18 + AC20 | ① `findstr /c:"\"@deepseek-ai/dsh\": \"0.1.5-rc.1\"" dsh-bundle\package.json` 命中 1 行；② 设计注 B08-1 ② 命令 → `pin-form=ok` 退出码 0；③ 锁两字段 == 钉版；AC20 根 `dependencies` = `{}`（键集合为空）/ `build.files` 40 条目零改动 / `node --check` 绿；AC18 本批零 `.js` 改动（见 §5.4） |
+| 6 | 升级后冒烟（态 A） | dev + 隔离 userData 启动 | `[bigfish] backend web url captured port=55836 token=yes`；`dsh web: …?token=…`（值不落档）；`opening the default browser` **零命中** |
+| 7 | 失败面（构造性执行） | TC-37 / TC-38 / TC-44 | TC-37 = 退出码 **2** + 两文件零 diff + `detail=fetch-fail: … ECONNREFUSED`；TC-38（本地桩注册表：① 成功、④ 装包失败）= 退出码 **2** + 钉版回写 `0.1.5-rc.1` + 锁零 diff + `detail=install-fail`；TC-44 = `check` 退出码 **2** / `refresh` → `action=repair` 退出码 **0**（修复后锁自洽复绿） |
+
+**态 A 的加载链实证（补强 AC17/AC19 的「窗口可加载」面）**：以同一内置树直起后端（同参数 `--profile web --host --port --no-open`）实测——
+裸地址 `GET /`（无 Cookie）= **401**（68 B）；带 token 地址 = **303 + `Set-Cookie: <会话 Cookie>` + `Location: /`**；
+携该 Cookie 再取 `GET /` = **HTTP 200 / 27,660 字节 / HTML**。
+⇒ 壳加载的正是这条可换 Cookie 的地址（`shell-backend.js:146-163` 捕获 + `browserUrl()`），非 401 文本页 / 空页。
+**「主窗口真机目视」仍属人判面**（主窗口 `show:false`，启动不自动显示——B06「启动安静」口径）。
+
+### 5.3 实测回填（设计 §2.3「B08 锁文件 diff 量级」块要求 §5 回填）
+
+| 量 | 刷新前（实测） | 刷新后（实测） | 设计预估 | 判定 |
+|---|---|---|---|---|
+| 锁文件行数 / 字节 | 8064 / 313,029 | **8573 / 348,259** | 8000–9800 行 | ✅ 落在区间内 |
+| `packages` 条目 | **554** | **585** | 设计记「1106」 | ⚠️ 设计基准数不符实（见下） |
+| `@deepseek-ai/*` 条目 | 258 | 246 | ≥258 行变更面 | ✅ |
+| 带 `integrity` 条目 | 339 / 554 | **584 / 585**（唯一缺者 = 根条目 `""`，其本不带该字段） | O9 记「767 条缺字段，成因未定」 | ✅ 未复现；O9 现象未在本次刷新重现 |
+| 嵌套条目（`node_modules/x/node_modules/y`） | 184 | 32 | 未预估 | 树被 re-flatten |
+| `git diff --numstat` | — | **+4486 / −3977（= 8463 变更行）** | **diff 1000–2500 行** | ❌ **超出预估区间**（见下） |
+
+**两处须回填/复核的偏差（如实登记，不伪报）**：
+
+1. **diff 量级超预估**：实测 8463 变更行（占全档 98.7%），设计预估 1000–2500 行。成因可解释——
+   设计基准数 `packages` = 1106 与实况 554 不符（本次亲测：旧锁顶层键 = `name/version/lockfileVersion/requires/packages`，`packages` 条目实测 **554**；
+   `1106 − 339 = 767` 与设计的「缺字段 767 条」自洽，疑为设计基准计数口径有两倍偏差）。
+   加上 `replace-registry-host=always` 使全部 `resolved` 主机被改写（339 → 584 条补写）+ 树 re-flatten（嵌套 184 → 32）⇒ 大范围行改写。
+   **验收口径仍按设计要求的结构性判据**（钉版自洽 + 形态 + 等价校验 + 刷新后冒烟），不逐行读 diff。
+2. **新脚本行数 290 > 预估约 110**：设计 §2.3 表该列本就是「实施前预估，实施后由批次档 §5 回填」，故按口径回填实测值；结构面仍守规（< 500 硬限、无单函数 >300 行、行宽 >300 = 0）。
+
+### 5.4 决策透明表（契约留白处 · 实施者自决 · 逐条披露）
+
+| # | 决策点 | 契约状态 | 处置 | 理由 / 影响面 |
+|---|---|---|---|---|
+| 1 | 摘要行附 `detail=<原因>` | 契约 §2.2.10 ⑦ 字段枚举无 `detail` | **附加该字段**（不删改既有五字段，位置追加末位） | TC-37 明文要求「摘要含错误原因」——不附则用例不可满足。属**契约要求的补全**，非自由发挥 |
+| 2 | `--check` 面的 `action=` 取值 | 契约四值域 `refresh|none|repair|repair-fail` 只定义刷新面；check 面留白 | 复用四值域：已最新且自洽 → `none`；落后 → `refresh`；锁自洽不过 → `repair`（读作「若执行刷新将会做的事」） | **不自造第五个值**（自造 = 新契约偏离）；已在 §5.5 评审 #3 登记为文档待收口语义 |
+| 3 | ① 取版本失败时的摘要取值 | 契约步序 ② 在 ① 之后 ⇒ 此时无 pin0 | 打印 `pin=(未知) -> (未知) registry=unknown`（字段恒在场） | 忠于契约步序（不在失败面偷读本地状态）；TC-37 只要求「摘要在场 + 含错误原因」 |
+| 4 | 「冒烟输出含 target」的匹配宽度 | 契约原文 = 「输出**含** target」 | 逐字实现为子串匹配（**未**加版本边界） | 忠于契约字面；收紧 = 改写判据（属设计层裁定），已在评审 #5 登记 |
+| 5 | 失败面回滚范围 | DD-26 明文 = 二元组（钉版 + 锁） | 只回写两文件；`node_modules` 树不参与回滚（体积原因） | 忠于 DD-26；已在评审 #6 登记「条文读者易误读」 |
+| 6 | 开发期夹具（隔离 DSH_HOME 预置 `settings.json`） | 契约未涉 | 冒烟夹具预置 `modeChosen: true` / `lastModeVersion: "0.0.1"`，规避首次运行的模式选择**模态框**（阻塞主进程、需人工点击） | 夹具只影响 UI 弹窗，不影响后端启动链与判据；已如实披露 |
+| 7 | 开发期工具落点 | 写域 = §2.5 表 4 档 | 冒烟/探针/故障注入 3 个 `.mjs` + 基线快照落 **`.thincoder/`**（`.gitignore:17` 忽略，零仓内足迹） | 先例 = B03 `.thincoder/b03-pet-calibrate-stub.mjs`；不在 `tests/`（契约 §2.3「不新增 tests/ 文件」不触） |
+
+### 5.5 审计与代码评审轮次与终态
+
+**轮次 1 · 内部发散审计（explore 子代理，read-only）**：结论 **DEVIATIONS**，🔴 0 / 🟡 1 / 🔵 6。核验通过面（审计自述「已核对无问题」）= ①–⑦ 步序逐步实现 · ②b/②c 幂等与修复面（含 TC-44 语义）· `--check` 三态 + 落后优先 + 只读承诺 · 失败面二元组写回与 `restore-fail` · AC16①②③ · AC20 · §一/§五 形态判据。
+
+**fix round 1（由审计 🟡#1 + 🔵#2/#3 直接导出，3 项落地）**：
+
+| 来源 | 问题 | 修复 |
+|---|---|---|
+| 审计 🟡#1 | catch-all（未预期异常）路径**不写回二元组** ⇒ ③ 之后抛异常会留半成品，与 DD-26 失败面统一形态相抵 | 新增模块级 `snapshot` + `pairTouched` 标记（③ 与修复面 ④ 前落标记）；catch-all 按标记补写回，写回失败落 `lock=restore-fail`（`scripts/refresh-dsh-bundle.js:283-290`） |
+| 审计 🔵#2 | 冒烟只断言**首行**含 target（窄于契约「输出含」） | 改为对**全输出**断言（`out` 仍取首行供打印）（`:150-155`） |
+| 审计 🔵#3 | 参数错路径无摘要行（「摘要行恒在场」破例） | 该路径补打摘要（`detail=bad-args: …`）（`:186-190`） |
+
+**轮次 1 · 内部代码评审（advisor，同步）**：VERDICT **pass**，🔴 0 / 🟡 2 / 🔵 7；主机引文核验 1/1（`AGENTS.md:38` 行文与实测一致——该行 `package.json:13-24` 的 scripts 列举已随本次 +2 行漂移）。
+
+**fix round 2（由评审 #4/#8 直接导出，2 项落地）**：
+
+| 来源 | 问题 | 修复 |
+|---|---|---|
+| 评审 #4 | catch-all 摘要硬编码 `tag=latest registry=unknown`，忽略实传 `--tag`/`--registry` | 新增模块级 `ctx`（parseArgs / fetchTag 逐段落笔），catch-all 改报真实值（`:40-41` / `:191` / `:195` / `:201` / `:289`） |
+| 评审 #8① | `--registry` / `--tag` 无条件吞下后继 token（`--registry --check` 会把 `--check` 当 URL，静默丢只读语义） | 取值以 `--` 开头即判漏值报错；顺带补齐 `--key=value` 形态（`:61-80`） |
+
+**裁决落点（评审 #1–#9）**：`Fixed` = #4 · #8①（实现面）；
+`Deferred`（承认，未修，已上报——写权不在实施者）= #1 #2（文档/台账行锚漂移，属 eng-designer / 主 agent 写域）· #3（`--check` 面 `action` 语义需契约侧收口）· #5（冒烟匹配宽度需设计层裁定）· #6（条文可读性）；
+`Not an issue`（附证据答辩）= #7（「不得同时执行」设计只写纪律、脚本头部已声明）· #8②（`shell: true` 拼接为仓内先例 `scripts/ensure-deps.js:57` 形态，输入为维护者本机值）· #9（混合版本树与 NFR-5「精确钉版只钉主包」一致；§5.6 已登记证据口径）。
+**无任一 🔴 处于未处置态。**
+
+**终态 = `clean`**（实现面零未处置 🔴；2 🟡 文档面 + 2 🟡 台账/契约面均为 `Deferred` 并**已上报父侧**，非静默丢弃）。
+
+### 5.6 残余风险 / 未覆盖项 / 范围外注记
+
+**本批未闭环（如实登记，与设计 §2.5 L12 三条出批项一致）**：① 打包态（`npm run dist:win`）首启双态冒烟 —— 未执行（成本）；② `cd dsh-bundle && npm ci` 全量复现 —— **未执行**（分钟级 + 下载量；按任务书硬约束 4 默认不跑，是否补跑由用户定）；③ 把 `bundle:check` 挂进「App 发版流程清单」—— 无发版流程文档（`docs/TODO.md` T5），写权属主 agent。
+
+**判据强度限制**：AC17 / AC19 的「主窗口为对话 UI（非 401 / 空页）」= **真机目视面**，本会话以「后端级 401 → 303+Cookie → 200 HTML 链路」+ 日志行替代，**未做人眼目视**；`--tag` 非 latest 频道（如 next）未做刷新面实测（只验证了 check 面：`--tag next` → 退出码 1）。
+
+**范围外注记（发现即报告，未处置）**：
+
+1. **AC18 的「零 `.js` 改动」在工作区不可直接评估**：实施期间有**并发会话**改动 `main.js` / `market.js` / `shell-market.js` / `shell-notify.js` / `shell-plugins.js` 并新增 `tests/b12-plugin-guards.test.js`（实施起点基线只含 `shell-affinity.js` / `shell-backend.js`）。⇒ 核 AC18 请按**本批 4 档归因**（`:5.1` 表 + 逐档 diff），勿按工作区快照。
+2. `docs/requirements/SHELL.md:197` 的「当前内置 Harness = `0.1.0-rc.6`」前提已被本批改变（现树 = `0.1.5-rc.1`）；该档 B08 明令零改动（§2.7.2），故只报告。
+3. `docs/design/AUTO-UPDATE.md:52/:564/:567/:618/:864/:980` · `docs/requirements/UPDATE.md:162/:186` · `docs/CONVENTIONS.md:160` · `AGENTS.md:38` · `docs/TODO.md:29`（T4）的 `package.json:NN` 行锚因本次 `scripts` +2 行整体漂移
+   （现值：`"dependencies": {}` = `:27`；`build.files` = `:41-82`；`extraResources` = `:83-96`；dsh-bundle 复制块 = `:93-94`）；`docs/TODO.md` T10（本批承载项）待主 agent 勾销。
+   他批文档（`docs/design/PET-ANIMATION.md` / `docs/batches/B18-*`）同源漂移一并登记。
+4. `.test-dsh-home/.credentials.yaml`（`.gitignore` 内、非本批产物）含一条**明文 API Key**（值不落档）—— 属存量开发期目录，建议父侧择机提醒用户清理。
+5. `scripts/ensure-deps.js` 的陈旧进程清理用 PowerShell 通配 `*dsh/lib/bin.js*`（正斜杠），对 Windows 反斜杠命令行路径**不匹配**（实测：用户正在运行的 `…\dsh\lib\bin.js` 未被清）；本批未触碰该档，仅报告。
+
+### 5.7 段内形态规整（作者自注，非新增语义）
+
+§5 追加落档后自检发现 4 行超宽（原 L305 / L320 / L356 / L370，401 / 402 / 364 / 431 字符）——违反 `docs/CONVENTIONS.md` §五「单行 ≤300 字符」（`§5` 不在豁免面：豁免仅台账 / 地图表格行 + 批次档 §3）。
+
+- **处置**：由**本段作者**（eng-coder，同一会话）就地按句读断行重排这 4 行——**只动本段、未触碰 §1–§4 / §6**，字符内容零删减、语义未变（先例 = B01 §5.1 的同款形态规整）。
+- **规整后实测**：§5 = 110 行 / >300 字符行 = **0**；全文 >300 字符行 = **4**（全在 §3 评审段 = 豁免面）。
+- 另一处自检修正：摘要行示例中的会话 Cookie 前缀串已改写为占位 `<会话 Cookie>`（凭证值不落档，设计 §2.7 / 锚#6）。
 
 ## §6 验收核销（主 agent）
 

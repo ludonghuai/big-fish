@@ -35,7 +35,7 @@
 
 **现状 = 0/3**（实测，as-of 2026-09-17）：
 
-1. `package.json:13-24` 的 scripts **无 `test`**（= postinstall / prestart / start / pack / dist / dist:win / dist:mac / dist:linux / icons / make-latest）。
+1. `package.json:13-26` 的 scripts（**12 项**；行号只作 as-of 参考）**无 `test`**（= postinstall / prestart / start / pack / dist / dist:win / dist:mac / dist:linux / icons / make-latest / bundle:refresh / bundle:check）。
 2. `.github/workflows/build.yml`（75 行）**无 lint / test 步骤**（只有构建与产物上传）。
 3. 全仓**无 lint / format 配置**（`.eslintrc*` / `eslint.config.*` / `.prettierrc*` 全零命中）。
 
@@ -61,3 +61,4 @@
 | 日期 | 变更点 |
 |---|---|
 | 2026-09-17 | 建档（B11）：写权矩阵 / 四步流程 / 门禁现状 0/3 与目标（归 B16）/ 文档体系入口四要素 + 指针；代码规范指向 `docs/CONVENTIONS.md`（回指批次档 `docs/batches/B11-conventions.md` §1.6 AC1）。 |
+| 2026-09-17 | **B08 收口轮（门禁现状 ① 行同步）**：scripts 行锚与列举按 as-of 实测更正——`package.json:13-24`（10 项）→ **`:13-26`**（**12 项**：补 `bundle:refresh` / `bundle:check`；注「行号只作 as-of 参考」）；成因 = B08 增两行 scripts ⇒ 其后各行整体 +2。**「无 `test`」结论与现状 0/3 不变。** |

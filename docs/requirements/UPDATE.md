@@ -159,7 +159,7 @@
 
 - 版本比较是纯函数、只在一处定义（`update-lib.js`），App 版本（`0.1.2` 形态）与 Harness 版本（`0.1.0-rc.6` 形态）共用同一语义，`main.js` 不得内联第二份实现。
 - App/Harness 更新域逻辑收敛在新模块 `updater.js`（Electron 依赖）与 `update-lib.js`（纯函数）；`main.js` 只留托盘、窗口、IPC 与后端重启等接线——`main.js` 不再进一步膨胀（现状 1986 行已超拆分阈值，见设计档 §2.3 拆分评估）。
-- 不新增第三方依赖、不新增原生模块：`package.json` 的 `"dependencies"` 为空**对象** `{}`（键集合为空；实形见 `package.json:25`——原措辞「空数组」不符实，B08 修正轮 1 订正）；新模块只用 Node 内置模块 + Electron 内置 API。
+- 不新增第三方依赖、不新增原生模块：`package.json` 的 `"dependencies"` 为空**对象** `{}`（键集合为空；实形见 `package.json:27`（行号只作 as-of 参考）——原措辞「空数组」不符实，B08 修正轮 1 订正）；新模块只用 Node 内置模块 + Electron 内置 API。
 - 更新诊断日志落 `userData/updater.log`，每步一行（先例：`exchange.log`、B01 的 `pet-drag.log`）。
 - 度量方式：静态核对（`compareVersions` 定义唯一性、`dependencies` 为空、日志调用点覆盖各阶段）。
 
@@ -183,4 +183,5 @@
 | 2026-09-16 | **B06 口径修订注记**（类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4）：US-1 边界 / US-5 story / US-6 边界 / NFR-3 中「dev 模式不检查 / 不更新」的条文收窄为「App 面仅安装版；Harness 面在 dev 放行（dev 读活跃指针）」。权威口径 = `docs/requirements/SHELL.md` §三 US-6（设计细节 = `docs/design/SHELL-UX.md` §2.2.5）；计数不变（10 / 4）。 |
 | 2026-09-17 | **B08 修订**：新增 **US-11 离线版（内置 Harness bundle）版本对齐** / **US-12 离线版刷新路径** / **NFR-5 内置 bundle 依赖纪律**（验收回指 `docs/batches/B08-dsh-bundle-version.md` §1.6 的 AC1…AC5 与本批终态编号 AC16…AC21）；§二 范围段与 §三 验收编号来源同步为三批（B02 + B05 + B08）并补「离线版不做自动刷新」出批项；头部关联批次补 B08 指针。**计数：US 10 → 12、NFR 4 → 5。** |
 | 2026-09-17 | **B08 评审修正轮 1**（评审 #1–#10，裁决全 Dispatched；设计档修订面 = `docs/design/AUTO-UPDATE.md` §四末行，批次档修订面 = `docs/batches/B08-dsh-bundle-version.md` §2.9）：US-11 补「发布时刻最新」的**操作性定义**（= 最近一次刷新所得 `latest`，刷新先于发版，残余差登记）； |
-|  | US-12 防复发 ① 补「已最新但锁不自洽 → 走修复」、② 退出码语义含**锁自洽**；NFR-4 与 NFR-5 的「空数组」订正为「空对象 `{}`」（`package.json:25` 实形）；NFR-5 补「**等价校验**」操作性定义与不证明面 + 度量方式补 `bundle:check` 退出码含义。**计数不变（US 12 / NFR 5）。** |
+|  | US-12 防复发 ① 补「已最新但锁不自洽 → 走修复」、② 退出码语义含**锁自洽**；NFR-4 与 NFR-5 的「空数组」订正为「空对象 `{}`」（`package.json:27` 实形；行号只作 as-of 参考）；NFR-5 补「**等价校验**」操作性定义与不证明面 + 度量方式补 `bundle:check` 退出码含义。**计数不变（US 12 / NFR 5）。** |
+| 2026-09-17 | **B08 收口轮（实施后文档事实同步）**：`package.json` 行锚按 as-of 实测更正——NFR-4 与上「修正轮 1」行内的实形指针 `:25` → **`:27`**（共 2 处，逐处注「行号只作 as-of 参考」）。成因 = 根 `package.json` 因 B08 增 `bundle:refresh` / `bundle:check` 两行 scripts，其后各行整体 +2。**条目 / 判据 / 计数不变（US 12 / NFR 5）。** |
