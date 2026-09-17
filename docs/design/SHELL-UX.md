@@ -2,8 +2,9 @@
 
 > 归属板块：桌面壳
 > 落点：`docs/design/SHELL-UX.md`
-> 关联需求档：`docs/requirements/SHELL.md`（US-1…US-8、NFR-1…NFR-4）
-> 关联批次：`docs/batches/B06-shell-ux.md`（§1.3 需求结论 C1–C7、§1.4 技术裁定 R1–R7、§1.5 验收 AC1–AC7、§1.6 事实、§1.7 既有约束）
+> 关联需求档：`docs/requirements/SHELL.md`（US-1…US-11、NFR-1…NFR-5）
+> 关联批次：`docs/batches/B06-shell-ux.md`（§1.3 需求结论 C1–C7、§1.4 技术裁定 R1–R7、§1.5 验收 AC1–AC7、§1.6 事实、§1.7 既有约束）·
+> `docs/batches/B07-harness-auth-compat.md`（§1.3 需求结论 C1–C6、§1.4 技术裁定 R1–R6、§1.5 验收 AC1–AC7、§1.6 事实、§1.7 既有约束）
 
 ---
 
@@ -25,6 +26,12 @@
 | NFR-2 兼容性 | Windows 验收；macOS/Linux 不回归 | §2.3、§2.5 |
 | NFR-3 可维护性 | 拆分口径 + 取证锚点不丢 | §2.2.6、§3.3 |
 | NFR-4 双态可解释性 | dev 与安装版差异只允许两处 | §2.2.5、§2.5 |
+| **US-9 主窗口会话鉴权兼容**（B07） | 主窗口加载后端打印的带令牌地址 | §2.1 G、§2.2.8、§3.1 AC9·AC10 |
+| **US-10 后端不拉起系统默认浏览器**（B07） | `--no-open` + 取证面不回退 | §2.1 H、§2.2.9、§3.1 AC11·AC15 |
+| **US-11 空闲检测不阻塞主进程**（B07） | fs.watch 主路径 + 异步回落；busy 判定面 | §2.1 I、§2.2.10、§3.1 AC12·AC13 |
+| **US-7 补注（T12）**（B07） | 拆分遗留未绑定 `notifier` 修复 | §2.1 J、§2.2.11、§3.1 AC14 |
+| **NFR-5 主进程响应性**（B07） | 探测域无同步文件系统调用面 | §2.2.10、§3.1 AC12 |
+| **NFR-2 / NFR-3**（B07 注记） | 跨平台不回退 / 取证锚点与零依赖 | §2.3、§2.5（C17–C25） |
 
 **设计必须正面处理的既有约束**（来自批次档 §1.6 / §1.7，行号为设计者亲读的现行值，as-of 2026-09-16）：
 
@@ -109,6 +116,52 @@
 | 3 | 不清理（保持现状） | 与用户指示「删 1-5」直接冲突；「残留即示范」 | — | 否决 |
 
 > F7 与 F1–F6 同批（主 agent 裁定 2026-09-16）：清理面小、可机检、与本批「零残留」方向同源；实施时机 = P0 第 ⑥ 步（独立提交）。
+
+#### 选型 G —— 主窗口 URL 契约（B07 C1 / US-9）
+
+判据（取自 `docs/requirements/SHELL.md` §三 US-9 / §四 NFR-2）：「打开就能用」（不停在 401 文本页）；不写死版本差异；不动 Harness 内部；零新依赖。
+
+| # | 候选方案 | 判据逐项评估 | 取舍（选定代价/权衡） | 结论 |
+|---|---|---|---|---|
+| 1 | **以后端输出行 `dsh web: <url>` 为唯一来源**（回环主机 + 当前端口校验）——取带 `?token=` 的地址加载主窗口 | 「打开就能用」✓（带令牌地址访问 → 303 + 签名 Cookie）；同一实现兼容无令牌的旧版（捕到裸地址亦可用）✓；不动 Harness ✓；零新依赖 ✓（正则 + 字符串） | 依赖后端打印行的**形状稳定性**（已验证 0.1.0 与 0.1.5 均打印；行形变更则回落到裸地址并有取证行）；需一小段宽限期躲「HTTP 就绪先于输出到达」竞态 | **选定** |
+| 2 | 关闭鉴权（新增启动开关） | Harness **无此开关**：`dsh --profile web` 仅 `--host` / `--no-open` / `--port` / `--trusted-host`（`dsh-web-app/lib/startup.js:22`）；改 Harness 内部代码违本批约束（批次档 §1.7） | — | 否决 |
+| 3 | 壳侧自行推算 / 构造令牌 | 不可得：`launchToken = processLaunchToken(owner)` 为**每进程随机** 32 字节并缓存在**进程内** WeakMap（`dsh-client-connection/lib/index.js:240-246`）——壳（另一个进程）读不到 | — | 否决 |
+| 4 | 壳侧读凭据域自行伪造签名 Cookie | Cookie 体 = `v1.<payload>.<HMAC(secret, body)>`，且 payload 内含 `authority`（`…/index.js:280-318` / `:392-407`）——等于在壳里重实现一份 Harness 鉴权（版本格式一变即碎）且跨安全边界读凭据 | — | 否决 |
+| 5 | 壳侧先自行 HTTP `GET /?token=` 换 Cookie，再注入 Electron session | 仍需先拿到带 token 的 URL（未消除候选 1 的前置），多出「解析 Set-Cookie + 写 session cookie jar + 域名/路径/过期对齐」整段复杂度，收益为零；另需处理 cookie 与窗口加载的时序 | — | 否决 |
+
+> 选定方案的竞态与边界口径落 §2.2.8；被否决候选的依据均为设计者亲读的 Harness 源码（路径 = `userData/dsh-update/versions/0.1.5-rc.1/node_modules/.pnpm/…`，行号见 §2.2.8 取证表）。
+
+#### 选型 H —— 后端 stdout 处置（B07 C2 / US-10 + 取证面）
+
+判据：「不拉浏览器」与「仍能拿到带 token 地址」两者并存；B04 / B05 取证面（`bigfish.log` 的 harness 行）不回退；tee 不得成为新的失败源。
+
+| # | 候选方案 | 判据逐项评估 | 取舍（选定代价/权衡） | 结论 |
+|---|---|---|---|---|
+| 1 | **管道 + tee 双写**：`stdio: ['ignore', 'pipe', 'pipe']`，每个 chunk 先喂嗅探再写 `bigfish.log`（写不了降级 `process.stdout`） | 同时满足两个诉求 ✓；取证面保持（同一文件、同一行格式，仅改写入口）✓；管道背压由 Node 流缓冲吸收（日志量小）✓ | 多一层进程内接力（需自行处理编码 / 错误事件 / 不抛出——见 §2.2.9 加固四点） | **选定** |
+| 2 | 保持 `stdio: ['ignore', logStream, logStream]` 直写，另行尾随读 `bigfish.log` 嗅探 URL | 需要边写边读：文件偏移 / 轮次交错（多次启动追加同一文件）/ 读量随日志增长；嗅探时点晚于写入（新增竞态面） | — | 否决 |
+| 3 | 管道只嗅探、不落盘 | 直接违 B04 / B05 取证面（批次档 §1.4 R3 硬） | — | 否决 |
+| 4 | 不用 `--no-open`，改为壳侧启动后立即关掉后端拉起的浏览器窗口 | 需枚举 / 操控外部浏览器进程（平台相关且粗暴）；用户诉求是「不要拉」而非「拉了再关」 | — | 否决 |
+
+#### 选型 I —— 完成探测机制（B07 C3 / US-11 + NFR-5）
+
+判据：5 s 周期**不得阻塞主进程**；「任务完成」语义不回退；零新依赖；开销与 `~/.dsh` 规模解耦。
+
+| # | 候选方案 | 判据逐项评估 | 取舍（选定代价/权衡） | 结论 |
+|---|---|---|---|---|
+| 1 | **`fs.watch(home, {recursive:true})` 主路径 + 非 Windows 异步扫描回落**；5 s 定时器只做纯算术空闲判定 | 零遍历（OS 级事件推送）✓；不阻塞（事件回调只做字符串 + 赋值；回落走 `fs.promises`）✓；零新依赖（`node:fs`）✓ | Windows 递归 watch 有 OS 缓冲溢出 — 漏事件的固有风险（记为 L-B07-3）；回落路径每 5 s 仍全树异步扫描（不阻塞但持续 I/O，记为 L-B07-2） | **选定** |
+| 2 | 保持 5 s 轮询，只把递归 `stat` 改异步（旧实现的异步化） | 不阻塞 ✓；但每 5 s 仍对 20,849 文件（`~/.dsh` 实测总量 20,857）做一轮 stat——持续 I/O / 耗电，与「开销与规模解耦」相抵 | — | 否决 |
+| 3 | 引入 `chokidar` 等成熟库 | 违零新依赖纪律（`dependencies` 保持空数组，`package.json:25`）；且需同步 `build.files` | — | 否决 |
+| 4 | 收窄监视面（只监视 `storages/` + 顶层文件） | 开销最小；但**改变了 busy 判定面**（写入 `profiles/` 深层不再计忙）——语义变更，超出本批（在途改动已定口径） | 改动面小，但引入了需求层未审的口径变更 | 否决（登记为后续可选加固，见 O9） |
+
+#### 选型 J —— F6 遗留缺陷修复口径（B07 C4 / T12·US-7 补注）
+
+判据：修好后两处托盘动作无异常；不引入新的模块依赖面；不违反 §2.2.6 依赖方向规则。
+
+| # | 候选方案 | 判据逐项评估 | 取舍（选定代价/权衡） | 结论 |
+|---|---|---|---|---|
+| 1 | **改用已注入的 `notify(...)`**（`shell-mode.js:17` / `:24`，组合根 `main.js:67` 注入 `notifier.notify`） | 与 §2.2.6 声明的注入面一致 ✓；零新 require、零新依赖边 ✓；与同档其他注入（`getMainWindow` / `ensurePet` / `rebuildTrayMenu`）同形 ✓ | 仅两处标识符修正（`notifier.notify` → `notify`） | **选定** |
+| 2 | 新增 `const notifier = require('./shell-notify.js')` | 不产生环：`shell-notify` 只依赖 `shell-assets` / `shell-settings`，不依赖 `shell-mode`（无环可证）——技术上可行；但与已声明的注入面**同能力两条路径**（同一能力两个来源，后续漂移风险） | — | 否决 |
+| 3 | 改由 `shell-tray.js` 在菜单回调里自己调 `notifier.notify` | 域归属错位：背景动作的反馈属 `shell-mode`；且托盘已 require `shell-notify`（`shell-tray.js:18`），会把「背景是否成功」的判定散到两处 | — | 否决 |
 
 ### 2.2 架构与契约
 
@@ -309,7 +362,7 @@ runAutoChecks(reason)：
 | `main.js`（改） | 组合根：常量、userData 覆盖、单实例锁、whenReady 引导、退出钩子、模块接线（`init(deps)`） | `1-71` / `2453-2577`（改写） | require 全部模块 |
 | `shell-settings.js`（新） | settings 载入 / 保存 / 默认值 / `settingsFileCorrupt` | `73-113` | electron(app) → — |
 | `shell-assets.js`（新） | 图标路径（`appIconPath` / `trayIconPath`） | `699-720` | fs/path → — |
-| `shell-notify.js`（新） | 系统通知 + 任务完成提醒（`notify` / `latestMtime` / `start·stopCompletionWatcher`） | `246-258` / `605-697` | electron → 注入 `getDshHome` |
+| `shell-notify.js`（新） | 系统通知 + 任务完成提醒（`notify` / `start·stopCompletionWatcher`；函数清单见注 S5） | `246-258` / `605-697` | electron → 注入 `getDshHome` |
 | `shell-backend.js`（新） | 后端生命周期 + 路径解析（起停 / 解析 / 重启等；函数清单见注 S1） | `115-244` / `356-362` / `607-611` / `2366-2383` | electron、net/http/fs/child_process → 注入 `sanitizeProfileBundles`、`getMainWindow`、`isQuitting` |
 | `shell-pet-geometry.js`（新） | 桌宠几何 helper 组 + 日志 / 尺寸校准（函数清单见注 S4） | `785-1113`/`1209-1210`/`1219-1270` | electron(screen)、fs、`shell-settings`→注入 `getPetWindow`、`getPetDrag`（无新注入） |
 | `shell-pet-drag.js`（新） | 拖动跟随 + 拖动 / 穿透 IPC 处理器函数（函数清单见注 S2） | `1190-1208` / `1212-1217` / `1272-1373` / `2591-2618` / `2619-2658` / `2679-2687`（`:1209-1210` / `:1219-1270` 归 geometry——注 S4） | electron(screen)、`shell-settings`、`shell-pet-geometry` → 注入 `getPetWindow`、pet 状态访问面（注 S2） |
@@ -323,7 +376,8 @@ runAutoChecks(reason)：
 | `shell-update.js`（新） | 更新编排（呈现 / 门禁 / 调度 / Harness 停-切-启编排）+ `upd:*` 处理器函数 | `332-603` / `2780-2801` | electron、fs、`updater.js`、`shell-backend`、`shell-notify`、`shell-settings` → 注入 `setQuitting` |
 | `shell-ipc.js`（新） | IPC 通道注册层（薄绑定：通道 → 域处理器函数） | `2579-2830`（改写） | electron(ipcMain)、`shell-pet`、`shell-pet-drag`、`shell-affinity`、`shell-market`、`shell-update` → — |
 
-> **注 S1（`shell-backend.js` 函数清单）**：`findFreePort` · `dshBinPath` · `bundledSkillDir` · `resolveRuntime` · `waitForReady` · `cleanupStaleDsh` · `startDsh` · `stopDsh` · `dshHome` · `getCurrentDshVersion` · `restartBackend`（+ 状态 `dshProcess` / `port`，经 `getPort()` 暴露）。
+> **注 S1（`shell-backend.js` 函数清单；B07 实施期实测补全，文件序）**：`writeDiag` · `webUrlWaitMs` · `findFreePort` · `dshBinPath` · `bundledSkillDir` · `resolveRuntime` · `waitForReady` · `captureWebUrl` · `waitForWebUrl` · `browserUrl` ·
+> `cleanupStaleDsh` · `startDsh`（内含 `makeTee` 工厂——每管道各自一只 `StringDecoder`）· `stopDsh` · `dshHome` · `getCurrentDshVersion` · `restartBackend` · `getPort`（+ 状态 `dshProcess` / `port` / `browserLaunchUrl`）。
 >
 > **注 S2（`shell-pet-drag.js` 函数清单）**：常量（`PET_DRAG_TICK_MS` / `PET_DRAG_STALE_MS` / `PET_DRAG_PROBE_MS` / `PET_DRAG_LOG_SAMPLE_TICKS` / `PET_DRAG_DEBUG`）·
 > `petDragLog` · `petStopDrag` · `petDragTick` · 状态 `petDrag`（经 `getPetDrag()` 暴露）·
@@ -339,6 +393,9 @@ runAutoChecks(reason)：
 > **来源段修订**：geometry 增 `:1209-1210` / `:1219-1270`；`shell-pet-drag` 相应为 `:1190-1208` / `:1212-1217` / `:1272-1373` + IPC 段（注 S2 清单同步）。
 > **跨模块访问**：`shell-pet-drag`（`petStopDrag` / `petDragTick` / `pet-drag-end` 处理器）与 `shell-pet`（`createPetWindow` / `summonPet`）经 `require('./shell-pet-geometry.js')` 直接调用——依赖方向已声明（两者 → geometry）、无环、**无新注入项**；geometry 自身调用为模块内调用。
 > **状态面**：`createPetWindow()` 对 `petSizeBaseline`（`:1166`，连带 `petWanderSizeCheckedAt` `:1167`）的重置经 geometry 导出的**转发访问器**完成（§2.2.6 允许面 ②）——单一实现不破。
+
+> **注 S5（B07 修订——`shell-notify.js` 函数清单）**：`notify` · `isIgnoredPath` · `latestMtimeAsync` · `startCompletionWatcher` · `stopCompletionWatcher` · 转发访问器 `setLastBusyAt` / `setNotifiedForCycle`。
+> 同步实现 `latestMtime` **B07 退役**（全仓 0 调用点 + NFR-5 静态判据要求探测域无同步 fs 调用面）——依据与判据见 §2.2.10 修正 B。
 
 **依赖方向规则（零回退的结构前提）**：
 
@@ -363,6 +420,10 @@ runAutoChecks(reason)：
 | 4 | `market.log` / `exchange.log` / `bigfish.log` | 市场 / 兑换屋 / 后端的 `console-message` 与后端 stdio 落盘 | `shell-market.js` / `shell-affinity.js` / `shell-backend.js` |
 | 5 | console 行 | `[bigfish] backend ready at` / `window created` / `starting backend on` / `global shortcut registered` / `market:enable …` 等 | 随各自模块逐条保留 |
 | 6 | env 开关 | `BIGFISH_USER_DATA` / `BIGFISH_UPDATE_URL` / `BIGFISH_UPDATE_INTERVAL_MS` / `BIGFISH_DSH_REGISTRY_URL`（`_FALLBACK_URL`）/ `BIGFISH_PET_DEBUG` / `DSH_NODE` / `DSH_HOME` | 读取点随各模块保留 |
+
+> **B07 附注（计数与枚举同改——D3）**：本批对该清单的增删——① 新增 env 开关 `BIGFISH_WEB_URL_WAIT_MS`（URL 捕获宽限期；默认 3000，仅测试钩子，读取点 `shell-backend.js`）；
+> ② 新增 console / `bigfish.log` 行 2 条（`backend web url captured` / `backend web url not captured`——§2.2.8）；③ 新增 console 行 1 条（`completion watcher unavailable; falling back to async scan`——§2.2.10，条件发射）。
+> 除上述三项外，本批**不增不删**任何日志行 / env 开关（B01–B05 锚点逐条保持——US-10 取证面硬要求）。
 
 **迁移顺序（F6；总前置 = §1.7 写域错开——B03 的 `main.js` 改动落地或冻结后实施）**：
 
@@ -431,6 +492,175 @@ runAutoChecks(reason)：
 
 **报告项（只报告、不自行改）**：`THIRD-PARTY-NOTICES.md:53-54` 提及第三个素材目录 `assets/jimeng-2026-08-15-3386/`——该目录在仓库中不存在（陈旧提及）；登记为观察项 O7，交主 agent 收口。
 
+#### 2.2.8 主窗口 URL 契约（B07 C1 / US-9）
+
+**取值链（单入口 `browserUrl()`）**：
+
+```
+后端进程启动（--no-open）→ stdout 行 `dsh web: <url>`
+  → captureWebUrl（每 chunk 追加尾缓冲；正则 WEB_URL_LINE + 回环主机 + 当前端口校验）
+  → browserLaunchUrl（首次命中即锁定）
+  → browserUrl() = browserLaunchUrl || `http://${HOST}:${port}`   ← 主窗口 URL 的唯一出口
+      ・ shell-window.js createWindow() → loadURL(browserUrl())（现状 :65）
+      ・ shell-backend.js restartBackend() → loadURL(browserUrl())（现状 :256；两个分支均不复用旧地址）
+```
+
+**Harness 侧契约**（设计者亲读，as-of 2026-09-17；版本目录 = `%APPDATA%\bigfish\dsh-update\versions\0.1.5-rc.1\node_modules\.pnpm\…`）：
+
+| # | 事实 | 指针 |
+|---|---|---|
+| 1 | 令牌查询参数名 = `token`；`launchToken` 每进程随机（32 字节）并缓存在**进程内** WeakMap | `@deepseek-ai/dsh-client-connection/lib/index.js:222` / `:240-246` |
+| 2 | `GET /` 且**恰好一个** `token` 参数、authority 命中、令牌匹配 ⇒ `303` 跳 `/` 并下发签名 Cookie（`HttpOnly; SameSite=Strict; Path=/`，名 = `dsh-auth-<sha256(authority)>`） | 同上 `:386-409` / `:280-293` |
+| 3 | 无 Cookie 的 index 请求 ⇒ `401` + 正文 `dsh web authentication required; reopen the URL printed by dsh web.` | 同上 `:442-448`（正文 `:447`） |
+| 4 | Cookie 与 authority 绑定（签名 payload 含 `authority`，校验逐次比对），端口变化即失效 ⇒ **每次启动都须重新换取** | 同上 `:392-400` / `:431-441` |
+| 5 | `dsh --profile web` 的 CLI 面只有 `--host` / `--no-open` / `--port` / `--trusted-host` ⇒ **无关闭鉴权的开关** | `@deepseek-ai/dsh-web-app/lib/startup.js:22` |
+| 6 | 启动输出（`bigfish.log` 实证）：`dsh web: http://127.0.0.1:<port>`（更新前，`:44`…`:115`）→ `dsh web: http://127.0.0.1:<port>/?token=<hex>`（`:119` 起）；`--no-open` 生效后 `dsh web: opening the default browser; …` 行消失（`:123-124` / `:127-128`） | `%APPDATA%\bigfish\bigfish.log` |
+
+**捕获参数与边界（判据）**：
+
+| 情形 | 期望行为 |
+|---|---|
+| 后端先打印、HTTP 后就绪（常见） | `waitForReady` 完成前已捕获；主窗口直接加载带令牌地址 |
+| HTTP 就绪早于打印 | `waitForWebUrl` 宽限 3000 ms（100 ms 轮询； env `BIGFISH_WEB_URL_WAIT_MS` 可覆盖）内等到即用 |
+| 宽限内仍无行 | `browserUrl()` 回落裸地址 + **一条诊断行**（不静默）；窗口可能停在 401 文本页——是否加用户面提示 = open 项 U-12 |
+| 宽限耗尽之后 URL 行才到达（晚命中） | 补一次加载（DD-28）：已建窗且当前 URL ≠ 命中地址 ⇒ `loadURL(命中地址)`；日志 = 先 `not captured`（宽限结束时）后 `captured`（行到达时）——同一序列两条齐备（用例 TC-31） |
+| 行存在但主机非回环 / 端口 ≠ 当前端口 / URL 解析失败 | 不采用，记 `reason=mismatch`（或 `parse-fail`）；继续等后续行 |
+| 多次打印 / 行被 chunk 切断 | 尾缓冲滚动 4096 字符拼接；首次命中即锁定（后续行不覆盖） |
+| `restartBackend`（插件安装 / 手动重启） | `stopDsh` 清空捕获 → 新进程重捕 → `loadURL(browserUrl())`；不复用旧端口 / 旧令牌；捕获时若窗口已建旧地址 ⇒ DD-28 补载一次（随后本行再加载同址，幂等） |
+| 旧版 Harness（裸地址） | 捕获成功（`token=no`）→ 加载裸地址，行为与既有版本一致 |
+| `will-navigate` 守卫 | 用 `origin`（`shell-window.js:53-60`，不含查询串）——带令牌 URL 的 origin = `http://127.0.0.1:<port>`，与守卫期望值相等；本批不改该守卫 |
+
+**晚命中回收（本批新增机制点；DD-28；评审修正轮 1 #5）**：
+
+- 触发：`captureWebUrl` 首次锁定 `browserLaunchUrl` 时——含宽限期早已耗尽、窗口已按裸地址加载的情形。
+- 动作：主窗口已建且未销毁、且其当前 URL ≠ 命中地址 ⇒ `loadURL(命中地址)`（一次；锁定即终态，后续行不覆盖）。
+- 可达面：① **晚命中**（宽限耗尽后行才到）；② **后端重启**（`restartBackend` → `startDsh`：捕获时窗口仍持旧地址 ⇒ `getURL() !== 新地址` ⇒ 补载一次，随后 `:304` 再加载同一地址）——双守卫（`!isDestroyed()` + 地址不等）+ `.catch` 兜底，**重启路径的一次重复加载 = 有意接受（同址幂等）**；窗口未建（`startDsh` 未返回前）⇒ 不触发（`createWindow()` 按 `browserUrl()` 加载命中地址）。
+- 判据：① 静态——命中分支内的回收段在场（`getMainWindow()` 已是既有注入面，零新增注入）；② 真机（TC-31）——宽限耗尽后窗口在 URL 行到达后自行回到对话 UI，无需重启应用。
+- 与 open 项 U-12 的边界：本机制只定「已加载裸地址的窗口是否回收」，U-12 只定「未捕获时的用户面提示」——两者互不重叠，U-12 的裁定不改变本机制。
+
+**诊断行（本批新增 2 条；同写 console 与 `bigfish.log`）**：
+
+```
+[bigfish] backend web url captured port=<n> token=yes|no
+[bigfish] backend web url not captured port=<n> reason=no-line|mismatch|parse-fail fallback=http://<HOST>:<port>
+```
+
+- 只记 `token=yes|no`，**不记令牌值**（凭证不入档）；后端自己那行 `dsh web: …` 保持原样——它是本机制与用户排查的取证面。
+- 发射点：捕获命中时（`captureWebUrl` 内）发第一条；宽限期结束仍未捕获时（`startDsh` 内、`waitForWebUrl()` 之后）发第二条——每次启动至多一条 not captured。
+- 机检：`findstr /c:"backend web url" bigfish.log`（成功 = captured；回落 = not captured + reason）。
+
+**落盘机制（本批补——判据可达性）**：现状 `captureWebUrl` 只 `console.log`（`shell-backend.js:131`），而 `bigfish.log` 仅由 `tee` 写**后端输出**（`:181-189` / `:201-208`）——诊断行不补落盘路径，则上条机检与 AC9 / AC15 不可达。本批：
+
+- `logStream` 由 `startDsh` 局部（`:179`）**提升为模块级**（近 `outputTail`，`:41`）；`startDsh` 内改为赋值。既有横幅行（`:189`）与 tee 路径语义不变；A3 的「置 `logStream = null`」即指该模块级变量。
+- 新增本档内 helper `writeDiag(line)` = `console.log(line)` + `if (logStream) { try { logStream.write(line + '\n'); } catch { /* 诊断行写不了不致命 */ } }`——两条 URL 诊断行均经它发射。
+- `reason` 追踪：模块级 `webUrlRejectReason`——`captureWebUrl` 见到行但主机 / 端口校验不过 ⇒ `mismatch`，URL 解析失败 ⇒ `parse-fail`；`startDsh` / `stopDsh` 重置捕获处一并置 `null`；宽限期结束时 `reason = webUrlRejectReason || 'no-line'`。
+- 诊断行是壳侧**追加**行，不替代 tee 路径、不改文件名 / 落点；`logStream === null` 时只到 console（不新增失败面）。
+
+**边界（不做）**：不跨启动缓存 URL 复用；不改 `waitForReady` 就绪判据（`statusCode < 500`，含 401——鉴权面不参与就绪判定，有意保持）；不新增 Harness 未支持的启动参数；不在壳侧改写 / 脱敏后端输出；**不回溯上一会话**——回收只覆盖本次启动内「宽限耗尽后命中」的窗口，地址始终未到时残留态 = 本次会话停在 401 文本页（用户重启应用即恢复），该残留下是否加用户面提示 = open 项 U-12。
+
+#### 2.2.9 后端 stdout 处置（B07 C2 / US-10 + 取证面）
+
+**现状（基线，在途改动）+ 本批四个加固点**（行号 as-of 2026-09-17）：
+
+| # | 现状（`shell-backend.js`） | 风险 | 本批处理 | 判据 |
+|---|---|---|---|---|
+| A1 | `tee(chunk)` = `chunk.toString('utf8')`（`:202`） | UTF-8 多字节字符被 chunk 边界切开 ⇒ 日志出现 U+FFFD（取证面污染）；嗅探侧不受影响（令牌为 ASCII） | 引入 `node:string_decoder` 的 `StringDecoder('utf8')` 累积跨 chunk 字节（内置模块，零新依赖） | 分片注入后日志无 U+FFFD（TC-36） |
+| A2 | 日志流打不开时降级 `process.stdout.write(text)`（`:205`，未包 try） | 降级路径自身若抛（EPIPE 等）= 挂在 `data` 事件上的未捕获异常，中断后端输出处理 | 降级分支同样包 try/catch（tee 恒不抛） | 静态核对（tee 内无裸写） |
+| A3 | 预开启阶段的 `logStream.once('error')`（`:186`） | `once` 只吃第一次；运行期写失败（磁盘满 / 路径失效）后无监听 ⇒ 流 `error` 无人接管 | 改**常驻** `error` 监听：置 `logStream = null` 并切到 `process.stdout`（一次性降级，不重试） | 静态核对（`on('error')` 常驻）+ 真机（只读 userData 启动不崩） |
+| A4 | stdout / stderr 两个 pipe 各自 tee（`:207-208`） | 写入顺序与背压 | 口径化：**单流内保序**；stdout 与 stderr 的交叉顺序不保证（与改动前两 fd 直写同一文件同口径，非回退）；不处理 `drain`（日志量小；记为 L-B07-1） | 文档口径 + 真机对照（同一启动序列日志行齐备） |
+| A5 | `logStream` 为 `startDsh` 局部（`:179`）——仅 `tee`（同闭包）可达 | 壳侧诊断行（§2.2.8）须落 `bigfish.log`，但 `captureWebUrl` 在模块级、够不到该局部 | 提升为**模块级** `let logStream`（近 `:41`）+ `writeDiag(line)` 双写 helper + `reason` 追踪（机制与判据 = §2.2.8「落盘机制」） | 静态核对（`writeDiag` 在场、模块级声明）+ 机检（`findstr` 命中 captured 行） |
+
+**取证面不回退（硬）**：`bigfish.log` 仍是后端 stdout/stderr 的落点，行格式与内容不变——B04 / B05 依赖的 `harness activate …` / `harness install phase=…` 行逐条在场；
+壳侧写入该文件的行 = 既有启动横幅（`:189`）+ 本批新增 2 条（§2.2.8）。新增行计数与枚举同步登记于 §2.2.6 取证锚点清单的 B07 附注。
+
+**边界（不做）**：不改日志文件名 / 落点 / 追加语义；不引入日志轮转 / 脱敏；不把 tee 拆为独立模块。
+
+#### 2.2.10 完成探测机制（B07 C3 / US-11）
+
+**结构（在途改动为基线 + 本批四个修正点 B/C/D/E）**：
+
+```
+startCompletionWatcher()
+  ① fs.watch(getDshHome(), {recursive:true})   ← 主路径（Windows：OS 级递归监听）
+       事件回调：路径过滤（谓词见下）→ 命中则 lastBusyAt = now; notifiedForCycle = false
+       [B07 修正 C] 回调首行加开关守卫：!settings.get().notifyOnComplete ⇒ return（恢复旧语义）
+       [B07 修正 D] watcher 常驻 error 监听：置 useWatch=false + 诊断行 ⇒ 回落路径接管
+  ② 回落路径（触发形态见下「回落触发」）：每 5 s 触发一次 latestMtimeAsync（fs.promises，异步、不阻塞）
+       首扫只建基线（lastSeenMtime === null ⇒ 不报 busy）；后续 mtime 前进 ⇒ 计忙；在途时跳过重叠触发
+  ③ 5 s 定时器（纯算术，无 I/O）：busy 后静默 > IDLE_NOTIFY_MS(30 s) 且本轮未通知 ⇒ 通知一次
+```
+
+**回落触发（形态；评审修正轮 1 #6）**：回落**不由平台判定驱动**——① 建监听时 `fs.watch` 同步抛错经 `try/catch` 吞下（`shell-notify.js:109-118`；非 Windows 不支持 `recursive` 即走此路）② 运行期 `error` 事件（修正 D）⇒ `useWatch = false`。
+本档全文 **零 `process.platform`**（as-of 2026-09-17 实测：`grep -n "platform" shell-notify.js` = 0 处）⇒ NFR-2 的「新增代码零平台分支」判据有确定值；**不引入平台判定，故无「有意分支」声明**（`docs/requirements/SHELL.md` §四 NFR-2 的度量口径不变）。
+
+**busy 判定面（口径；B07 定稿——见 §2.5 C17 / §2.4 DD-22）**：
+
+- 谓词 = **路径任一段落** ∈ `{profiles, node_modules}` ⇒ 忽略；其余写入 ⇒ 计忙。
+- 实测依据（2026-09-17 三法复核）：`~/.dsh` 递归文件总量 **20,857** = `profiles/` 4 + `pnpm-store/` 20,849 + `storages/` 1 + 顶层 3；
+  **目录名恰为 `node_modules` 者 3 处，全在 `profiles/**` 下**（`profiles/node_modules` / `profiles/web/node_modules` / `profiles/web/.dsh-module-fallback/node_modules`），`pnpm-store/` 下 **0 处**。
+- ⇒ 在本机当前布局下，「任一段落」与「顶层段」**结果等价**（批次档 §1.6 #8）；本角色上轮所记「`pnpm-store/**` 下 2,302 个 `node_modules` 目录」经复核**无法复现**（见 §2.5 O8）。
+- 本批取「任一段落」的理由 = **① 对旧实现逐字忠实**（旧 skip 语义 = 任意深度同名目录）+ **② watch 与回落两路共用单一谓词**——与等价性无关。主 agent 已采纳（批次档 §1.9 更正 ③④）。
+- `filename` 为 null / 空（Windows 偶发）⇒ 计忙（保守方向：宁可推迟通知，不误报「完成」）。
+
+**旧新语义对照（逐条）**：
+
+| 面 | 旧实现（5 s 同步全树扫描） | 新实现 | 方向 |
+|---|---|---|---|
+| 主进程阻塞 | 每轮 ≈2 s（20,849 文件 `statSync`） | 无（事件推送 / 异步） | **有意改进** |
+| busy 触发 | 扫描时点的「新写入宽限」：`t > lastBusyAt+2000 && now-t < 2000`——写入落在两扫之间且早于 2 s ⇒ **整轮漏检** | 事件到达即记账（无量化窗） | **有意改进**（漏检面消除；只多不少） |
+| 跳过面 | 任意深度 skip `{profiles, node_modules}` 同名目录 | 同（任一段落谓词，修正 E 对齐） | 不回退 |
+| 开关关闭 | 定时器早退 ⇒ 不计忙（`setNotify(false)` 同时清 `lastBusyAt`） | 定时器早退 + **回调也守卫**（修正 C） | 不回退（修正前有「重开即误报」缺口） |
+| 首扫误报 | 无（旧实现无基线面） | 回落路径首扫只建基线 | 不回退 |
+| 通知条件 | `lastBusyAt > 0 && 静默 > 30 s && !notifiedForCycle` | 同（逐字保留） | 不回退 |
+| 清理 | `clearInterval` | `clearInterval` + `fsWatcher.close()`（在途已落） | 不回退 |
+
+**修正点（本批新增，均以在途实现为基线）**：
+
+| # | 修正 | 依据 | 判据 |
+|---|---|---|---|
+| B | 删除死代码 `latestMtime`（同步递归实现 + 其导出 + 相关 JSDoc 引用）；同步修订 §2.2.6 的 `shell-notify.js` 职责列 | 全仓 0 调用点；NFR-5 静态判据 = 探测域无 `*Sync(` 调用面（残留即示范） | `grep -n "Sync(" shell-notify.js` = 0 处（as-of 扫描见下） |
+| C | watch 回调加 `notifyOnComplete` 守卫 | 现状回调不判开关 ⇒ 关闭期间活动照记忙 ⇒ 重新开启后第一次 5 s tick 即补发一条「任务完成」（旧实现不会） | TC-39（关闭 → 活动 → 重开 → 不补发） |
+| D | watcher `error` ⇒ 切回落 + 诊断行 | 现状 `on('error')` 是空处理：监听死去后无人接管，通知静默失效且不可诊断 | 静态核对（`useWatch=false` + 日志）+ 真机 TC-41 |
+| E | 过滤谓词统一为「任一段落」（watch 与回落同口径）——现状 watch 取顶层段（`shell-notify.js:111-112`）、回落取任一段落（`latestMtimeAsync` 的 `skipNames.has(e.name)`） | 见上「busy 判定面」；消除同一特性两套口径 | 静态核对（单一谓词被两路复用）+ `shell-notify.js:103` 头注释口径句同步（残留即示范） |
+
+**修正 B 判据的 as-of 扫描（评审修正轮 1 #4；本轮亲跑）**：`findstr /n "Sync(" shell-notify.js` ⇒ 命中 **2 处**，均在待删死代码 `latestMtime` 内、**属本批退役面**——`:48` `fs.readdirSync(dir, { withFileTypes: true })` · `:59` `fs.statSync(full).mtimeMs`。
+同档其余同步调用面 = **0 处**（`latestMtimeAsync` 全程 `fs.promises`；`fs.watch` 无同步面；全档 `Sync` 字符串亦仅此 2 处）；退役面另含实现 `:44-65` + 导出 `:159` + `:67-70` JSDoc 的「与同步版同样的递归语义」句。
+⇒ 删除后该档 `*Sync(` **≡ 0**，AC12 / NFR-5 的机检判据可达；**未发现本批退役面之外的同步调用点**（若有，须停下回报、不得自行扩大退役范围）。
+
+**诊断行（本批新增 1 条，console；条件发射）**：
+
+```
+[bigfish] completion watcher unavailable; falling back to async scan
+```
+
+**已知限制（本批不修，留档）**：
+
+- **L-B07-1**：tee 不处理 `drain`（日志量小；极端刷屏时内存缓冲增长）。
+- **L-B07-2**：回落路径（非 Windows）每 5 s 仍异步全树扫描（20,849 文件）——不阻塞，但持续 I/O；收窄面属语义变更，留待后续批次（O9）。
+- **L-B07-3**：Windows 递归 watch 的 OS 缓冲溢出可致**漏事件**（方向 = 少记一次忙 = 可能少一次提醒）；本批不加兜底轮询（会重新引入 I/O），登记为观察项 O10。
+- **L-B07-4**：`~/.dsh` 在监视器启动时不存在（全新安装）⇒ `fs.watch` 抛 ENOENT → 走回落；目录建成后不自愈（重启应用即自愈）。现状口径，登记备查。
+
+#### 2.2.11 F6 遗留缺陷修复（B07 C4 / T12·US-7 补注）
+
+**两处修正（`shell-mode.js`，行号为现状 as-of 2026-09-17）**：
+
+| 位置 | 现状 | 修正后 | 影响 |
+|---|---|---|---|
+| `chooseBackground()` `:131` | `notifier.notify(APP_NAME, '背景已更换')`（在 `try` 内 ⇒ 异常被吞，只留 `[bigfish] 更换背景失败:` + ReferenceError） | `notify(APP_NAME, '背景已更换')` | 背景确实已换（拷贝 + 注入在 `:129-130` 已执行）——修正后通知恢复、假错误日志消失 |
+| `resetBackground()` `:141` | `notifier.notify(APP_NAME, '已恢复默认背景')`（**不在 try 内** ⇒ 未捕获异常） | `notify(APP_NAME, '已恢复默认背景')` | 异常消失（主进程不再收到未捕获异常）；恢复动作本身已在 `:139-140` 执行 |
+
+- 不加额外 `try/catch`：`notify` 自身已 try（`shell-notify.js:32-38`），修正后不再抛——最小改动面。
+- 循环依赖核对：候选 2（`require('./shell-notify.js')`）也不成环（`shell-notify` 不依赖 `shell-mode`）；否决理由 = 与已声明注入面重复（§2.1 J）。
+
+**同类未绑定命名空间引用全扫（机检判据）**：
+
+- 方法：对 `main.js` + 全部 `shell-*.js`，剥离注释与字符串字面量后取所有「`IDENT.` 形式的使用」，与档内声明集（`require` 名 / `const|let|var` / 函数与类声明 / 形参 / 解构）比对；命中 = 未绑定。
+- 期望：**0 处**（本批修正后）。
+- 设计者本轮实扫结果（as-of 2026-09-17，修正前）：唯一命中 = `shell-mode.js` 的 `notifier`（`:131` / `:141`）——即 T12 两处；其余候选为扫描白名单缺口，已逐条核实。
+- 白名单：JS / Node / Electron 全局（`process` / `console` / `Buffer` / `app` / `BrowserWindow` / `Notification` / `Atomics` …）+ 渲染层 `window` / `document` / `navigator`。
+
+**边界（不做）**：不做全仓（非壳档）未绑定扫描的修复；不改托盘菜单结构；不改 `notify` 自身实现。
+
 ### 2.3 受影响文件全清单
 
 | 文件 | 当前行数 | 改动点（含现状行号） | 预计改动量 | 末行数（预估） |
@@ -460,7 +690,30 @@ runAutoChecks(reason)：
 - F7 保留面：`assets/pet/idle.png`（待机帧）· `assets/pet-new/**`（现行贴图）· `probe-*.js`（7 个）· `debug-pet.cmd`（B03 实机验收待用）· `package-lock*.json`（另一会话在途）；
 - 主 agent 收口面与他档：`docs/TODO.md` / `docs/README.md` · `docs/design/*`。
 
-> 行数口径 = 换行符计数（`find /c /v ""` 口径）；`main.js` 2831 / `package.json` 116 = **B06 立案实测（as-of 2026-09-16）**——与 `docs/design/AUTO-UPDATE.md` §2.3 所记 2827 / 113 的差异源 = 测量时点不同 + B03 会话在途未提交改动（§2.5 C1；评审修正轮 1 #9）；代码文件「末行数」为实施前预估（**实施起点（B03 错开后）须重测并回填批次档 §5**）；文档行按落档实测。
+> 行数口径 = **换行符计数**（LF / CRLF 皆按 1 计；`find /c /v ""` 会少计末尾空行，本档以换行符计数为准）；`main.js` 2831 / `package.json` 116 = **B06 立案实测（as-of 2026-09-16）**——与 `docs/design/AUTO-UPDATE.md` §2.3 所记 2827 / 113 的差异源 = 测量时点不同 + B03 会话在途未提交改动（§2.5 C1；评审修正轮 1 #9）；代码文件「末行数」为实施前预估（**实施起点（B03 错开后）须重测并回填批次档 §5**）；文档行按落档实测。
+
+**B07 受影响文件（as-of 2026-09-17；行数口径 = 换行符计数，见 §2.3 行数口径注；行号与行数为设计者亲测）**：
+
+| 文件 | 当前行数 | 改动点（现状行号） | 预计改动量 | 末行数（预估） |
+|---|---|---|---|---|
+| `shell-backend.js` | 274 | §2.2.8：捕获锁定 + **晚命中回收（DD-28）** + 回落取证行 + `reason` 分类 + env 宽限覆盖；§2.2.9：A1 `StringDecoder` / A2 降级 try / A3 常驻 `error` 监听 / **A5** `logStream` 提升模块级（`:179` → 模块级、近 `:41`）+ `writeDiag()` 双写 helper + `reason` 追踪（DD-27） | +约 34 / −约 6 | ≈302 → **322**（实施期实测，+20；越 300 软档） |
+| `shell-notify.js` | 165 | §2.2.10：修正 B（删 `latestMtime` 同步实现 + 导出 + 头注释）/ C（开关守卫）/ D（`error` ⇒ 回落 + 诊断行）/ E（谓词统一） | +约 12 / −约 26 | ≈151 → **163**（实施期实测，+12） |
+| `shell-mode.js` | 151 | §2.2.11：`:131` / `:141` `notifier.notify` → `notify`（两处标识符修正） | ±0 | **151**（实施期实测，与预估一致） |
+| `shell-window.js` | 109 | **不改**（`:65` 现状即 `loadURL(backend.browserUrl())`——本批目标形态已就位） | 0 | 109 |
+| `main.js` | 204 | **不改**（`notify` 注入已就位，`main.js:67`；env 读取在 `shell-backend.js`） | 0 | 204 |
+| `package.json` | 128 | **不改**（本批零新增文件 ⇒ `build.files` 不动；`dependencies` 零 diff） | 0 | 128 |
+| `已知问题与排查.md` | 145 | **不改**（他在途已落「问题 4」用户文档段；内容与本设计一致——核对于 §2.5 C24） | 0 | 145 |
+| `docs/requirements/SHELL.md` | 144 | 本批追加 US-9…US-11 / NFR-5 / US-7 补注 / NFR-2·3 注记 / 范围 / 变更记录；修正轮 1：US-9 契约补「晚命中自动跟进」句 | +55 / −3（实测） | **196**（落档实测） |
+| `docs/design/SHELL-UX.md` | 625 | 本档修订：§一 回指表 / §2.1 G–J / §2.2.8–2.2.11（修正轮 1：晚命中回收 / 回落触发 / B 判据扫描）/ §2.3 B07 表 / §2.4 DD-17…DD-28 / §2.5 C17–C26·L·O / §2.6 U-11·U-12 与追认清单 / §3.1 AC9–AC16 / §3.2 TC-27–TC-45 / §3.3 / 变更记录 | +351 / −4（实测） | **972**（落档实测） |
+| `docs/design/AUTO-UPDATE.md` | 854 | §3.1 AC7 / TC-14 两行加 B06 口径注 + 变更记录 1 行（T13 ①） | +4 / −3（实测） | **855**（落档实测） |
+
+> B07 口径：代码文件「末行数」列 = 实施前预估 → **实施期实测回填**（源 = `docs/batches/B07-harness-auth-compat.md` §5）；文档行按落档实测；行数列 as-of 2026-09-17。
+> 本批**零新增文件**——与 B06 的 15 模块新增不同，故 `package.json` 的 `build.files` 与 `dependencies` 均不动（NFR-3）。
+> **delta 口径统一（评审修正轮 1 #1）**：`shell-backend.js` 行原记 +约 22 / −约 6（未含 A5 展开项），批次档 §2.3 记 +约 30 / −约 6——本表统一为 **+约 34 / −约 6 → 实施期实测 322（预估 ≈302）**（含 A5 与 DD-28 晚命中回收）。**口径以本表为准**（批次档 §2 为 append-only——生效口径注记落批次档 §2.8）；该档 **>300 软档 体量裁定**见下条。
+> **单函数体量核对（评审修正轮 1 #7）**：三档改动均为函数内小改——最长函数 = `shell-backend.js:165` `startDsh`（48 行，本批加宽限检查 + A5 落盘 ⇒ 实施期实测 **63** 行）· `shell-notify.js:105` `startCompletionWatcher`（36 行，修正 C/D ⇒ 实施期实测 **43** 行）· `shell-mode.js:39` `applyBackground`（41 行，本批不改）——均 **<<300**，无 >300 函数面，无需拆分裁定。
+> **>300 软档 体量裁定（`shell-backend.js` 预估 ≈302 → **实测 322**；评审修正轮 1 #1 补正）**：① 事实 = 越 300 软档但 **< 400 消解线**（未触 NFR-3 的 500 硬限）；② 理由 = 本批为**纯增量**（捕获锁定 / 晚命中回收 / 取证行与 `reason` 分类 / A5 双写——无新职责、无新文件、无新依赖），单函数最长 63 行（见上条核对）；③ 消解路径 = **保持单文件、不拆分**——后续再有增量使该档**逼近 400**、或新增独立职责（新增导出面 / 新增落盘机制）时，另批做拆分复核。
+
+**B07 明确不触碰（在 B06 不改清单之外新增）**：`bundled-skills/**`（本批硬约束：只读）/ `docs/TODO.md`（台账归主 agent）/ `docs/README.md`（收口面属主 agent——T13 ②）/ B06 §1.9 与 §6（不代写他人段落——C5）。
 
 ### 2.4 关键决策记录
 
@@ -482,6 +735,18 @@ runAutoChecks(reason)：
 | DD-14 | 零回退口径 = 允许三类改动面（限定 / 转发访问器 / 样板），禁止五类语义面（顺序 / 条件 / 常量 / 字符串 / 日志时点） | 使「只搬不改」可审计、可机检（diff 判据） | 仅口头承诺「不改行为」（不可核） |
 | DD-15 | F7 清理 = **白名单精确删除**（不做全仓未引用扫描） | 用户指示的「删 1-5」已有逐条核实面；扫描式清理会误伤 B03 待用资产与另一会话在途文件 | 全仓扫描大清理（误伤面多、越权）；不清理（残留即示范） |
 | DD-16 | 「找回鲸鱼娘」保留在「高级 ▸」（不移动；评审修正轮 1 #12 裁定） | 低频救援动作（PET US-14：几何意外时自救）——与「高级 ▸」的「低频但须可达」语义一致，且与重置 / 恢复同属「出事才用」的兜底族；移入功能组会与日常高频动作混质（兑换屋进功能组的判据 = 日常动作 + 专注模式可达性硬要求，与救援动作属两类判据） | 移入功能组（动作族归属更顺，但高频 / 低频语义不合——裁定不采纳） |
+| DD-17（B07） | 主窗口 URL 取值链 = 后端打印行作**唯一来源**；兜底 = 裸地址 + 诊断行 | 唯一同时满足「不停在 401」「不写死版本」「不动 Harness」的方案（选型 G） | 关鉴权 / 推算令牌 / 伪造 Cookie / 壳侧先换 Cookie（逐条否决见选型 G） |
+| DD-18（B07） | 回落路径**只记日志**，不加用户面弹窗 / 提示 | 该路径仅在壳侧探测失败时可达；日志 + 401 页面本身可排查；新增未审 UI 文案超出本批（列为 open 项 U-12） | 加气泡 / 对话框提示（未审文案，本批不引入）；静默回落（违 AC1「留日志」） |
+| DD-19（B07） | URL 宽限期 env 可覆盖：`BIGFISH_WEB_URL_WAIT_MS`（默认 3000） | 使「未捕获 → 回落」路径可机检驱动（承 `BIGFISH_UPDATE_INTERVAL_MS` 先例）；否则只能改源码验证 | 测试时手改源码（不可重复、无痕、有误提交风险）；不提供测试钩（AC9 回落面不可机检） |
+| DD-20（B07） | 后端 stdout = 管道 + tee 双写 + 四项加固（StringDecoder / 降级 try / 常驻 `error` / 背压口径） | 同时满足「拿到令牌地址」与「取证面不回退」（选型 H）；四项加固均有现状证据 | 直写 + 尾随读日志嗅探 / 只嗅探不落盘 / 不用 `--no-open`（见选型 H） |
+| DD-21（B07） | 完成探测 = `fs.watch(recursive)` 主路径 + 非 Windows 异步回落；5 s 定时器纯算术 | 唯一同时满足「不阻塞」「零新依赖」「开销与规模解耦」（选型 I） | 异步全树轮询 / `chokidar` / 收窄监视面（逐条否决见选型 I） |
+| DD-22（B07） | busy 谓词 = **路径任一段落** ∈ `{profiles, node_modules}`（旧 skip 语义原样；批次档 §1.4 R4 的「顶层段」表述已同步采纳本口径——§1.9 更正 ③④） | 取旧语义（任意深度同名目录）可证「语义不回退」，且 watch 与回落两路同谓词；本机布局下与「顶层段」结果**等价**（§1.6 #8：名为 `node_modules` 的目录 3 处，全在 `profiles/**`） | 保留顶层段过滤（语义面窄于旧版，且两路不同口径）；收窄监视面（语义变更，见选型 I #4）——**待用户追认** |
+| DD-23（B07） | 开关关闭时 watch 回调也守 `notifyOnComplete` | 恢复旧语义（旧实现定时器早退 ⇒ 不计忙）；不如此则关闭期间活动累积、重开即补发一条假通知 | 不守卫回调（现状——重开即误报） |
+| DD-24（B07） | watcher `error` ⇒ 切回落 + 诊断行 | 避免监听静默死亡（现状空处理）；回落路径已在（复用既有分支，成本≈0） | 保持空处理（不可诊断的通知失效） |
+| DD-25（B07） | 删死代码同步 `latestMtime`（含导出与头注释引用） | 全仓 0 调用点 + NFR-5 静态判据（探测域无 `*Sync(` 调用面）；残留即示范 | 保留导出（静态判据无法机检；死代码无维护价值） |
+| DD-26（B07） | F6 修复走**已注入的 `notify`**（不新增 require） | 与 §2.2.6 声明的注入面一致；避免同能力两条路径（选型 J） | 新增 `require('./shell-notify.js')`（不成环但双面）；托盘代调（域归属错位） |
+| DD-27（B07） | 诊断行落盘 = `logStream` 提升模块级 + `writeDiag(line)` 双写 + `reason` 追踪（§2.2.8） | AC9 / AC15 的机检要求这两条行**真的落盘**；现状 `console.log` 只到主进程 stdout ⇒ 不补机制则判据不可达 | 只写 console（机检不可达）；行走 `tee`（污染后端取证面）；另起日志文件（新增落点） |
+| DD-28（B07） | 晚命中（宽限耗尽后 URL 行才到达）⇒ 对已按裸地址加载的主窗口**补一次 `loadURL`** 到命中地址（§2.2.8） | 该态下窗口整场停在 401、须重启应用——与 US-9「打开主界面这一动作永远真的能打开界面」相抵；成本 = 命中分支内一个 if（`getMainWindow()` 是既有注入面：零新增注入 / 零新增日志） | 不回溯（本次会话残留 401；实现者易各自发挥）；壳侧先换 Cookie / 轮询重试（越界：伪造 Cookie、加 Harness 未支持的启动参数） |
 
 ### 2.5 与既有纪律 / 既有实现的冲突点核对
 
@@ -503,6 +768,16 @@ runAutoChecks(reason)：
 | C14 | 各档 `main.js` 行号指针（as-of 口径） | 拆分后全面漂移属预期（docs/README 口径「行号只作 as-of 参考」）；旧行号段 → 新模块映射表 = §2.2.6 | 不冲突（口径内） |
 | C15 | 「零新依赖」与「直接跑源码」 | 15 新模块为纯 CommonJS；无构建步骤、无新依赖 | 不冲突 |
 | C16 | 用户指示「删 1-5」的清理面与 B03 待用资产（`probe-*.js` / `debug-pet.cmd`）擦边 | F7 白名单精确删除；待用资产列入**保留清单**（§2.2.7） | 不冲突（边界界定） |
+| C17（B07） | 批次档 §1.4 R4 原表述的 busy 判定面（「非遗 `profiles` / `node_modules` **顶层**的写入」） | 本设计统一为「**路径任一段落**」（= 旧 skip 语义原样；本机布局下与「顶层段」结果等价——§1.6 #8）——主 agent 已采纳（批次档 §1.9 更正 ③④） | 口径统一（表述更正，非语义变更）——**待用户追认**（DD-22） |
+| C18（B07） | 批次档 §1.6 #10 记 `main.js` **200** 行 | 实测 **204** 行（换行符计数口径；工作区未改 main.js） | 计数更正（登记 O11，随批次档 §6 核销一并处理） |
+| C19（B07） | 零新依赖 / 不引构建 | 只用内置模块（`node:fs` / `node:string_decoder` / `node:path`）；`dependencies` 零 diff；本批**零新增文件** ⇒ `build.files` 不动 | 不冲突 |
+| C20（B07） | 既有取证锚点（B01–B05）不得丢 | §2.2.6 锚点清单 B07 附注：**新增 1 个 env 开关 + 2 条日志行 + 1 条条件诊断行**；其余不增不删（计数与枚举同改） | 不冲突（有界新增） |
+| C21（B07） | 批次档 §1.7：4 文件持有他会话未提交改动 | 本批以现状为基线**收编**（只加固不重写）；`shell-window.js` / `main.js` 实测**无需改动**（目标形态已就位） | 不冲突 |
+| C22（B07） | 技术待办 T12（未绑定 `notifier`） | §2.2.11 修复 + 同类未绑定引用全扫判据（期望 0 处） | 有意变更 |
+| C23（B07） | 技术待办 T13 三拆：① AUTO-UPDATE §3.1 判定面；② `docs/README.md` 技术待办计数与 `main.js:149` 指针；③ B06 §5 实施记录缺口 | ① 本批落（§2.2.11 与 §3.3 手段 8）；②③ 属主 agent 写域（本角色不处置——批次档 C5 已裁定不代写） | 部分移交（登记） |
+| C24（B07） | `已知问题与排查.md` 的「问题 4」用户文档段（在途已落） | 与本设计逐项一致：地址来源（日志里的 `dsh web:` 行）/ `--no-open` / 令牌每进程变化——**不改** | 不冲突 |
+| C25（B07） | 凭证与路径不入档（批次档 §1.7） | 设计只记行形态与 `token=yes|no`，**不记令牌值**；后端自身打印行保持原样（取证与用户排查需要，非新增写入） | 不冲突 |
+| C26（B07） | 既有取证面口径：`bigfish.log` = 后端 stdio 落盘（B04 / B05 依赖） | 本批新增壳侧诊断行经 `writeDiag` **追加**写入同一文件（不替代 tee 路径、不改文件名 / 落点；计数见 §2.2.6 B07 附注） | 不冲突（有界新增） |
 
 > **口径注（评审修正轮 1 #9）**：上表 C1（B03 写域冲突）的解消动作 = B03 错开后**实施起点重测 `main.js` / `package.json` 行数并回填批次档 §5**（测量口径与 as-of 值见 §2.3 表注）。
 
@@ -513,6 +788,7 @@ runAutoChecks(reason)：
 - **L3（评审修正轮 1 #6 改写；原限制已消解，保留条目供追溯）**：macOS 的 `activate`（Dock 点击）**统一改经 `showMainWindow()`**——Dock 点击 = 用户主动显示请求（显示 + 聚焦；零窗口时建窗后显示）；原「不主动显示 / 零窗口建窗亦不显示」作废——与 NFR-2「既有行为不得回退」的相抵面已消解（例外句落 `docs/requirements/SHELL.md` §四 NFR-2）。
 - **L4**：模式选择弹窗仍可能在首启 / 版本更新后自动弹出（一次性；§二 范围已声明保持现状）。
 - **L5**：拆分后 `main.js` 及引用其行号的既有文档指针全面漂移（as-of 口径容忍；映射表见 §2.2.6）。
+- **L-B07-1 / L-B07-2 / L-B07-3 / L-B07-4（B07 新增；正文定义在机制节——本处只登记号与指针，不重述（D2）**：L-B07-1（tee 处理 `drain`）见 §2.2.9；L-B07-2（回落路径全树异步扫描）/ L-B07-3（watch 缓冲溢出漏事件）/ L-B07-4（`~/.dsh` 不存在时不自身修复）见 §2.2.10。
 
 **观察项（既有语义缺口 / 批次外协调项）**
 
@@ -523,6 +799,16 @@ runAutoChecks(reason)：
 - **O5（发现即报告）**：`README.md:46` / `使用说明.txt:21-25` 的向导描述随 F2 失效——已列入受影响文件表（随包文档更新）；`版本说明.txt:44/:61` 为历史版本注记，**不动**（历史语义保留）。
 - **O6（发现即报告）**：`docs/design/PET-DRAG.md` §2.5 观察项 F4（拆分 `main.js`）与 `PET-MULTIMONITOR` 的体量债记录随本批收口——两档指针更新不在本角色写域；随报告提请。
 - **O7（发现即报告，只报告不自行改）**：`THIRD-PARTY-NOTICES.md:53-54` 提及第三个素材目录 `assets/jimeng-2026-08-15-3386/`——该目录在仓库中不存在（陈旧提及）；交主 agent 收口。
+- **O8（B07 发现即报告——已复核收口）**：本角色上轮据「`pnpm-store/**` 下 2,302 个 `node_modules` 目录」质疑批次档 §1.6 #8 的「名为 `node_modules` 的目录仅 3 处、全在 `profiles/**`」——
+  **经三法复核，该质疑不成立、原结论保留**：递归文件 **20,857**（`profiles/` 4 + `pnpm-store/` 20,849 + `storages/` 1 + 顶层 3）；名为 `node_modules` 的目录 **3** 处（全在 `profiles/**`），`pnpm-store/` 下 **0** 处。
+  原记 2,302 **本轮无法复现**（同口径复扫：路径中出现 `node_modules` 字样的目录 28 处）——成因未定，按「误计数」收口（依据 = 三法一致）。
+  ⇒ R4 的「任一段落」表述由主 agent 采纳（理由 = 逐字忠实旧 skip 语义 + 单一谓词；与等价性无关——批次档 §1.9 更正 ③④）。**本项已收口，无遗留动作**。
+- **O9（B07 发现即报告）**：回落路径（非 Windows）每 5 s 仍全树异步扫描 20,849 文件——不阻塞但持续 I/O；候选加固（收窄活动面 / 降频）属语义变更，留待后续批次（本批列为选型 I 候选 4 的否决理由）。
+- **O10（B07 发现即报告）**：`fs.watch({recursive:true})` 的 OS 缓冲溢出可漏事件（Windows）——本批不加兜底轮询（会重新引入 I/O）；可选加固 = 低频（≥60 s）兜底扫描，待后续批次。
+- **O11（B07 发现即报告）**：批次档 §1.6 #10 记 `main.js` **200** 行，实测 **204**（同换行符计数口径，工作区未改 main.js）——请主 agent 在 §6 核销时更正计数。
+- **O12（B07 发现即报告）**：`waitForReady` 将 401 计入「就绪」（`statusCode < 500`，`shell-backend.js:100`）——**有意保持**（就绪判定不涉鉴权面）；登记备查。
+- **O13（B07 发现即报告 → open 项）**：URL 未捕获时的**用户面提示**未定（设计建议不加——见 §2.6 U-12）；需评审 / 用户裁定。
+- **O14（B07 发现即报告）**：技术待办 T13 的②（`docs/README.md` 技术待办计数与 `main.js:149` 指针）与③（B06 §5 实施记录缺口）属主 agent 写域——本批不处置，随 §6 收口。
 
 ### 2.6 UI / 交互决策
 
@@ -538,8 +824,18 @@ runAutoChecks(reason)：
 | U-8 | 模式弹窗指路文案 | 「之后可以在托盘菜单切换「🐳 鲸鱼模式 / 🧘 专注模式」。」 |
 | U-9 | 冷启动可见物 | 桌宠 + 托盘；主界面按需打开（US-5） |
 | U-10 | 「找回鲸鱼娘」所在分组 | **保留「高级 ▸」**（低频救援动作，不移动）——取舍理由 = §2.4 DD-16（评审修正轮 1 #12） |
+| U-11（B07） | 主窗口实际加载的地址（用户不可见） | 优先后端打印的带令牌地址（US-9）；回落时窗口可能停在 401 文本页（日志有诊断行） |
+| U-12（B07） | URL 未捕获时的**用户面提示** | **open**——建议不加（与「日志 + 401 页可排查」一致，且不引入未审文案）；待评审 / 用户裁定 |
 
-**open 项**：无未决设计项。**待用户追认项**（非 open——设计已定，用户可在评审时改判）：US-1 的「只开不隐」（R3）、US-5 的启动形态（C4/R2）、US-4 的结构（R5 基线 + DD-3/DD-4 两处优化）、**L1**（dev 手动检查无更新 → 静默无反馈——「已接受行为」）——见 `docs/batches/B06-shell-ux.md` §1.9。
+**open 项（B07）**：**U-12**（URL 未捕获时是否加用户面提示）——设计建议不加（依据 = DD-18）；待用户 / 评审裁定。
+
+**B07 待用户追认项**（非 open——设计已定，用户可在评审时改判）：
+
+- **DD-22**：busy 判定面取「路径任一段落」（= 旧 skip 语义逐字忠实 + watch / 回落单一谓词；本机布局下与「顶层段」等价——批次档 §1.6 #8）；
+- **DD-18 / DD-19**：回落路径不做用户面提示；新增 `BIGFISH_WEB_URL_WAIT_MS` 测试钩子（默认 3000，仅为 AC9 回落面可机检）；
+- **L-B07-2 / L-B07-3**：回落路径（非 Windows）每 5 s 仍异步全树扫描（不阻塞但持续 I/O——O9）；Windows 递归 watch 的 OS 缓冲溢出可漏事件（少记一次忙 = 可能少一次提醒——O10）——两条均为「已接受限制」，正文见 §2.2.10，本批不修。
+
+**B06 待用户追认项（原文保留）**：**open 项**：无未决设计项。**待用户追认项**（非 open——设计已定，用户可在评审时改判）：US-1 的「只开不隐」（R3）、US-5 的启动形态（C4/R2）、US-4 的结构（R5 基线 + DD-3/DD-4 两处优化）、**L1**（dev 手动检查无更新 → 静默无反馈——「已接受行为」）——见 `docs/batches/B06-shell-ux.md` §1.9。
 
 ---
 
@@ -557,8 +853,21 @@ runAutoChecks(reason)：
 | AC4 | US-4、NFR-2 | 真机目视 + 逐条核对：一级 11 项及其顺序、4 分隔线、2 个 radio 及其 `checked` 条件、`设置 ▸` / `高级 ▸` 成员（§2.2.3 表逐行对照）；专注模式：「鲸鱼娘兑换屋」可开、「找回鲸鱼娘」置灰 | 人判 + 静态（结构逐条） |
 | AC5 | US-6 | dev 实跑：点「检查更新」→ 无「只在安装版可用」弹窗；`updater.log` 出现 gate 行（`face=app skipped=dev`）且随后有 harness 检查行；`dshBinPath` 无指针 / 有指针两态正确。静态：App 面受 `app.isPackaged` 保护；该提示文案 grep = 0 处（范围 = 代码 / 配置，**排除** `docs/`——本档与相关档含该文案引述） | 半机检（日志 + 静态全机检；点击行为目视） |
 | AC6 | US-6 | 代码路径对照（沿用 B02/B05 判据，不新增）：App 面分支 / 更新窗口 / 清单与校验链路与 B05 终态逐条一致（diff 核对）；真机发布门项另计（T8） | 半机检（diff 对照） |
-| AC7 | US-7、NFR-3 | 行数实测：**源码 js 全档 ≤500**（= 全仓 `.js`，含 `probe-*.js` / `scripts/` / `tests/`；**排除** `dsh-bundle/`、`node_modules/`、`.test-*`；唯一超顶者 `main.js`（拆分清零）；口径 `find /c /v ""`）；`node --check` 全绿（15 新模块 + `main.js` / `pet.js`）；锚点清单（§2.2.6）在场；依赖段零 diff；真机回归（§3.2 TC-19） | 机检（行数 / 语法）+ 真机回归 |
+| AC7 | US-7、NFR-3 | 行数实测：**源码 js 全档 ≤500**（= 全仓 `.js`，含 `probe-*.js` / `scripts/` / `tests/`；**排除** `dsh-bundle/`、`node_modules/`、`.test-*`；唯一超顶者 `main.js`（拆分清零）；口径 = 换行符计数，见 §2.3 行数口径注）；`node --check` 全绿（15 新模块 + `main.js` / `pet.js`）；锚点清单（§2.2.6）在场；依赖段零 diff；真机回归（§3.2 TC-19） | 机检（行数 / 语法）+ 真机回归 |
 | AC8 | US-8 | 删除面：四组文件不存在 + 全仓 grep 0 处（排除 `docs/` / `.test-*` / `dsh-bundle`；§2.2.7）；保留面：`assets/pet/idle.png` / `assets/pet-new/**` / `probe-*.js` ×7 / `debug-pet.cmd` 在场；`package.json` **F7 提交自身**零改动（三面；F2 / F6 预期 diff 除外——§2.2.7 判据③）；真机冒烟 | 机检（存在性 + grep + diff）+ 真机冒烟 |
+| AC9（B07） | US-9 | 真机：活跃副本 `0.1.5-rc.1` 冷启动 → 主窗口显示对话 UI（非 401）；`bigfish.log` 有 `dsh web: …?token=` + `backend web url captured … token=yes`。静态：主窗口 URL 唯一出口 = `browserUrl()`（两处调用点均经它）；回落 / 旧版两子面 = 本表后「AC9 补充判据」行 | 半机检（日志 + 静态全机检；UI 目视） |
+| AC10（B07） | US-9 | 真机：插件安装 / 手动重启后端 → 新端口 + 新令牌自动跟进（重载后仍是 UI 而非 401）；日志出现**第二条 captured 行且 port 与前一条不同** | 半机检（日志 + 目视） |
+| AC11（B07） | US-10 | 机检：启动日志**无** `dsh web: opening the default browser` 行；同序列有 `dsh web: …` 行（`--no-open` 不影响打印）；真机：无新浏览器窗口 / 标签页 | 半机检（日志全机检 + 真机目视） |
+| AC12（B07） | US-11、NFR-5 | 机检：`grep -n "Sync(" shell-notify.js` = **0 处**；`latestMtime` 符号（**词边界** `\blatestMtime\b`）0 处（同步版已删；`latestMtimeAsync` 不计入）；5 s 定时器回调体内无 fs 调用（逐行静态核对）；真机：`~/.dsh` 20,857 文件下拖动桌宠 / 点托盘无可感周期性顿挫（旧实现对照 ≈2 s/轮） | 机检 + 真机 |
+| AC13（B07） | US-11 | 真机三路径：① 后端活动（写 `storages/`）→ 静默 30 s → 通知**一次**；② `notifyOnComplete=false` → 零通知；③ 关闭期间有活动 → 重新开启**不补发**（修正 C）。回落路径：首扫不误报（基线面保持） | 半机检（真机目视 + 静态核对） |
+| AC14（B07） | US-7 补注（T12） | 静态：`shell-mode.js` 无 `notifier` 符号（0 处），两处为 `notify(...)`；同类未绑定命名空间引用全扫 = **0 处**（方法 = §2.2.11）。真机：托盘「更换背景…」/「恢复默认背景」均出通知、无异常 | 半机检（静态全机检 + 真机点菜单） |
+| AC15（B07） | US-9、US-10、NFR-3 | 机检：B04 / B05 锚点逐条在场 + URL 诊断行每次启动至少命中一条（不要求单次两条齐备）+ 日志无 U+FFFD + `node --check` 全绿（对照方式与行形细目见本表后「AC15 判据细化」） | 机检（日志对照 + 语法） |
+| AC16（B07） | NFR-2（B07 注记）、NFR-1…NFR-5 | 真机十面回归（B06 AC1–AC6 判据沿用，不新增）：启动形态 / 托盘 11 项 / 桌宠左右键 / 主窗口 / 兑换屋 / 市场 / 插件 / 更新门禁 / 通知 / 背景更换；新增：主窗口 URL 捕获面（AC9/AC10） | 半机检（B06 静态面复跑 + 真机回归） |
+
+> **B07 回指口径（三方条目一致——硬）**：批次档 §2 本批条目（I1–I6）= 本表 AC 回指条目 = `docs/requirements/SHELL.md` 条目（US-9 / US-10 / US-11 / NFR-5 / US-7 补注）。
+> **AC9 补充判据（回落 / 旧版两子面）**：① `BIGFISH_WEB_URL_WAIT_MS=0` 启动（URL 行晚到）→ `not captured … reason=no-line` + 窗口先加载裸地址，行到达后补一次加载自愈为对话 UI（DD-28；不接受的行形见 TC-32）；② harness 无令牌输出 → captured `token=no` 仍可用（旧版兼容，用例 TC-33）。
+> **AC15 判据细化（AC15 行压行后的细则面，内容与原行等价）**：① 对照方式 = 改动前后**同一启动序列**的 `bigfish.log`；② 在场锚点 = `harness activate …` / `harness install phase=…` / `update …`（B04 / B05）；③ URL 诊断行形 = `captured`，或 `not captured` + `reason`——不要求单次两条齐备；④ 「两条齐备」判定并入 TC-31（晚到序列）；⑤ 日志无 U+FFFD = 分片注入 TC-36。
+> 批次档 §1.5 的 AC1–AC7 与设计 AC9–AC16 的映射：**AC1 → AC9·AC10 · AC2 → AC11 · AC3 → AC12 · AC4 → AC13 · AC5 → AC14 · AC6 → AC15 · AC7 → AC16**。
 
 > 回指口径（评审修正轮 1 #8）：NFR-1（验收：AC2、AC3）落 AC2 / AC3 行；NFR-2 无独立 AC 编号（`docs/requirements/SHELL.md` §四——度量为评审核对 §2.3 / §2.5 + 平台分支 grep 计数，§3.3 手段 ⑥），回指附于其覆盖的改动面（US-5 → AC2、US-4 → AC4）。
 
@@ -592,6 +901,27 @@ runAutoChecks(reason)：
 | TC-24 | 正常 | 第二实例（主窗口已存在，含最小化态） | 显示 + 聚焦；最小化态被 `restore()` 还原（既有语义，`main.js:2458` 等价保留）；主界面显隐语义不变 | US-5 / NFR-2 |
 | TC-25 | 正常 | `--open <path>` 启动（主窗口已隐藏时） | 主界面显示 + 聚焦 + 通知「已打开：<path>」（`handleOpenArg` 既有路径改经 `showMainWindow()`——§2.2.2 口径注） | US-5 / NFR-2 |
 | TC-26 | 边界 | macOS `activate`（Dock 点击；whale / focus 两态） | 主界面显示 + 聚焦（零窗口时建窗后显示）——macOS 目视项（Windows 验收面不受影响） | US-5 / NFR-2 |
+| TC-27（B07） | 正常 | Harness = `0.1.5-rc.1`（活跃指针）冷启动（隔离 userData + 隔离 `DSH_HOME`） | 主窗口显示对话 UI（非 401 文本页）；`bigfish.log` 有 `dsh web: …?token=` + `backend web url captured port=<n> token=yes` | US-9 / AC9 |
+| TC-28（B07） | 正常 | 静态：主窗口 URL 取值链 | `shell-window.js` 与 `restartBackend` 两处均调 `browserUrl()`；**窗口 URL 出口面**的裸地址拼接仅 `browserUrl()` 内 1 处（就绪探针 / 启动横幅 / 守卫 origin 的地址串不计入本判据）；`will-navigate` 守卫未改 | US-9 / AC9 |
+| TC-29（B07） | 正常 | 触发后端重启（插件安装 / 手动） | 新端口 + 新令牌自动跟进；日志第二条 captured 行 port 不同；窗口重载后仍为 UI | US-9 / AC10 |
+| TC-30（B07） | 正常 | `--no-open` 生效启动 | 日志无 `dsh web: opening the default browser`；无新浏览器窗口；`dsh web: …` 行仍在（打印不受影响） | US-10 / AC11 |
+| TC-31（B07） | 边界 | `BIGFISH_WEB_URL_WAIT_MS=0` 启动（强制宽限期耗尽；URL 行晚于宽限到达） | 窗口先加载裸地址（401 文本页）+ 日志 `not captured port=<n> reason=no-line fallback=http://…`（不静默）；URL 行随后到达 ⇒ 补发 `captured port=<n> token=yes`（**两条齐备面**）且窗口自愈为对话 UI（DD-28，无需重启） | US-9 / AC9 |
+| TC-32（B07） | 错误 | 后端输出行形异常：非回环主机 / 旧端口 / URL 不可解析 | 该行不被采用（不加载非本机地址）；最终 `reason=mismatch` 或 `parse-fail` 取证行在场 | US-9 / AC9 |
+| TC-33（B07） | 边界 | Harness = `0.1.0-rc.6`（或等效的无 token 输出） | 捕获成功（`token=no`）→ 加载裸地址；窗口正常可用（旧版兼容） | US-9 / NFR-2 |
+| TC-34（B07） | 正常 | tee 双写取证面：同一启动序列的 `bigfish.log` | 后端输出（含 `harness …` 行）逐条在场；URL 诊断行**每次启动至少命中一条**（`captured` 或 `not captured` + `reason`）；无 U+FFFD | US-10 / AC15 |
+| TC-35（B07） | 错误 | 日志流打不开（隔离 userData 只读 / 目录被占） | 后端照常启动、应用不崩；输出降级到 `process.stdout`；无未捕获异常 | US-10 / AC15 |
+| TC-36（B07） | 边界 | 跨 chunk 的 UTF-8 多字节字符（分片写入；开发期一次性 node 脚本核对 `StringDecoder` 路径） | 日志逐字还原、无 U+FFFD；嗅探不受影响 | US-10 / AC15 |
+| TC-37（B07） | 正常 | 静态：探测域同步调用面 | `grep -n "Sync(" shell-notify.js` = 0 处；`latestMtime` 符号（**词边界**）0 处（`latestMtimeAsync` 不计入）；5 s 回调体内无 fs 调用 | US-11 / AC12 |
+| TC-38（B07） | 正常 | 真机：后端执行任务（产生 `~/.dsh` 写入）→ 静默 30 s | 写入期间不通知；静默达阈值后通知**一次**（气泡 + 桌宠台词）；再静默不重复 | US-11 / AC13 |
+| TC-39（B07） | 边界 | 托盘关闭「任务完成时通知」→ 产生活动 → 重新开启 → 静默 30 s | 关闭期间零通知；重新开启后**不补发**（修正 C 判据） | US-11 / AC13 |
+| TC-40（B07） | 边界 | 回落路径（非 Windows / 强制 `fs.watch` 抛错）冷启动后无任何写入 | 首扫只建基线 → 不通知（不误报）；后续有新写入 → 达阈值通知一次 | US-11 / AC13 |
+| TC-41（B07） | 错误 | watcher 运行期 `error`（监视根被删 / 权限变化） | 发出 `completion watcher unavailable; falling back to async scan`；切回落路径后通知仍可用（不再静默失效） | US-11 / AC13 |
+| TC-42（B07） | 错误 | 托盘「更换背景…」（选一张图） | 背景更换生效 + 通知「背景已更换」；**无** `[bigfish] 更换背景失败:` 假错误行 | US-7 补注 / AC14 |
+| TC-43（B07） | 错误 | 托盘「恢复默认背景」 | 恢复生效 + 通知「已恢复默认背景」；主进程无未捕获异常（改前抛 ReferenceError） | US-7 补注 / AC14 |
+| TC-44（B07） | 正常 | 同类未绑定引用全扫（§2.2.11 方法） | 0 处（修正后 `shell-mode.js` 的 `notifier` 两处清零） | US-7 补注 / AC14 |
+| TC-45（B07） | 正常 | 真机十面回归 + B06 静态面复跑 | 各面零回退（启动形态 / 托盘 11 项 / 桌宠左右键 / 主窗口 / 兑换屋 / 市场 / 插件 / 更新门禁 / 通知 / 背景更换） | NFR-2 / AC16 |
+
+> **TC-31 的可达性口径（评审修正轮 1 #3）**：本用例强制宽限耗尽；若该序列中 URL 行在 `waitForWebUrl` 返回前已到达（捕获早已锁定），则只命中 `captured` 一条、不产生 `not captured` 行——此时「两条齐备」面**未构造到**，记为未覆盖该态（不伪报），回归主判据仍为 AC15 的「每次启动至少命中一条」。
 
 ### 3.3 验证手段、仪表与限制
 
@@ -599,18 +929,25 @@ runAutoChecks(reason)：
 
 1. **静态核对（grep 清单）**：① AC3 **五符号** 0 处（排除 `docs/`、`.test-*`、`dsh-bundle/`）；② `pet.js` 左键守卫三处；③ `showMainWindow` 为点击路径唯一「显示」入口；④ 托盘条目结构（§2.2.3 对照）；⑤ 门禁分支（`app.isPackaged` 保护 + `face=app` 行）；⑥ 平台分支计数（新增代码零平台分支）；⑦ `grep "更新检查只在安装版可用"` = 0 处（排除 `docs/`）。
    - ⑧ F7 删除面：四组文件不存在 + 引用 0 处（grep 范围含代码 / 配置 / 随包文档，排除 `docs/` 与 `.test-*` / `dsh-bundle`）；⑨ F7 保留面在场（`assets/pet/idle.png` / `assets/pet-new/**` / `probe-*.js` ×7 / `debug-pet.cmd`）。
-2. **行数实测**：`find /c /v ""` 于全部 js（口径承 B05）。
+2. **行数实测**：换行符计数于全部 js（口径承 B05；口径定义见 §2.3 行数口径注）。
 3. **语法门**：`node --check` 于 15 个新模块 + `main.js` + `pet.js`（本仓无 lint / test script，此为最小机械门）。
 4. **真机清单**：按 §3.2 逐条执行；冷启动类用例用隔离 `--user-data-dir` + 隔离 `DSH_HOME`（承 B02 §6.7 / B05 手法），并预置 `settings.json`（`modeChosen:true`、`mode:'whale'`）。
 5. **锚点 grep 清单**：§2.2.6 表逐条（含 `updater.log` 15 条主格式行与变体、`pet-*` 日志、console 行、env 开关）。
 6. **纯迁移 diff 判据**：P1 起点提交为基线——各层迁移提交除样板（require / exports / 限定 / 访问器）外，逐句一致；行为变更（F1–F5）不得混入 P1 各提交。
 7. **本批不引入**：测试框架 / `test` script / 新增 `tests/` 文件（T4 认账不排期；判据口径承 B05 §3.3 手段 8）。
+8. **B07 静态核对清单（新增项）**：① `shell-mode.js` 无 `notifier` 符号（`grep -n "notifier" shell-mode.js` = 0 处）；② `shell-notify.js` 无 `*Sync(`（含 `readdirSync` / `statSync`）且无 `latestMtime` 符号（**词边界**，`latestMtimeAsync` 不计入）；
+   ③ 主窗口 URL 单入口——`grep -n "browserUrl()" *.js` 命中点均合法，**窗口 URL 出口面**的裸地址拼接仅 1 处；④ 日志流常驻 `error` 监听在场；⑤ watcher 常驻 `error` 监听 + `useWatch=false` 分支在场；⑥ busy 过滤谓词为单一实现且被两路复用（无第二份 skip 集）。
+9. **B07 扫描脚本（开发期一次性，不入仓、不登记 `package.json`）**：未绑定命名空间引用全扫（方法见 §2.2.11）——期望 0 处。
+10. **B07 日志取证**：`bigfish.log`——`backend web url captured|not captured` 行；`dsh web:` 行（带 / 不带 `token=`）；`dsh web: opening the default browser` 行**缺失**（AC11）；B04 / B05 锚点行在场（AC15）。
 
 **只能人工验证的条目（如实标注）**
 
 - AC1 / AC4 / AC5 的交互观感（点击手感、菜单目视顺序、dev 点击行为）——真机人工；其机器证据（静态守卫、结构对照、日志行）如 §3.1 所列。
 - AC2 的「无自动可见窗口」——真机窗口枚举人工执行（辅助计数不可替代目视）。
 - AC6 的发布门项（真实安装 / 自更新全流程）沿用 B02/B05 的既有判定面，本批只做代码路径对照（T8 另计）。
+- **B07 人工项**：AC9 / AC10 / AC11 / AC13 / AC14 / AC16 的 UI 观感与真机行为（对话界面是否出、浏览器是否拉、通知 / 菜单项行为、十面回归）——真机人工；其机器证据（日志行 / 静态判据）如 §3.1 所列。
+  AC12 的「无可感周期性顿挫」为主观体验项，但已由**机检硬判据**（`*Sync(` = 0 处）承重（真机只看无回归）。
+- **B07 不可机检 / 需构造的项**：TC-31（回落）靠 env 强制；TC-35（日志流打不开）靠隔离 userData 权限构造；TC-40 / TC-41（回落与 watcher 异常）在 Windows 上需人工构造（临时改路径 / 删监视根）——一律如实标注为人工执行，不伪报机检。
 
 ---
 
@@ -623,3 +960,13 @@ runAutoChecks(reason)：
 | 2026-09-16 | **评审修正轮 1**（#2–#12、#14；#13 无改动）：F2 补 `ready-to-show` 向导显块；AC3 五符号 + AC3 / AC5 / AC7 / §3.3 判据范围排除；AC8 / TC-21 零 diff 限 F7 自身；§2.2.6 逐档预估 + >300 档结论 + 覆盖核对 + 注 S4；macOS `activate` 改经 `showMainWindow()`（+ L3 / TC-26）；§3.1 NFR 回指；§2.3 / §2.5 as-of 注；L1 并入追认；DD-16 / U-10；TC-24 / TC-25。 |
 | 2026-09-16 | **修正轮 1 遗留项：行宽**——§2.2.6 `shell-pet-geometry.js` 行函数枚举移入注 S4（行内改「函数清单见注 S4」）；`docs/design/AUTO-UPDATE.md` TC-16 行示例路径缩短；两行均压至 ≤300 字符（语义不变）。 |
 | 2026-09-16 | **实施期形态注（P0 落地后）**：§2.2.2 补零窗口建窗分支口径（`showMainWindow()` 经 `ready-to-show` 首帧就绪后才 `show` + `focus`，防露未加载空窗——实现 = `main.js:732-733`）；§3.1 AC1 机检措辞按实现形态（`e.button !== 0` 早退 ×2 + `(e.buttons & 1) !== 0` 位掩码 ×1）；均不改语义。 |
+| 2026-09-17 | **B07 批次修订**（源 = `docs/batches/B07-harness-auth-compat.md` §1.3 C1–C6 / §1.4 R1–R6；权威需求 = `docs/requirements/SHELL.md` US-9…US-11 / NFR-5 / US-7 补注）：§一 回指表补 6 行；§2.1 增选型 **G**（主窗口 URL 契约）/ **H**（后端 stdout 处置）/ **I**（完成探测机制）/ **J**（F6 缺陷修复口径）； |
+|  | §2.2 增 **2.2.8**（URL 契约与取证行）/ **2.2.9**（stdout 四加固）/ **2.2.10**（探测机制 + busy 口径改判 + 修正 B–E + L-B07-1…4）/ **2.2.11**（F6 修复 + 未绑定引用全扫）；§2.2.6 增注 S5 与取证锚点清单 B07 附注；§2.3 增 B07 受影响文件表； |
+|  | §2.4 增 DD-17…DD-27；§2.5 增 C17–C26、L-B07 指针、O8–O14；§2.6 增 U-11 / U-12 与 B07 open / 追认项；§3.1 增 AC9–AC16 与三方条目映射；§3.2 增 TC-27–TC-45；§3.3 增手段 8–10 与 B07 人工项。需求档修订同步落 `docs/requirements/SHELL.md`（US 8 → 11、NFR 4 → 5）。 |
+| 2026-09-17 | **B07 定点更正（主 agent 复核裁定后）**：① busy 口径的**理由更正**（§2.2.10 / §2.4 DD-22 / §2.5 C17 / §2.6 追认项）——上轮所记「`pnpm-store/**` 下 2,302 个 `node_modules` 目录 ⇒ R4 等价性前提被否证」经三法复核**无法复现**； |
+|  | 名为 `node_modules` 的目录 3 处（全在 `profiles/**`；`pnpm-store/` 0 处），取「任一段落」的理由改为「逐字忠实旧 skip 语义 + 单一谓词」；O8 由「待裁定」改为「已复核收口」（**决策不变**）； |
+|  | ② **设计缺口补齐（判据可达性）**：新增 §2.2.8「落盘机制」与 §2.2.9 A5——`logStream` 提升模块级 + `writeDiag(line)` 双写 + `reason` 追踪（DD-27 / C26），否则 AC9 / AC15 的 `bigfish.log` 机检不可达；③ §2.3 B07 表的文档末行数按实测更正（SHELL.md **195** / AUTO-UPDATE **855**）；④ 计数与枚举同改（§一 回指表 5 → **6** 行；DD-17…DD-26 → **DD-17…DD-27**）。 |
+| 2026-09-17 | **B07 修正轮 1**（源 = `docs/batches/B07-harness-auth-compat.md` §3 轮次 1 发现 #1–#7、#9；#8 已裁定不修）：§2.2.8 定稿**晚命中回收**（DD-28；`docs/requirements/SHELL.md` US-9 契约同步）＋「捕获参数与边界」表新增该态行； |
+|  | §2.2.10 补**回落触发形态**（`fs.watch` 抛错 / 运行期 `error`，零 `process.platform`——#6）与**修正 B 判据的 as-of 扫描**（2 处命中均在待删死代码内——#4）；§2.3 统一 `shell-backend.js` delta 口径并补列 A5（#1）+ 单函数体量核对（#7）； |
+|  | §2.4 增 **DD-28**；§2.6 追认清单补 **L-B07-2 / L-B07-3**（#2）；§3.1 AC15 判据改写 + 回指列补 US-9（#3 / #9）；§3.2 TC-31 承接「两条齐备」面 + TC-34 同判据同步。 补正 2（2026-09-17）：① 行宽压行（AC15 行 300 → 159 字符、细则移入表下注）+ 体量裁定落档（`shell-backend.js` ≈302）；② 本档行数 969 → **971**。 实施期形态注：DD-28 可达面 / 注 S1·S5 / 判据精度 / 实测回填；本档 → **972**。 |
+

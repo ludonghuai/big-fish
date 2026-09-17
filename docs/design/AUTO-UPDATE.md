@@ -715,7 +715,7 @@ node make-latest.js [--version <v>] [--note <文本>]
 | AC4 | US-2、NFR-2 | 篡改桩（sha256 不匹配）→ 日志 `update verify fail expected=… actual=…`；`userData/updates/` 下无残留文件（fs 断言）；窗口错误态含错误信息 + 重试 | 机检（日志 + 目录断言） |
 | AC5 | US-3 | 真实安装演练：确认安装 → 安装器启动 + 应用退出 → 装完自动拉起新版（`runAfterFinish` 已配置，package.json:85）。日志：`update install type=app spawn=…` | 人判（真实安装） |
 | AC6 | US-4 | `grep -n "github\.com\|jsdelivr\|raw\.githubusercontent" main.js market.js market.html latest.json package.json` → 结果为空（`github:` 安装标识与插件来源文案除外）；且清单源常量唯一 = Gitee raw URL | 机检（grep） |
-| AC7 | US-5 | 断网自动检查 → 无弹窗无气泡、日志 `result=error`（静默）；手动失败 → 错误弹窗 + 重试可用；开关关闭 → 日志无 `check` 行（启动与轮询均跳过）；市场页打开时 `fetchPluginRegistry` 照常（括注例外）；dev 模式 → 无任何检查行 | 半机检（日志；弹窗人判） |
+| AC7 | US-5 | 断网自动检查 → 无弹窗无气泡、日志 `result=error`（静默）；手动失败 → 错误弹窗 + 重试可用；开关关闭 → 无 `check` 行（启动与轮询均跳过）；市场页打开时 `fetchPluginRegistry` 照常（括注例外）；dev → **B06 修订：App 面无检查行 + Harness 面照常检查** | 半机检（日志；弹窗人判） |
 | AC8 | US-6 | `node --test tests/update-lib.test.js` 全绿——§2.2.6 断言表 10 例（含 `0.1.5-rc.1` > `0.1.0-rc.6`）+ `parseRegistryMetadata` 假源 fixture（dist-tags.latest=0.1.5-rc.1）+ `decideUpdate` 判定有更新；注册表源回退（npmmirror 失败 → npmjs 兜底）以 update-stub 组合路由断言（TC-24） | 半机检（node --test + 假源桩组合） |
 | AC9（B04 重定义判定面） | US-6 | 打包版真机：激活后 `dshBinPath()` 解析到 **userData 副本**（非出厂路径）、该副本 `package.json.version` = 目标、后端以该副本重启成功 | 半机检（日志 + fs 断言；真实更新人判）——逐条判定面见下表后「注 B04-1」 |
 | AC9-b（B04） | US-6 | **无静默假成功路径**：激活后对活跃路径复测（解析存在性 + 版本读数 + 冒烟），任一不满足即记 `phase=activate ok=0` 并回滚 | **机检（单元故障注入 + 日志断言 + fs 断言）**——注 B04-2 |
@@ -764,7 +764,7 @@ node make-latest.js [--version <v>] [--note <文本>]
 | TC-11 | 错误 | 断网启动（自动检查） | 无弹窗无气泡，日志 `result=error` | US-5 / AC7 |
 | TC-12 | 错误 | 断网手动检查 | 错误弹窗 + [重试] 可用，恢复网络后重试成功 | US-5 / AC7 |
 | TC-13 | 边界 | 开关关闭 + 重启 + 运行 > 一个轮询周期 | 日志零 `check` 行（市场页打开除外） | US-5 / AC7 |
-| TC-14 | 边界 | dev 模式运行 | 零检查行为；手动点击提示「只在安装版可用」 | US-5 / AC7 |
+| TC-14 | 边界 | dev 模式运行 | **B06 口径修订**：App 面零行为（记 `update gate reason=… face=app skipped=dev`）；Harness 面照常检查（手动点击**不再**弹「只在安装版可用」）；权威口径 = `docs/requirements/SHELL.md` §三 US-6 | US-5 / AC7（B06 修订） |
 | TC-15 | 正常 | `node --test tests/update-lib.test.js` | 全绿（断言表 + 假源 fixture） | US-6 / AC8 |
 | TC-16（B04 改写） | 正常 | 假源 Harness 更新（出厂 0.1.0-rc.6 vs latest 0.1.5-rc.1） | 安装落 `userData/dsh-update/versions/0.1.5-rc.1`（**不改名**）→ 停后端 → 写活跃指针 → 复核通过 → 重启成功；日志 `harness activate verify ok=1` + `phase=activate ok=1` + `active path=<版本目录>/… version=0.1.5-rc.1` + `backend ready`；旧版本目录已回收 | US-6 / AC9 |
 | TC-17（B04 口径） | 错误 | Harness 安装中断网 / 坏包（prepare/install 阶段失败） | 目标版本目录清理、旧版照常运行、错误态可重试（运行中旧版未被动过） | US-6 / AC9 |
@@ -850,5 +850,6 @@ node make-latest.js [--version <v>] [--note <文本>]
 | 2026-09-16 | **B05 评审修正轮**（评审 #1/#2/#3 落地）：§2.2.3「实现形态」「取证行」拆两类（① 目录不存在 `ENOENT` → `removed=0 failed=0` 仍落取证行；② 枚举失败 `EACCES`/`EPERM`/`ENOTDIR` → `… detail=read-fail`，不并入 `failed`）； |
 |  | §2.2.9 主行补 `detail=read-fail` 子形态 + 行数口径注明「15 = 主格式行 / 6 处变体不并入」（两处「上表」相对指针改「本节主表」）；§2.3 按实测对账（需求档 134 → 146 / +12）+ 补本档自身行（748 → **838**）+ 表口径注明「文档行按实测 / 代码行按预估」；§3.1 注 B05-1 ③ 补枚举失败期望行（不入本轮机检集）。 |
 | 2026-09-16 | **B05 评审修正轮 2**（评审 #1/#4 落地）：§2.3 `main.js` 行重测更正（2640 → **2827**，末行数同步）；§2.2.3 / §2.5 O5 / §2.2.9 变体段的 `main.js` 行号指针改符号锚定（现行为准：`upd:install-now` 处理器 `main.js:2781-2787`、`result=skip` 取证行 `main.js:2149`）；§2.2.9 口径行补「`detail` / 取值子行随所属主行计价、不另计」半句；本档行数 838 → **839**。**不改需求档。** |
-| 2026-09-16 | **B06 口径修订注记**（类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4；权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5）：dev 更新门禁旧口径九处加注修订——需求层 C5 / C12 · §2.2.1（`dshBinPath`）· §2.2.7（门禁条）· §2.2.9（gate 行）· §2.5（C5 / C12 / L5）· §2.6（U-12）； |
+| 2026-09-16 | **B06 口径修订注记**（类别 = 语义变更，源 = `docs/batches/B06-shell-ux.md` §1.3 C5 / §1.4 R4；权威口径 = `docs/requirements/SHELL.md` §三 US-6 + `docs/design/SHELL-UX.md` §2.2.5）：dev 更新门禁旧口径九处加注修订（§3.1 两处判定面由 B07 补注收口——见本表末行）——需求层 C5 / C12 · §2.2.1（`dshBinPath`）· §2.2.7（门禁条）· §2.2.9（gate 行）· §2.5（C5 / C12 / L5）· §2.6（U-12）； |
 |  | §2.2.9 gate 行就地换新形态（计数不变 = 15）；§2.3 补 as-of 行数注（2831 / 116——历史值不改写）。 |
+| 2026-09-17 | **B06 口径修订的判定面收口（B07，T13 ①）**：§3.1 **AC7**（dev 判定面）与 **TC-14**（dev 用例）两行加 B06 口径注（判定面 = App 面无检查行 + Harness 面照常检查，机检面 = gate 行 + `type=harness` 行）；权威口径 = `docs/requirements/SHELL.md` §三 US-6。**不改需求档、不改 B02 批次档。** |

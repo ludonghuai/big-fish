@@ -62,7 +62,7 @@ function createWindow() {
   // 页面加载完成后注入半透明背景
   mainWindow.webContents.on('did-finish-load', () => mode.applyBackground());
 
-  mainWindow.loadURL(`http://${HOST}:${backend.getPort()}`);
+  mainWindow.loadURL(backend.browserUrl());
 }
 
 /** 显示并聚焦主界面（US-1「只开不隐」；F4 起为唯一显示入口）。 */

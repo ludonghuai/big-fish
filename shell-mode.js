@@ -128,7 +128,7 @@ async function chooseBackground() {
   try {
     fs.copyFileSync(result.filePaths[0], path.join(app.getPath('userData'), 'custom-background.jpg'));
     applyBackground();
-    notifier.notify(APP_NAME, '背景已更换');
+    notify(APP_NAME, '背景已更换');
   } catch (err) {
     console.error('[bigfish] 更换背景失败:', err);
   }
@@ -138,7 +138,7 @@ async function chooseBackground() {
 function resetBackground() {
   try { fs.unlinkSync(path.join(app.getPath('userData'), 'custom-background.jpg')); } catch { /* 没有自定义背景 */ }
   applyBackground();
-  notifier.notify(APP_NAME, '已恢复默认背景');
+  notify(APP_NAME, '已恢复默认背景');
 }
 
 module.exports = {
