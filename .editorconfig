@@ -1,0 +1,20 @@
+# .editorconfig —— 本仓格式声明（Bigfish，B11）
+# 作用域：编辑器 / 工具读取的「声明」；本档自身不改写任何文件，全仓套用 = 逐档按声明统一（可分批）。
+# 判据与量化（套用代价 42 档工作区 / 0 档 git 提交面）：docs/CONVENTIONS.md §六；选型对比：docs/design/REPO-CONVENTIONS.md §2.1.2。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Markdown 行尾两空格 = 硬换行语义（机检不可区分「有意」与「误留」）⇒ 本类型不裁剪行尾空白
+[*.md]
+trim_trailing_whitespace = false
+
+# 说明（不写入声明，避免误报）：
+# - max_line_length：行宽判据 ≤300 字符（不含行尾 CR），但豁免面（台账/地图表格行、批次档 §3）本档无法表达 ⇒ 不设。
+# - [*.cmd] end_of_line：实测 debug-pet.cmd 现状为 LF 且可用 ⇒ 不特例化，少一处漂移面。
