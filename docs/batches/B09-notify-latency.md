@@ -58,3 +58,15 @@
 - 需求档：`docs/requirements/SHELL.md`（新增条目——编号由 eng-designer 落，如 US-12 + NFR 补充）
 - 设计档：`docs/design/SHELL-UX.md`（新增小节；**不得修改 B07 已核销的 §2.2.9 / §2.2.10 判据**，只做追加与回指）
 - 台账：R10（本批承载）
+
+---
+
+## §2 本批任务书（eng-designer）
+
+## §3 设计评审（评审子代理）
+
+## §4 评审裁决与实施启动（主 agent）
+
+## §5 实施记录（eng-coder）
+
+## §6 验收核销（主 agent）

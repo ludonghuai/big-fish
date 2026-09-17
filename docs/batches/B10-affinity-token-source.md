@@ -58,3 +58,15 @@
 - 需求档：`docs/requirements/SHELL.md`（SHELL 板块）或 `docs/requirements/PET.md`（桌宠板块）——**归属由 eng-designer 判定**（好感度域属谁，须给依据）
 - 设计档：`docs/design/SHELL-UX.md`（或 PET 系设计档，同上判定）
 - 台账：T14（本批承载）
+
+---
+
+## §2 本批任务书（eng-designer）
+
+## §3 设计评审（评审子代理）
+
+## §4 评审裁决与实施启动（主 agent）
+
+## §5 实施记录（eng-coder）
+
+## §6 验收核销（主 agent）
