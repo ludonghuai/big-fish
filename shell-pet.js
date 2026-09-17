@@ -6,8 +6,10 @@
  * 处理器 handlePetClicked / handlePetRightClicked。
  */
 
-const { BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
+const core = require('./pet-chain-core.js');
 const settings = require('./shell-settings.js');
 const geometry = require('./shell-pet-geometry.js');
 const drag = require('./shell-pet-drag.js');
@@ -20,6 +22,52 @@ function init(deps) {
   showMainWindow = deps.showMainWindow;
   openExchangeWindow = deps.openExchangeWindow;
   broadcastAffinity = deps.broadcastAffinity;
+  // 渲染层请求一次散步（复用既有 doWander 的守卫与位移纪律；本批不改其内部，DD-6）
+  ipcMain.on('pet-chain-move', () => doWander());
+}
+
+// ---------------------------------------------------------------------------
+// 动画链：池装载 + V1–V6 校验 + 下发（B18；设计档 docs/design/PET-ANIMATION.md §2.2.2 / §2.2.7 / §2.2.11）
+// ---------------------------------------------------------------------------
+const ANIM_POOL_PATH = path.join(__dirname, 'assets', 'pet-anim', 'pool.json');
+const ANIM_LOG_NAME = 'pet-anim.log';
+let animPoolResult = null; // 池装载结果缓存（每次重建窗口复用；换池需重启）
+
+/** debug 开关（承既有 `BIGFISH_PET_DEBUG` 口径；关闭时零日志、零监听）。 */
+function animDebug() { return process.env.BIGFISH_PET_DEBUG === '1'; }
+
+/** 链日志落盘：主进程行 + 渲染层 `[pet-anim]` 行同文件追加（设计档 §2.2.11）。 */
+function animLog(line) {
+  if (!animDebug()) return;
+  try {
+    fs.appendFileSync(path.join(app.getPath('userData'), ANIM_LOG_NAME), '[' + new Date().toISOString() + '] ' + line + '\n');
+  } catch { /* 日志失败不影响链 */ }
+}
+
+/** 池装载 + 校验（V1–V6 谓词与 JSON 破损在 pet-chain-core.js；本处只注入 fs 探针并给出日志行）。 */
+function loadAnimPool() {
+  let text = null;
+  try { text = fs.readFileSync(ANIM_POOL_PATH, 'utf8'); } catch { /* 缺失 ⇒ 与 V1 同码（TC-10） */ }
+  const r = text === null ? { ok: false, reason: 'V1' } : core.parsePool(text, (rel) => {
+    try {
+      const st = fs.statSync(path.join(__dirname, rel));
+      return { exists: true, size: st.size };
+    } catch { return { exists: false, size: 0 }; }
+  });
+  if (!r.ok) return { payload: { ok: false, reason: r.reason }, line: 'anim pool ok=0 reason=' + r.reason };
+  const s = r.stats;
+  return {
+    payload: { ok: true, pool: r.pool },
+    line: 'anim pool ok=1 slots=' + s.slots + ' segs=' + s.segs + ' bytes=' + s.bytes + ' max=' + s.max,
+  };
+}
+
+/** 池下发（建窗 did-finish-load 后一次，设计档 §2.2.7）；ok=0 ⇒ 渲染层保持 PNG 通道。 */
+function sendAnimConfig() {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  if (!animPoolResult) animPoolResult = loadAnimPool();
+  animLog(animPoolResult.line);
+  petWindow.webContents.send('pet-chain-config', Object.assign({ debug: animDebug() }, animPoolResult.payload));
 }
 
 /** @type {BrowserWindow | null} */
@@ -122,7 +170,14 @@ function createPetWindow(startPos) {
   petWindow.webContents.on('did-finish-load', () => {
     // 新窗口加载完成立刻推送好感度，避免切换模式后条子显示 0
     broadcastAffinity();
+    sendAnimConfig(); // 动画池下发（建窗后一次；池非法 ⇒ ok=0 且渲染层留 PNG 通道）
   });
+  // 链日志捕获（仅 debug：关闭时不挂监听，零开销）
+  if (animDebug()) {
+    petWindow.webContents.on('console-message', (_e, level, message) => {
+      if (typeof message === 'string' && message.indexOf('[pet-anim]') === 0) animLog(message.slice(10).trim());
+    });
+  }
   // 渲染进程异常退出 → 跟随循环终止（设计档 §2.2.6）
   petWindow.webContents.on('render-process-gone', () => drag.petStopDrag('destroyed'));
   petWindow.on('closed', () => {

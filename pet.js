@@ -31,6 +31,17 @@ let animTimer = null;
 
 function setState(s) {
   if (!FRAMES[s]) return;
+  notifySlot(s);   // 语义档位上报给动画链（视频通道；池未就绪 / 已回落时链侧无副作用）
+  renderPng(s);
+}
+
+/** 语义档位 → 动画链（pet-chain.js 的全局出口；本档只上报，不参与选段，设计档 §2.2.1）。 */
+function notifySlot(s) {
+  if (window.petChain) window.petChain.setSlot(s);
+}
+
+/** PNG 通道渲染（逐帧）：与改造前逐位一致——帧表 / 节奏 / 尺寸口径零变更（US-18 边界）。 */
+function renderPng(s) {
   state = s;
   frameIndex = 0;
   if (animTimer) { clearInterval(animTimer); animTimer = null; }
@@ -153,8 +164,19 @@ let lastInteractive = false;
 
 // Click-through: only the pet image and the visible bubble capture the mouse;
 // the transparent surroundings pass clicks through to the desktop.
+/** 命中矩形：视频通道 = 链按池内身体盒映射的矩形；PNG 通道 = 既有 img 矩形（设计档 §2.2.6 / DD-10）。 */
+function hitRect() {
+  const chain = window.petChain;
+  if (chain && chain.videoActive()) {
+    const r = chain.hitRect();
+    if (r) return { left: r.left, top: r.top, right: r.left + r.w, bottom: r.top + r.h };
+  }
+  const b = img.getBoundingClientRect();
+  return { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+}
+
 function isInteractivePoint(x, y) {
-  const r = img.getBoundingClientRect();
+  const r = hitRect();
   if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
   if (bubble.classList.contains('show')) {
     const br = bubble.getBoundingClientRect();

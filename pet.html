@@ -37,6 +37,16 @@
       pointer-events: none;
     }
     #pet.animate-bob { animation: bob 3.2s ease-in-out infinite; }
+    /* 视频通道：双缓冲渲染位（媒体盒位置 / 尺寸由 pet-chain.js 按池内身体盒落位，设计档 §2.2.6） */
+    #pet-stage {
+      position: absolute; left: 0; top: 0; width: 640px; height: 360px;
+      pointer-events: none; overflow: hidden; z-index: 0;
+    }
+    .pet-media {
+      position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+      opacity: 0; transition: opacity .18s ease;
+    }
+    .pet-media.is-front { opacity: 1; }
     /* 好感度条（紧贴窗口底边） */
     #affinity {
       position: absolute; bottom: 2px; left: 50%;
@@ -75,17 +85,30 @@
       from { opacity: 0; }
       to   { opacity: 1; }
     }
+    /* 减少动态效果（US-19）：停本批新增的交叉淡入 + 既有 CSS 动效；链照常换段（不隐藏、不退出） */
+    @media (prefers-reduced-motion: reduce) {
+      .pet-media { transition: none; }
+      #pet.animate-bob { animation: none; }
+      #bubble.show { animation: none; }
+      #affinity-fill { transition: none; }
+    }
   </style>
 </head>
 <body>
   <div id="pet-wrap">
     <div id="bubble"></div>
+    <div id="pet-stage">
+      <video class="pet-media is-front" muted playsinline preload="none"></video>
+      <video class="pet-media" muted playsinline preload="none"></video>
+    </div>
     <div id="affinity">
       <div id="affinity-bar"><div id="affinity-fill"></div></div>
       <div id="affinity-label">Lv.1 好感 0</div>
     </div>
     <img id="pet" draggable="false" alt="">
   </div>
+  <script src="pet-chain-core.js"></script>
+  <script src="pet-chain.js"></script>
   <script src="pet.js"></script>
 </body>
 </html>

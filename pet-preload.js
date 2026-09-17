@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld('petAPI', {
   onAffinity: (cb) => ipcRenderer.on('pet-affinity', (_e, a) => cb(a)),
   onDragCancel: (cb) => ipcRenderer.on('pet-drag-cancel', () => cb()),
   setIgnoreMouse: (ignore) => ipcRenderer.send('pet-set-ignore-mouse', ignore),
+  onChainConfig: (cb) => ipcRenderer.on('pet-chain-config', (_e, cfg) => cb(cfg)),
+  chainMove: () => ipcRenderer.send('pet-chain-move'),
 });
