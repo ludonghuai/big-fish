@@ -40,12 +40,17 @@ let state = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function el(tag, cls, text) {
+// B12 弹窗文本化（设计档 docs/design/SHELL-UX.md §2.2.14）：节点构造面——字符串走文本节点，非字符串/非节点实参按旧语义 String() 强制，无 HTML 解析面
+function el(tag, cls, ...parts) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
+  if (parts.length === 1 && typeof parts[0] === 'string') e.textContent = parts[0];
+  else for (const p of parts) if (p != null) e.appendChild(p.nodeType ? p : document.createTextNode(String(p)));
   return e;
 }
+
+const frag = (...parts) => { const f = document.createDocumentFragment(); for (const p of parts) if (p != null) f.appendChild(p.nodeType ? p : document.createTextNode(String(p))); return f; }; // 弹窗正文节点片段
+const para = (...parts) => { const p = el('p', '', ...parts); p.style.marginTop = '8px'; return p; }; // 段落 helper（等价原 <p style="margin-top:8px">）
 
 function toast(msg, kind, actions) {
   const wrap = document.getElementById('toasts');
@@ -73,7 +78,7 @@ function showModal(title, bodyNode, okLabel) {
     modalResolve = resolve;
     document.getElementById('m-title').textContent = title;
     const body = document.getElementById('m-body');
-    body.innerHTML = '';
+    body.textContent = '';
     body.appendChild(bodyNode);
     document.getElementById('m-ok').textContent = okLabel || '确定';
     document.getElementById('modal-mask').classList.add('show');
@@ -200,7 +205,7 @@ function filteredPlugins() {
 
 function renderTabs() {
   const tabs = document.getElementById('tabs');
-  tabs.innerHTML = '';
+  tabs.textContent = '';
   const cats = ['all', 'installed', ...CATEGORY_ORDER.filter((c) => state.plugins.some((p) => p.category === c))];
   const installedCount = state.plugins.filter(isInstalled).length;
   for (const c of cats) {
@@ -216,7 +221,7 @@ function renderTabs() {
 function renderGrid() {
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
-  grid.innerHTML = '';
+  grid.textContent = '';
   const list = filteredPlugins();
   empty.classList.toggle('hidden', list.length > 0);
   for (const p of list) grid.appendChild(renderCard(p));
@@ -283,10 +288,8 @@ function renderCard(p) {
 // ---------------------------------------------------------------------------
 // Install / uninstall / restart
 // ---------------------------------------------------------------------------
-function confirmModal(title, html, okLabel) {
-  const body = el('div');
-  body.innerHTML = html;
-  return showModal(title, body, okLabel);
+function confirmModal(title, okLabel, ...parts) {
+  return showModal(title, frag(...parts), okLabel);
 }
 
 async function onInstall(p) {
@@ -294,11 +297,10 @@ async function onInstall(p) {
   const spec = p.installSpec;
   const name = pkgBase(spec);
   const ok = await confirmModal(
-    `安装「${p.name}」？`,
-    `<p>插件名：<code>${name}</code></p>
-     <p style="margin-top:8px">安装完成后需要<b>重启一次</b>才会生效（会自动重启，不用手动操作）。</p>
-     <p style="margin-top:8px">来源：${p.isGitHub ? 'GitHub 仓库（需要本机 git 环境）' : 'npm 官方仓库'}</p>`,
-    '安装',
+    `安装「${p.name}」？`, '安装',
+    el('p', '', '插件名：', el('code', '', name)),
+    para('安装完成后需要', el('b', '', '重启一次'), '才会生效（会自动重启，不用手动操作）。'),
+    para('来源：', p.isGitHub ? 'GitHub 仓库（需要本机 git 环境）' : 'npm 官方仓库'),
   );
   if (!ok) return;
   setBusy(true);
@@ -324,9 +326,8 @@ async function onUninstall(p) {
   if (state.busy) return;
   const name = pkgBase(p.installSpec);
   const ok = await confirmModal(
-    `卸载「${p.name}」？`,
-    `<p>将移除插件 <code>${name}</code> 及其注册。卸载后需要<b>重启一次</b>生效。</p>`,
-    '卸载',
+    `卸载「${p.name}」？`, '卸载',
+    el('p', '', '将移除插件 ', el('code', '', name), ' 及其注册。卸载后需要', el('b', '', '重启一次'), '生效。'),
   );
   if (!ok) return;
   setBusy(true);
@@ -352,9 +353,8 @@ async function onDisable(p) {
   if (state.busy) return;
   const name = pkgBase(p.installSpec);
   const ok = await confirmModal(
-    `禁用「${p.name}」？`,
-    `<p>将停用插件 <code>${name}</code>（保留文件，不删除）。禁用后需要<b>重启一次</b>生效。</p>`,
-    '禁用',
+    `禁用「${p.name}」？`, '禁用',
+    el('p', '', '将停用插件 ', el('code', '', name), '（保留文件，不删除）。禁用后需要', el('b', '', '重启一次'), '生效。'),
   );
   if (!ok) return;
   setBusy(true);

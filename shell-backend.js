@@ -311,6 +311,7 @@ function getPort() { return port; }
 module.exports = {
   dshBinPath,
   dshHome,
+  writeDiag,
   getCurrentDshVersion,
   getPort,
   browserUrl,

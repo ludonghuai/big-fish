@@ -24,7 +24,8 @@ function init(deps) {
 
 // ---------------------------------------------------------------------------
 // 好感度 & 兑换系统
-//   好感度：按真实消耗的 token（uncachedInput + output）累积，
+//   好感度：按真实消耗的 token 累积——计费口径 B = uncachedInput + cacheRead
+//           + cacheWrite + output（只读 totals）；读面 = per-record 目录优先 + 旧单文件兜底。
 //           每 AFFINITY_RATE 个 token 得 1 点，按等级阈值升级。
 //   兑换屋：右键鲸鱼娘打开，token → 💴，💴 买食物喂食（喂食加好感）。
 // ---------------------------------------------------------------------------
@@ -64,22 +65,70 @@ function saveAffinity() {
   } catch (err) { console.error('[bigfish] affinity save failed:', err); }
 }
 
-/** 从 dsh 会话缓存汇总已消耗 token（真实信号）。读不到返回 null。 */
-function sumSessionTokens() {
+// 读面常量（B10；设计档 docs/design/SHELL-UX.md §2.2.13）：
+//   计费口径 B = uncachedInput + cacheRead + cacheWrite + output（只读 totals，不读 last.buckets）；
+//   诊断标记 = 每进程至多一条（两形态均不可用时发射）。
+const TOKEN_BUCKETS = ['uncachedInputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens'];
+let affinityDiagLogged = false;
+
+/** 计费口径 B：`totals` 四桶之和（缺桶按 0）。 */
+function bucketSum(totals) {
+  let sum = 0;
+  for (const bucket of TOKEN_BUCKETS) sum += Number(totals[bucket]) || 0;
+  return sum;
+}
+
+/** per-record 记录文件的 `totals`（字面访问链 = `<文件对象>.record.rows.tokenUsage.val.totals`）；无 ⇒ null。 */
+function recordTotals(record) {
+  const val = record && record.record && record.record.rows && record.record.rows.tokenUsage
+    && record.record.rows.tokenUsage.val;
+  return (val && val.totals) || null;
+}
+
+/** 旧单文件形态（0.1.0 期）：`tables.sessions[*].rows.tokenUsage.val.totals` 全量求和；不可用 ⇒ null。
+ *  可用判据（设计档 §2.2.13「旧面可用判据」）= 可解析 **且** ≥1 条有效会话条目（有 `rows.tokenUsage.val.totals` 可取）——仅「可解析」不构成可用。
+ *  兜底 = 带消解期的条件性保留（保留至 B08 收口点；到期条件见设计档 §2.2.13「消解期（旧布局兜底）」）。 */
+function legacySessionTokens() {
   try {
     const file = path.join(backend.dshHome(), 'storages', 'session_projcache.json');
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
     const sessions = (j.tables && j.tables.sessions) || {};
     let sum = 0;
+    let valid = 0; // 有效会话条目数（有 totals 可取者）——0 条 ⇒ 该形态不可用
     for (const key of Object.keys(sessions)) {
-      const rows = (sessions[key].rows) || {};
-      const tu = rows.tokenUsage && rows.tokenUsage.val;
-      if (tu && tu.totals) {
-        sum += (tu.totals.uncachedInputTokens || 0) + (tu.totals.outputTokens || 0);
-      }
+      const rows = (sessions[key] && sessions[key].rows) || {};
+      const val = rows.tokenUsage && rows.tokenUsage.val;
+      if (val && val.totals) { valid += 1; sum += bucketSum(val.totals); }
     }
-    return sum;
+    return valid >= 1 ? sum : null; // 无有效条目 ⇒ 不可用 ⇒ null（不得返回 0——0 会使已计入的消耗在读数回升时被重复计入）
   } catch { return null; }
+}
+
+/** 从 dsh 会话缓存汇总已消耗 token（真实信号；计费口径 B）。
+ *  读面四步判据（设计档 §2.2.13）：① 枚举 `storages/session_projcache/sessions/*.json`（不递归）；
+ *  ② 可解析记录 ≥ 1 ⇒ 只读目录面；③ 目录面不可用 ⇒ 读旧单文件；④ 两者皆不可用 ⇒ null（不是 0），不抛错。 */
+function sumSessionTokens() {
+  const dir = path.join(backend.dshHome(), 'storages', 'session_projcache', 'sessions');
+  let sum = 0;
+  let parseable = 0;
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith('.json')) continue; // `*.json.bak.<stamp>` / 子目录 / 临时档天然排除
+      try {
+        const totals = recordTotals(JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')));
+        parseable += 1; // 可解析记录（totals 缺失仍计入，按 0 贡献）
+        if (totals) sum += bucketSum(totals);
+      } catch { /* 单条损坏（半写 / 非法 JSON）只跳过该条 */ }
+    }
+  } catch { /* 目录不存在 / 不可读 ⇒ 走旧面 */ }
+  if (parseable >= 1) return sum; // 目录面可用 ⇒ 专读（不叠加旧面——防同一批消耗双计）
+  const legacy = legacySessionTokens();
+  if (legacy !== null) return legacy;
+  if (!affinityDiagLogged) {
+    affinityDiagLogged = true;
+    backend.writeDiag(`[bigfish] affinity token source unavailable; dir=${fs.existsSync(dir) ? 'yes' : 'no'}; real-usage accumulation is off`);
+  }
+  return null;
 }
 let lastTokenSum = null;
 let affinityWatcherTimer = null;
@@ -125,6 +174,7 @@ function startAffinityWatcher() {
   lastTokenSum = sum; // 基线：之后只统计新增消耗
   affinityWatcherTimer = setInterval(() => {
     const s2 = sumSessionTokens();
+    if (lastTokenSum === null && s2 !== null) lastTokenSum = s2; // 启动期读面不可用 ⇒ 首次读到非 null 水位时只重建基线、不计 delta（设计档 §2.2.13「基线重建」）
     if (s2 !== null && lastTokenSum !== null) {
       if (s2 > lastTokenSum) {
         const delta = s2 - lastTokenSum;
@@ -294,6 +344,7 @@ module.exports = {
   saveAffinity,
   startAffinityWatcher,
   stopAffinityWatcher,
+  sumSessionTokens,
   broadcastAffinity,
   openExchangeWindow,
   resetAllData,

@@ -80,24 +80,26 @@ async function fetchPluginRegistry() {
 async function marketList() {
   const registry = await fetchPluginRegistry();
   marketRegistryCache = registry;
-  const installed = plugins.listInstalledPlugins();
-  const disabled = plugins.listDisabledPlugins();
+  const ctx = plugins.scanProfile(); // 单次请求一次扫描 + 三消费面复用（US-15）
+  const installed = plugins.listInstalledPlugins(ctx);
+  const disabled = plugins.listDisabledPlugins(ctx);
   const bundledNames = [];
   try {
     bundledNames.push(...fs.readdirSync(plugins.bundledPluginsDir()));
   } catch { /* no bundled dir */ }
-  const updates = plugins.computePluginUpdates(registry.plugins);
+  const updates = plugins.computePluginUpdates(registry.plugins, ctx);
   return { registry, installed, disabled, bundledNames, updates, profileDir: plugins.profileDir(), dshHome: backend.dshHome() };
 }
 
   // 快速状态：只读本地已装/已禁用（不拉在线目录），用于操作后即时刷新
 
 function marketState() {
+  const ctx = plugins.scanProfile(); // 单次请求一次扫描 + 三消费面复用（US-15）
   return ({
-  installed: plugins.listInstalledPlugins(),
-  disabled: plugins.listDisabledPlugins(),
+  installed: plugins.listInstalledPlugins(ctx),
+  disabled: plugins.listDisabledPlugins(ctx),
   bundledNames: (() => { try { return fs.readdirSync(plugins.bundledPluginsDir()); } catch { return []; } })(),
-  updates: plugins.computePluginUpdates((marketRegistryCache && marketRegistryCache.plugins) || []),
+  updates: plugins.computePluginUpdates((marketRegistryCache && marketRegistryCache.plugins) || [], ctx),
   });
 }
 

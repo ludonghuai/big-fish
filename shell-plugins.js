@@ -26,6 +26,10 @@ const NPM_REGISTRY = 'https://registry.npmmirror.com/';
 function profileDir() {
   return path.join(backend.dshHome(), 'profiles', 'web');
 }
+/** profile 的 node_modules 基准路径（越界校验基准 / 扫描面共用；B12 两处包含判定的 base 单一来源）。 */
+function nodeModulesDir() {
+  return path.join(profileDir(), 'node_modules');
+}
 function bundledPluginsDir() {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'bundled-plugins')
@@ -105,10 +109,39 @@ function isPlainPackageName(name) {
   return /^[a-z0-9-~][a-z0-9-._~]*$/.test(name);
 }
 
+// ---------------------------------------------------------------------------
+// 扫描快照（B12 / US-15）：单次请求一次扫描 + 复用；缺省（未传 ctx）自建一次
+// ---------------------------------------------------------------------------
+
+/** 单次扫描快照 { names, nameSet, bundles, entries, versions }（设计档 docs/design/SHELL-UX.md §2.2.14「扫描契约」）。 */
+function scanProfile() {
+  const bundles = profileBundles();
+  const names = new Set(bundles);
+  const entries = new Set();
+  try {
+    const nm = nodeModulesDir();
+    if (fs.existsSync(nm)) {
+      for (const entry of fs.readdirSync(nm)) {
+        entries.add(entry); // 顶层全部条目名（含点目录与文件）= existsSync(nm/<名>) 的判定面
+        if (entry.startsWith('.') || entry === 'node_modules') continue; // 跳过 .pnpm 等元数据目录
+        if (entry.startsWith('@')) {
+          const scoped = path.join(nm, entry);
+          if (fs.statSync(scoped).isDirectory()) {
+            for (const sub of fs.readdirSync(scoped)) { names.add(`${entry}/${sub}`); entries.add(`${entry}/${sub}`); }
+          }
+        } else if (fs.statSync(path.join(nm, entry)).isDirectory()) {
+          names.add(entry);
+        }
+      }
+    }
+  } catch { /* best effort */ }
+  return { names: [...names].sort(), nameSet: new Set(names), bundles: new Set(bundles), entries, versions: new Map() };
+}
+
 /** 把安装标识解析成实际安装的包名（github:user/repo → 按仓库名精确匹配 node_modules 里真实包名）。 */
-function resolveInstalledName(spec) {
+function resolveInstalledName(spec, ctx) {
   const base = String(spec || '').replace(/^builtin:/, '').split('#')[0];
-  const candidates = listInstalledPlugins();
+  const candidates = listInstalledPlugins(ctx);
   if (candidates.includes(base)) return base;
   const repo = (base.match(/github:([^/]+\/[^/#@]+)/) || [])[1];
   if (repo) {
@@ -140,26 +173,32 @@ function pluginUpdateSpecOf(p) {
   return spec || '';
 }
 
-/** 已装插件版本：profileDir()/node_modules/{realName}/package.json（读不到 → ''）。 */
-function installedPluginVersion(realName) {
+/** 已装插件版本：profileDir()/node_modules/{realName}/package.json（读不到 → ''；同一请求内按 realName 记忆）。 */
+function installedPluginVersion(realName, ctx) {
+  const snap = ctx || scanProfile();
+  if (snap.versions.has(realName)) return snap.versions.get(realName);
+  let version = '';
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(profileDir(), 'node_modules', realName, 'package.json'), 'utf8'));
-    return pkg && pkg.version ? String(pkg.version) : '';
-  } catch { return ''; }
+    version = pkg && pkg.version ? String(pkg.version) : '';
+  } catch { version = ''; }
+  snap.versions.set(realName, version);
+  return version;
 }
 
 /** 计算可更新插件清单（AC10）：已装版本 < 注册表 version 才入选；github: 按原 installSpec 重装。 */
-function computePluginUpdates(plugins) {
+function computePluginUpdates(plugins, ctx) {
+  const snap = ctx || scanProfile(); // 单次扫描：循环体内不再触发扫描面（US-15；缺省自建一次）
   const updates = [];
   for (const p of plugins || []) {
     const version = p && typeof p.version === 'string' ? p.version.trim() : '';
     if (!version) continue; // 注册表条目缺 version → 无徽标（US-7 边界）
     const spec = pluginUpdateSpecOf(p);
     if (!spec || spec.startsWith('builtin:') || spec.startsWith('link:')) continue;
-    const realName = resolveInstalledName(spec);
+    const realName = resolveInstalledName(spec, snap);
     if (!realName) continue;
-    if (!isPluginInProfile(realName)) continue; // 未装条目不参与也不记日志（避免 market:list 刷日志）
-    const installedVersion = installedPluginVersion(realName);
+    if (!isPluginInProfile(realName, snap)) continue; // 未装条目不参与也不记日志（避免 market:list 刷日志）
+    const installedVersion = installedPluginVersion(realName, snap);
     if (!installedVersion) {
       updaterLog(`plugin update spec=${spec} result=skip detail=no-installed-version`);
       continue;
@@ -198,61 +237,25 @@ function sanitizeProfileBundles() {
     }
   } catch { /* 读不到就算了 */ }
 }
-function isPluginInProfile(pkgName) {
-  if (profileBundles().includes(pkgName)) return true;
-  try {
-    return fs.existsSync(path.join(profileDir(), 'node_modules', pkgName));
-  } catch {
-    return false;
-  }
+function isPluginInProfile(pkgName, ctx) {
+  const snap = ctx || scanProfile();
+  return snap.bundles.has(pkgName) || snap.entries.has(pkgName);
 }
 /** Installed plugin names (from bundles + node_modules presence). */
-function listInstalledPlugins() {
-  const names = new Set(profileBundles());
-  try {
-    const nm = path.join(profileDir(), 'node_modules');
-    if (fs.existsSync(nm)) {
-      for (const entry of fs.readdirSync(nm)) {
-        if (entry.startsWith('.') || entry === 'node_modules') continue; // 跳过 .pnpm 等元数据目录
-        if (entry.startsWith('@')) {
-          const scoped = path.join(nm, entry);
-          if (fs.statSync(scoped).isDirectory()) {
-            for (const sub of fs.readdirSync(scoped)) names.add(`${entry}/${sub}`);
-          }
-        } else if (fs.statSync(path.join(nm, entry)).isDirectory()) {
-          names.add(entry);
-        }
-      }
-    }
-  } catch { /* best effort */ }
-  return [...names].sort();
+function listInstalledPlugins(ctx) {
+  return (ctx || scanProfile()).names;
 }
 
 /** 已安装但被禁用的插件（在 node_modules 但不在 bundles 里 = 装了但没加载）。 */
-function listDisabledPlugins() {
-  const bundles = new Set(profileBundles());
+function listDisabledPlugins(ctx) {
+  const snap = ctx || scanProfile();
   const out = [];
-  try {
-    const nm = path.join(profileDir(), 'node_modules');
-    if (fs.existsSync(nm)) {
-      for (const entry of fs.readdirSync(nm)) {
-        if (entry.startsWith('.') || entry === 'node_modules') continue;
-        const names = [];
-        if (entry.startsWith('@')) {
-          const scoped = path.join(nm, entry);
-          if (fs.statSync(scoped).isDirectory()) {
-            for (const sub of fs.readdirSync(scoped)) names.push(`${entry}/${sub}`);
-          }
-        } else if (fs.statSync(path.join(nm, entry)).isDirectory()) {
-          names.push(entry);
-        }
-        for (const n of names) {
-          if (n.startsWith('@deepseek-ai/')) continue;
-          if (!bundles.has(n)) out.push(n);
-        }
-      }
-    }
-  } catch { /* best effort */ }
+  // entries 的插入序 = readdir 序（@scope/x 紧随其父条目）⇒ 与改前的遍历序逐条一致
+  for (const n of snap.entries) {
+    if (!snap.nameSet.has(n) || snap.bundles.has(n)) continue; // nameSet = bundles ∪ node_modules 目录名
+    if (n.startsWith('@deepseek-ai/')) continue;
+    out.push(n);
+  }
   return out;
 }
 
@@ -289,7 +292,7 @@ function pnpmArgs(action, spec) {
 
 /** profile node_modules 顶层包名集合（跳过 .pnpm 等元数据）。 */
 function topLevelModules() {
-  const nm = path.join(profileDir(), 'node_modules');
+  const nm = nodeModulesDir();
   const out = new Set();
   try {
     for (const e of fs.readdirSync(nm)) {
@@ -307,13 +310,60 @@ function topLevelModules() {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// 安全门（B12 / US-14）：入参三形态白名单（主防线）+ 包含判定（纵深防御）
+// ---------------------------------------------------------------------------
+
+/** 形态 ② 的排除判据：`..` 与全点段（设计档 docs/design/SHELL-UX.md §2.2.14「入参门判据句」）。 */
+function isDotSegment(seg) {
+  return /^\.+$/.test(seg);
+}
+
+/** 入参三形态门（US-14 契约第一层）：'bundled' | 'github' | 'npm' | null（null ⇒ 拒绝）。 */
+function installSpecKind(spec) {
+  if (typeof spec !== 'string' || !spec) return null;
+  if (spec.startsWith('builtin:')) return isPlainPackageName(spec.slice(8)) ? 'bundled' : null;
+  if (spec.startsWith('github:')) {
+    const rest = spec.slice(7);
+    const hash = rest.indexOf('#');
+    const m = (hash === -1 ? rest : rest.slice(0, hash)).match(/^([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)$/);
+    if (!m || isDotSegment(m[1]) || isDotSegment(m[2])) return null;
+    if (hash === -1) return 'github';
+    const frag = rest.slice(hash + 1);
+    if (!/^[A-Za-z0-9._:@/-]+$/.test(frag) || frag.split('/').includes('..')) return null;
+    return 'github';
+  }
+  if (isPlainPackageName(spec)) return 'bundled'; // 裸纯包名 = 内置形态（源不存在时落回 npm / pnpm 面）
+  const at = spec.lastIndexOf('@');
+  const base = at > 0 ? spec.slice(0, at) : spec;
+  const version = at > 0 ? spec.slice(at + 1) : '';
+  if (!isPlainPackageName(base)) return null;
+  if (at > 0 && !/^[A-Za-z0-9\-._+~^*<>=|]+$/.test(version)) return null;
+  return 'npm';
+}
+
+/** 越界校验判据（US-14 契约第二层）：严格包含（`rel === ''` = 基准自身 ⇒ 不算通过）；词法判定、不 realpath。 */
+function isInsideDir(child, base) {
+  const rel = path.relative(path.resolve(base), path.resolve(child));
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/** 拒绝消息（US-14 契约第四层）：只回显入参前 60 字符，不含任何绝对路径。 */
+function rejectSpec(prefix, spec) {
+  return { ok: false, message: prefix + String(spec).slice(0, 60) };
+}
+
 /** 安装插件：内置插件离线拷贝；npm 插件走 pnpm add。返回 { ok, message } */
 async function installPlugin(spec) {
-  const bundledName = String(spec).replace(/^builtin:/, '');
+  const kind = installSpecKind(spec);
+  if (kind === null) return rejectSpec('无效的插件标识：', spec);
+  const bundledName = String(spec).replace(/^builtin:/, ''); // 计算面（全形态必经；与改前 :312 / :359 同源）
   const bundledSource = path.join(bundledPluginsDir(), bundledName);
-  if (fs.existsSync(bundledSource)) {
+  if (!isInsideDir(bundledSource, bundledPluginsDir())) return rejectSpec('插件标识越界，已拒绝：', spec);
+  if (kind === 'bundled' && fs.existsSync(bundledSource)) {
     // 内置插件：直接拷贝进 profile 的 node_modules（离线，不依赖网络）
     const target = path.join(profileDir(), 'node_modules', bundledName);
+    if (!isInsideDir(target, nodeModulesDir())) return rejectSpec('插件标识越界，已拒绝：', spec);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
     fs.cpSync(bundledSource, target, { recursive: true });
@@ -354,11 +404,16 @@ async function installPlugin(spec) {
   return { ok: true, message: `已安装 ${realName}` };
 }
 
-/** 卸载插件：内置插件直接删目录；npm 插件走 pnpm remove。 */
+/** 卸载插件：内置插件直接删目录；npm 插件走 pnpm remove（B12：入参门 + 卸载面解析门 + 越界校验）。 */
 async function uninstallPlugin(pkgName) {
+  if (installSpecKind(pkgName) === null) return rejectSpec('无效的插件标识：', pkgName);
+  const realName = resolveInstalledName(pkgName); // 解析门：解析不到已装对象 ⇒ 无可卸载对象
+  if (realName === null || !isPluginInProfile(realName)) return rejectSpec('未安装或无法解析：', pkgName);
   const bundledSource = path.join(bundledPluginsDir(), pkgName);
+  if (!isInsideDir(bundledSource, bundledPluginsDir())) return rejectSpec('插件标识越界，已拒绝：', pkgName);
   if (fs.existsSync(bundledSource)) {
     const target = path.join(profileDir(), 'node_modules', pkgName);
+    if (!isInsideDir(target, nodeModulesDir())) return rejectSpec('插件标识越界，已拒绝：', pkgName);
     if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
     removeBundle(pkgName);
     return { ok: true, message: `已卸载内置插件 ${pkgName}` };
@@ -385,6 +440,9 @@ module.exports = {
   addBundle,
   removeBundle,
   isPlainPackageName,
+  installSpecKind,
+  isInsideDir,
+  scanProfile,
   resolveInstalledName,
   computePluginUpdates,
   sanitizeProfileBundles,

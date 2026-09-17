@@ -20,7 +20,9 @@
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
     "icons": "node make-icons.js",
-    "make-latest": "node make-latest.js"
+    "make-latest": "node make-latest.js",
+    "bundle:refresh": "node scripts/refresh-dsh-bundle.js",
+    "bundle:check": "node scripts/refresh-dsh-bundle.js --check"
   },
   "dependencies": {},
   "devDependencies": {
@@ -55,6 +57,8 @@
       "shell-ipc.js",
       "pet.html",
       "pet.js",
+      "pet-chain-core.js",
+      "pet-chain.js",
       "pet-preload.js",
       "market.html",
       "market.js",

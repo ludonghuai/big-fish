@@ -46,7 +46,20 @@ const ipc = require('./shell-ipc.js');
 const APP_NAME = 'Bigfish';
 const HOST = '127.0.0.1';
 const READY_TIMEOUT_MS = 90 * 1000;
-const IDLE_NOTIFY_MS = 30 * 1000; // backend quiet for this long after activity => "done"
+// B09（US-12 / 设计档 §2.2.12「阈值取值」）：8 s = 投影缓存写后阈值 5000 ms + 3000 ms 余量
+// （8000 > 5000 = 判定承重前提：静默达阈值时快照必已折叠最近一次会话事件）
+const IDLE_NOTIFY_MS = 8 * 1000;
+const IDLE_NOTIFY_FALLBACK_MS = 30 * 1000; // 判定源不可用（unavailable）时的降级阈值 = 现状语义（§2.2.12 规则②）
+
+/** 空闲阈值（默认 `IDLE_NOTIFY_MS` = 8000 ms）；env `BIGFISH_IDLE_NOTIFY_MS` 可覆盖（测试钩子，承 `webUrlWaitMs()` 形）。 */
+function idleNotifyMs(defaultMs = IDLE_NOTIFY_MS) {
+  const raw = process.env.BIGFISH_IDLE_NOTIFY_MS;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return defaultMs;
+}
 
 // 测试/多实例：允许用环境变量指定 userData（避免 --user-data-dir 经 cmd 转发被改坏）
 if (process.env.BIGFISH_USER_DATA && String(process.env.BIGFISH_USER_DATA).trim() !== '') {
@@ -58,7 +71,7 @@ function isQuitting() { return quitting; }
 function setQuitting(v) { quitting = v; }
 
 // ---- 模块接线（依赖注入；设计档 docs/design/SHELL-UX.md §2.2.6 依赖方向规则）----
-notifier.init({ getDshHome: backend.dshHome, petSay: pet.petSay, IDLE_NOTIFY_MS });
+notifier.init({ getDshHome: backend.dshHome, petSay: pet.petSay, IDLE_NOTIFY_MS: idleNotifyMs(), IDLE_NOTIFY_FALLBACK_MS });
 backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: plugins.sanitizeProfileBundles, getMainWindow: win.getMainWindow });
 geometry.init({ getPetWindow: pet.getPetWindow, getPetDrag: drag.getPetDrag });
 drag.init({ getPetWindow: pet.getPetWindow, pet });
