@@ -70,6 +70,9 @@ function handleTrailStart() {
   trail = [];
   stopTrailSampler();
   trailTimer = setInterval(sampleCursor, core.PHYS_TRAIL_MS);
+  // 诊断行（修偏轮 2）：处理器被调用 + 采样器已起——下次「甩了没反应」不再靠外部推断；
+  //   关闭态（G1 早退）零日志保持（AC8④ / TC-23），故本行在 G1 之后
+  physLog('phys-trail-start seq=' + sessionSeq);
 }
 
 function sampleCursor() {
@@ -88,11 +91,22 @@ function stopTrailSampler() {
   if (trailTimer) { clearInterval(trailTimer); trailTimer = null; }
 }
 
-function handleTrailEnd(reasonRaw) {
+/**
+ * pet-drag-end 处理器（ipcMain 派发形态 = (event, reason)，与冻结面 handlePetDragEnd(_e, reason) 同通道同形）。
+ * 修偏轮 2（B20 · 2026-09-18 实机修偏）：原单参签名把 IpcMainEvent 绑进 reasonRaw ⇒ 归一化恒拒 ⇒ 静默清轨迹、零日志
+ *   ——即用户实机「甩了无任何反应」的真因（离屏复现：probe arg1=IpcMainEvent arg2=reason，2026-09-18）。
+ */
+function handleTrailEnd(_event, reasonRaw) {
   stopTrailSampler();
   if (settings.get().petPhysicsEnabled !== true) { trail = []; return; } // 关闭态：零评估零日志（§2.2.10 行 1）
-  // G6：reason 归一化（非法 ⇒ 清轨迹、不起飞，§2.2.5 第 2 条）；合法 ⇒ setImmediate 评估（DD-4）
-  if (!/^(pointerup|pointercancel|lostcapture)$/.test(reasonRaw)) { trail = []; return; }
+  const reason = typeof reasonRaw === 'string' ? reasonRaw : '';
+  // G6：reason 归一化（非法 ⇒ 清轨迹、不起飞，§2.2.5 第 2 条）；合法 ⇒ setImmediate 评估（DD-4）。
+  //   非法（含非字符串 / 空串的异常派发）⇒ 留 bad-reason 取证行（§2.2.11 词表项；修偏轮 2 前该词无产出行）
+  if (!/^(pointerup|pointercancel|lostcapture)$/.test(reason)) {
+    physLog('phys-stop reason=bad-reason pos=' + physPos(getPetWindow && getPetWindow()));
+    trail = [];
+    return;
+  }
   setImmediate(evaluateArm, sessionSeq);
 }
 
@@ -110,7 +124,7 @@ function evaluateArm(seq) {
     lastEvaluatedSeq,
     dragActive: !!(getPetDrag && getPetDrag() !== null),
     wanderInFlight: !!(getMoveTimer && getMoveTimer() !== null),
-    reasonOk: true,
+    reasonOk: true, // G6 已在 handleTrailEnd 前置执法（归一化处）；删前置须同步改为传入归一化结果
     trail,
     now,
     physics: core.PHYSICS,
