@@ -564,19 +564,20 @@ VERDICT: pass
 - **复验判据**：① 带 `BIGFISH_PET_DEBUG=1` 启动 ⇒ `userData/pet-physics.log` 出现 `phys-*` 行；② 实机推抛 ⇒ 起飞 / 弹跳 / 停泊 / 逐次挤压可见；③ 关闭开关 ⇒ 零日志、零定时器（AC8④）。
 - **流程缺口（归台账 T37）**：本批 AC 集覆盖了「托盘有该项 / 设置落盘 / 两处 IPC 监听在场」，但**未覆盖「组合根是否真的调了 init」** ⇒ 组装面机检缺失（12 个域模块中任一漏调，现有 AC 全绿而功能全失 ✗）。
 
----
+### 4.2 修偏轮 2（真因定位——2026-09-18；用户实机验收通过）
 
-<!-- 由主 agent 填 -->
+- **现象**（用户 2026-09-18）：勾选「甩抛物理手感」后拖拽正常、**甩出无任何反应**，且 `userData/pet-physics.log` **不存在**。
+- **主 agent 外部定位（逐项排除）**：拖拽事件到达 app ✓ · 调试开关生效 ✓ · 接线在位 ✓（`main.js:96`）· 开关为真 ✓（`settings.json`）· 绑定在跑 ✓ ⇒ 仅剩三类：处理器未真正调用 / 进去就早退 / reason 面。
+- **真因（eng-coder 离屏复现实证）**：`handleTrailEnd(reasonRaw)` 为**单参签名** ✗，而 `ipcMain` 派发形态 = `(event, reason)` ⇒ 处理器把 **IpcMainEvent 对象**绑进 `reasonRaw` ⇒ 归一化正则对 `[object Object]` 恒假 ⇒ 静默清轨迹早退（零日志零异常）—— 与现象完全吻合。**反证**：同通道冻结面 `drag.handlePetDragEnd(_e, reason)` 双参 ⇒ 拖拽侧一直正常。
+- **性质**：**非设计面缺口**（设计档 §2.2.1 数据流本就规定 `pet-drag-end(reason)` 直达本模块）⇒ 属实施签名缺陷，无需重新评审。
+- **修复**（双参签名 · `typeof` 归一 + 非法分支产 `phys-stop reason=bad-reason` · 增设 `phys-trail-start seq=<n>` · 补 G6 前置耦合注释）详见 §5。
+- **验收**：用户实机 + 机器取证双证，见 §6.1。
 
 ---
 
 ## §5 实施记录（eng-coder）
 
-<!-- 由 eng-coder 填 -->
-
----
-
-### §5 实施记录（eng-coder）——续做 + 补齐验收轮
+### 5.8 续做轮与验收补齐（eng-coder，2026-09-18）
 
 **背景**：上一轮 eng-coder 会话进程重启死亡——代码已全部落盘、未出交付报告、未跑自审与内部评审。本轮 = 在既有实现上完成验证链（不重写已验证成果）。
 
@@ -639,6 +640,54 @@ VERDICT: pass
 4. **真机手感面不在本轮闭环内** ⇒ restitution 0.55 / T 500 / 档界 800 均为「待实机标定」值（U-10 / O-12，到期条件已落档）。
 5. AC10④ 拖动期 CPU 增量（NFR-1 <5% 预算）需实机 10 s 采样——同 2 待用户环境。
 
+### §5.7 修偏轮 2（第 2 次实机修偏，2026-09-18）
+
+**用户现象**：勾选「甩抛物理手感」后拖拽正常、**甩出无任何反应**（主 agent 已定位：`pet-drag.log` 有行 ✓ · `pet-physics.log` 不存在 ✗ · `PET_DRAG_DEBUG` / `BIGFISH_PET_DEBUG` 同条命令生效 ✓ · `main.js:96` 真实 `physics.init` ✓ · `shell-ipc.js:26-27` 绑定在位 ✓ · `settings.json` `petPhysicsEnabled=true` ✓）。
+
+**真因（离屏 Electron 复现钉死，探针输出 `probe arg1=IpcMainEvent arg2="pointerup"`）**：`ipcRenderer.send(ch, reason)` 到主进程 `ipcMain` 监听器的派发形态 = **(event, reason) 双参**，而 `shell-pet-physics.js` 原 `handleTrailEnd(reasonRaw)` **单参签名**把 IpcMainEvent 对象绑进 `reasonRaw` ⇒ regex `.test(event)` 强转 `"[object Object]"` 恒假 ⇒ G6 归一化必拒 ⇒ **静默清轨迹早退，零日志零异常**。冻结面同通道处理器 `drag.handlePetDragEnd(_e, reason)`（`shell-pet-drag.js:176`）双参所以拖拽正常——恰好反证根因。(a) 注册断与 (b) settings undefined 均被排除（register 不抛、market/affinity 绑定完好、init 注入 5 键完整）。**非设计面缺口**——设计档 §2.2.1 数据流本就规定 `pet-drag-end(reason)` 到达本模块，属实施签名缺陷。
+
+**改动（git 面 = 仅 `shell-pet-physics.js` +18/−4，其余零 diff）**：
+
+| # | 位置 | 改前 → 改后 |
+|---|---|---|
+| 1 | `shell-pet-physics.js:94-99` | `function handleTrailEnd(reasonRaw)` → `function handleTrailEnd(_event, reasonRaw)`（根因修复，与冻结面同通道同形）+ JSDoc 记录根因与复现证据 |
+| 2 | `shell-pet-physics.js:102-109` | `reasonRaw` 直接进 regex → 先 `typeof` 归一（非字符串 ⇒ `''`）；非法分支从静默零日志 → `phys-stop reason=bad-reason pos=…` 取证行（词表 14 个的既有项，本轮前无产出行） |
+| 3 | `shell-pet-physics.js:73-75` | handleTrailStart 加 `phys-trail-start seq=<n>` 诊断行（置于 G1 早退之后 ⇒ 关闭态零日志保持 AC8④/TC-23）——下次「甩了没反应」不必外部推断 |
+| 4 | `shell-pet-physics.js:127` | `reasonOk: true` 补耦合注释（G6 前置执法点在 handleTrailEnd；删前置须同步传归一化结果） |
+
+**验证实测（亲跑）**：① `node --check shell-pet-physics.js` ✓；② `node .thincoder/b20-pet-physics-stub.mjs` ⇒ **112/112 PASS** ✓；③ `node .thincoder/b20-static-checks.cjs` ⇒ **64/64 PASS** ✓；④ 离屏复现（`BIGFISH_PET_DEBUG=1 npx electron .thincoder/b20-repro-trail.cjs`）⇒ 修复前 `log-lines 0`（复现用户症状）→ 修复后 `phys-trail-start → phys-arm vel=(-2080,0) trail=8 → phys-land/phys-squash ×8 → phys-tick → phys-rest reason=atRest flight=1892`（全链路）+ bogus reason ⇒ `phys-stop reason=bad-reason` 恰 1 行 ✓；⑤ 冻结面 `git diff -- shell-pet-geometry.js shell-pet-drag.js pet-chain.js pet-chain-core.js assets` ⇒ 空输出 ✓；⑥ 行数 323 ≤500 / 行宽 ≤300 零超 ✓。
+
+**实机验收判据（供主 agent 复验）**：`BIGFISH_PET_DEBUG=1` 启动 → 拖拽桌宠快甩松手 → `%APPDATA%\Bigfish\pet-physics.log` 应出现 `phys-trail-start seq=…` + `phys-arm vel=…`（快甩）或 `phys-stop reason=…`（缓放/静默）+ `phys-rest reason=atRest`；窗口应可见飞行/弹跳/挤压动画。
+
+**内部审计与评审**：explore 偏离审计 1 轮 ⇒ DEVIATIONS（代码语义零偏离、无 🔴；3 条 🔵 全在文档面）+ 内部代码评审 1 轮 ⇒ **pass**（🟡1/🔵2，#2/#3 已修落注释，#1 Deferred 见上报项）。终态 = **clean**。
+
+**上报项（写权在父侧/设计者，本段披露）**：① `phys-trail-start` 新 tag 未在设计档 §2.2.11 tag 表（写权 eng-designer）——建议补一行 tag 定义；② 修偏轮 2 的 §4 条目（D-2）未落（§4 写权主 agent）；③ 本轮开发期工装 `.thincoder/b20-repro-trail.cjs`（离屏复现，gitignored 非交付物，同 §5.1 表 12 行先例披露形态）。
+
+**范围外注记（未触碰）**：工作树中 `docs/TODO.md` / `docs/batches/B16-test-gates.md` / `dsh-bundle/package.json` + `package-lock.json` 4 档为既有他批改动，非本轮所改。
+
 ## §6 验收核销（主 agent）
 
-<!-- 由主 agent 填 -->
+### 6.1 验收结论（2026-09-18）：**通过 ✓**
+
+**人可观察面（用户实机）**：用户确认「非常好的设计，**我已经能运用重力模式了**」⇒ 飞行 / 弹跳 / 落地挤压均可见 ✓。
+
+**机器取证（主 agent 亲读 `userData/pet-physics.log` 实测）**：
+
+| 事件 | 计数 | 判据 |
+|---|---|---|
+| `phys-trail-start` | 12 | 处理器被调用 ✓ |
+| `phys-arm` | 10 | 起飞（快甩过门）✓ |
+| `phys-tick` | 95 | 飞行推进 + 写窗 ✓ |
+| `phys-land` / `phys-squash` | 107 / 107 | 落地 + 挤压 ✓ |
+| `phys-rest` | 10 | 静止停泊 ✓（末条 `reason=atRest flight=4529 steps=172`）|
+| `phys-stop` | 3 | **未过门槛被正确拒** ✓（门非来者不拒）|
+
+- **修偏轮合计**：D-1（`physics.init` 漏接线）+ D-2（`handleTrailEnd` 单参签名）；**两次均为实机发现、非设计问题** ⇒ 未触发设计重审。
+- **父侧形态规范（已披露）**：§5 内子代理所写 `### §5 实施记录（eng-coder）——续做 + 补齐验收轮` 与其所属 §5 标题重复 ⇒ 规范为 `### 5.8 续做轮与验收补齐（eng-coder，2026-09-18）`；**仅改标题行，内容零改** ✓。
+- **残余（不阻断核销）**：设计档 §2.2.11 事件词表补 `phys-trail-start` / `bad-reason` 两行（词表计数 +2）⇒ 归设计者同步（父侧已派）。
+- **归档判定**：本批**可归档** ✓（用户实机 + 机器取证双证）。
+
+### 6.2 台账联动
+
+- 本批派生条目 **T37**（组装面机检缺失）已登记，处置挂 **B16**（实施中 ✓）；无其它派生条。
+- 本批无关联需求池条目（R 类）⇒ 无需求池勾销面。
