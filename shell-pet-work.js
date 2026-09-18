@@ -1,6 +1,6 @@
 'use strict';
 /**
- * shell-pet-work.js — 工作状态联动 I/O 档：fs.watch + 1 s tick + 读记录 + 档位下发 / 重断言 + 开关 + 降级 + 日志（B19；设计档 docs/design/PET-ANIMATION.md §2.7 / §2.8.1–§2.8.8）。
+ * shell-pet-work.js — 工作状态联动 I/O 档：fs.watch + 1 s tick + 读记录 + 档位下发 / 重断言 + 开关 + 降级 + 日志（B19 / B26；设计档 docs/design/PET-ANIMATION.md §2.7 / §2.8.1–§2.8.8 / §2.8.5）。
  * 依赖方向（§2.7）：只依赖 node:fs / node:path + 经 init(deps) 注入的访问器（组合根 main.js 接线，共 9 项）；
  *   不 require shell-notify.js / shell-affinity.js（DD-21，同族谓词重复 = 观察项 O16）；shell-pet.js 不 require 本档（反注入，背底档经 setBaseStateProvider 注入）。
  * I/O 形态（§2.8.1 / AC23④）：tick 内全程 fs.promises（readdir / stat / readFile）——零同步 I/O；mtime 未变 ⇒ 只 stat、不 readFile、不 JSON.parse。
@@ -32,7 +32,7 @@ let scanRunning = false;    // 异步扫描在途标记（防重叠；承 B09 fa
 let soonTimer = null;       // fs.watch 的提前扫描定时器（250 ms 去抖）
 let lastGear = null;        // 记忆档位（§2.8.4 术语：本模块「最近一次实际下发的档位」；下发记录，非渲染层观测）
 let derivePrev = { gear: null, doneBaseline: null, doneUntil: 0 }; // deriveGear 派生状态（§2.8.2）
-let bubbleState = { gear: null, shown: false, lastAt: 0 };          // 气泡节流状态（§2.8.5）
+let bubbleState = { gear: null, shown: false, lastAtByGear: {}, lastAtAll: 0 };   // 气泡节流状态（§2.8.5：按档 + 全局两面；B26 拆分原单值 lastAt）
 let pickedName = null;      // 上一 tick 选取的记录名（切换 ⇒ doneBaseline 重置，§2.8.2 基线三条之「重置」）
 const cache = new Map();    // name → { mtime, sig }：mtime 未变 ⇒ 复用上次解析（AC23 无冗余解析）
 let diagUnavailableLogged = false;      // work diag reason=unavailable 封口（每监视器生命周期至多一条，§2.8.8）
@@ -80,7 +80,7 @@ function setEnabled(on) {
 function resetRuntime() {
   lastGear = null;
   derivePrev = { gear: null, doneBaseline: null, doneUntil: 0 };
-  bubbleState = { gear: null, shown: false, lastAt: 0 };
+  bubbleState = { gear: null, shown: false, lastAtByGear: {}, lastAtAll: 0 };
   pickedName = null;
   cache.clear();
   staleDiagLogged.clear();
@@ -240,7 +240,7 @@ function clearGear() {
   }
   lastGear = null;
   derivePrev = { gear: null, doneBaseline: null, doneUntil: 0 };
-  bubbleState = { gear: null, shown: false, lastAt: 0 };
+  bubbleState = { gear: null, shown: false, lastAtByGear: {}, lastAtAll: 0 };
   pickedName = null;
 }
 

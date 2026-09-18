@@ -1,10 +1,10 @@
 'use strict';
 /**
- * pet-physics-core.js — 桌宠甩抛物理纯函数核心 + 位移仲裁判定（B20；设计档 docs/design/PET-MOVEMENT.md §2.2.3 / §2.2.4 / §2.2.5 / §2.2.12）。
+ * pet-physics-core.js — 桌宠甩抛物理纯函数核心 + 位移仲裁判定 + 地面口径（B20 / B26；设计档 docs/design/PET-MOVEMENT.md §2.2.3 / §2.2.4 / §2.2.5 / §2.2.12 / §2.2.13）。
  * 边界（设计档 §2.2.1）：零 electron / 零 fs / 零定时器 / 零 DOM ⇒ 可被 node 直接装载（NFR-20，桩测装载真实实现）；
  *   渲染层经 pet.html 的 <script src> 装载（window.PetPhysicsCore，挤压曲线单一来源，§2.2.7 / AC4④）。
- * 函数清单：trimTrail · gatePeakSpeed · isQuietPlacement · estimateReleaseVelocity · throwStep · landingSquash ·
- *   squashScale · decideOwnership · armGate · canTakeOff；常量表 = PHYSICS + 本仓新增节拍 / 门窗常量。
+ * 函数清单：trimTrail · gatePeakSpeed · isQuietPlacement · estimateReleaseVelocity · groundBounds · throwStep ·
+ *   landingSquash · squashScale · decideOwnership · armGate · canTakeOff；常量表 = PHYSICS + 本仓新增节拍 / 门窗 / 地面常量。
  * 坐标语义：x / y = 窗口左上角 DIP（与冻结面同空间，§2.2.4）；速度 px/s。
  */
 
@@ -82,6 +82,12 @@ const GATE_WINDOW_MS = 120;
 /** 静默判据（px）：窗内端点位移 ≤ 该值 = 「位移接近 0」⇒ 判放置（quiet-dwell）；
  *  与既有「位移 > 5px 判为拖动」口径同源（pet.js:121）。 */
 const QUIET_SPAN_MAX_DIP = 5;
+/** 渲染层可见身体锚点内缩（DIP）= 窗高 270 − PET_FEET_Y(244)，与 #pet{bottom:26px} 同源（§2.1 J 组 / DD-17；B26）。 */
+const FEET_ANCHOR_INSET_DIP = 26;
+/** alpha 残差补偿（DIP）：实测视频 ≈4.2 / PNG 动画帧 ≈3.6 取较大者（O-13）；回正路径 = 本常量改 0（U-7；B26）。 */
+const FEET_ALPHA_MARGIN_DIP = 4;
+/** 地面增量唯一消费值（DIP）= 锚点 + 残差；groundBounds 与散步 y 归位上界同取（§2.2.13 / AC21①；B26）。 */
+const FEET_INSET_DIP = FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP;
 
 // ---------------------------------------------------------------------------
 // 轨迹（trail）纯函数（设计档 §2.2.5）
@@ -193,6 +199,12 @@ function estimateReleaseVelocity(trail, now, physics) {
     * (1 + Math.min(Math.max(accel, 0) / ACCEL_REF, 1) * ACCEL_GAIN_MAX);
   const speed = softClampSpeed(speedBeforeClamp) * p.throwPower;
   return { vx: (baseVx / baseSpeed) * speed, vy: (baseVy / baseSpeed) * speed };
+}
+
+/** 地面口径（B26 / §2.2.13）：物理地面 = 可见身体底沿 ⇒ 只抬 maxY（+FEET_INSET_DIP，minX/maxX/minY 逐字不变，返回新对象不改入参）；bounds == null ⇒ null（与 G8 no-bounds 同源）；消费点 = 飞行 bounds 与散步 y 归位。 */
+function groundBounds(bounds) {
+  if (bounds == null) return null;
+  return { ...bounds, maxY: bounds.maxY + FEET_INSET_DIP };
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +337,8 @@ const PetPhysicsCore = {
   MAX_THROW_SPEED, PEAK_WEIGHT, ACCEL_REF, ACCEL_GAIN_MAX, MAX_STEP_DT, REST_VY, REST_VX,
   SQ_SQUASH, SQ_MAX_SQUASH, SQ_DURATION_MS, SQ_SOFT_SPEED, SQ_HARD_SPEED,
   PHYS_POLL_MS, PHYS_TRAIL_MS, PHYS_MAX_FLIGHT_MS, PHYS_RUN_SPEED, GATE_WINDOW_MS, QUIET_SPAN_MAX_DIP,
-  trimTrail, gatePeakSpeed, isQuietPlacement, canTakeOff, estimateReleaseVelocity, throwStep,
+  FEET_ANCHOR_INSET_DIP, FEET_ALPHA_MARGIN_DIP, FEET_INSET_DIP,
+  trimTrail, gatePeakSpeed, isQuietPlacement, canTakeOff, estimateReleaseVelocity, groundBounds, throwStep,
   landingSquash, squashScale, decideOwnership, armGate,
 };
 

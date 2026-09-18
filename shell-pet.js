@@ -119,9 +119,10 @@ function petSay(msg) {
   }
 }
 
-/** 待机时随机表演一段小动作（看书/星星眼/惊吓/开心），随后回到待机。 */
+/** 待机时随机表演一段小动作（看书/星星眼/惊吓/开心），随后回到待机；工作档在途（记录新鲜期）不让位自主起步（B26 / §2.12.2 补漏门）。 */
 function playIdleVariant() {
-  if (!petWindow || petWindow.isDestroyed() || petState !== 'idle') return;
+  // 补漏起步门（B26 / §2.12.2）：与 scheduleWander 同判据形态、同常量来源——档位保持仍在（petBaseState 非 idle）时自主小动作不起步
+  if (!petWindow || petWindow.isDestroyed() || petState !== 'idle' || petBaseState() !== 'idle') return;
   const variants = ['read', 'starry', 'scared', 'happy'];
   const v = variants[Math.floor(Math.random() * variants.length)];
   setPetState(v);
@@ -302,8 +303,8 @@ function doWander() {
     scheduleWander();
     return;
   }
-  // 段起点算一次边界（所在屏口径），段内不重算
-  const bounds = geometry.petWorkAreaBounds(geometry.petCurrentDisplay());
+  // 段起点算一次边界（所在屏口径），段内不重算；y 归位上界取地面口径（B26 / §2.2.13：groundBounds 只抬 maxY，判空与 petWorkAreaBounds 同源）
+  const bounds = physics.groundBounds(geometry.petWorkAreaBounds(geometry.petCurrentDisplay()));
   if (!bounds) {
     scheduleWander();
     return;

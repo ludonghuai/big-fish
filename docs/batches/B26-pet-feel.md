@@ -363,6 +363,72 @@ VERDICT: pass
 
 ---
 
+### 5.0 实施记录（eng-coder）
+
+> 实施轮 = 2026-09-18（换机复审 pass + 用户批准后）；任务书 = 本档 §2（含 §2.10 订正块）；
+> 权威设计 = `docs/design/PET-ANIMATION.md` §2.8.2 / §2.8.5 / §2.12 + `docs/design/PET-MOVEMENT.md` §2.1 J 组 / §2.2.13。
+
+#### 5.0.1 交付摘要（逐条落点）
+
+- **F1 工作档让位（AC24）**：
+  - `pet-work-core.js:129` 规则 7 保持条（`if (signals.fresh) return out;`——记录新鲜 ⇒ 维持上一档位，含 `work-done`），位于收尾保持期（`:128`）之后、清档支（`:130`）之前，与 §2.8.2 规则表次序逐行同构；
+  - `pet-work-core.js:118-121` 基线建立分支删去 `out.gear = null`（建基线后同样走保持条——依据 = 设计 §2.8.2 ④ + TC-48「基线建分支输出 = prev.gear」；详见 5.0.2）；
+  - `shell-pet.js:125` `playIdleVariant` 补漏起步门（`petBaseState() !== 'idle'` ⇒ 直接返回），与 `scheduleWander` 起步门同判据形态、同常量来源（`petBaseState` = `main.js:93` 注入的 `work.baseState()` = 记忆档位 `lastGear`）。
+- **F2 落地踩实（AC21–AC22）**：
+  - `pet-physics-core.js:86/88/90` 三常量 `FEET_ANCHOR_INSET_DIP=26` · `FEET_ALPHA_MARGIN_DIP=4` · `FEET_INSET_DIP=30`；`:204-208` 纯函数 `groundBounds`（null 透传 / 只抬 maxY / spread 新对象 / 不改性入参）；`:340-343` 双环境导出增三常量与 `groundBounds`；
+  - `shell-pet-physics.js:121-123` 飞行 bounds 改取 `core.groundBounds(waBounds)`（null 透传 ⇒ G8 `no-bounds` 照旧）；`:327` 经 `module.exports` 转暴露 `groundBounds`（零新增 require 边）；
+  - `shell-pet.js:306-307` `doWander` y 归位上界改 `physics.groundBounds(...)`（判空 `:308` 保留）——口径生效点四处（反弹触地 / 5 s 强落 `:276` / atRest / 起飞钳入 `:156-158`）全取同一补偿 bounds。
+- **F3 工具档气泡（AC31）**：
+  - `pet-work-core.js:17-19` 常量 `WORK_BUBBLE_MIN_GAP_MS=30000`（既有，注释补「同档间隔」）+ `WORK_BUBBLE_GLOBAL_GAP_MS=10000`（新增，定义恰 1 处）；
+  - `pet-work-core.js:135-156` `pickBubble` 三条件（①同档一次 `:147` ③跨档全局 `:148` ②同档间隔 `:150`——合取等价，评估次序如实登记）；状态形状 `{ gear, shown, lastAtByGear, lastAtAll }`（`:141-142`），按档写新对象不改性入参（`:153`）；
+  - `shell-pet-work.js:35/83/243` `bubbleState` 三处初值同形全零。
+- **冻结面零 diff**（任务书 §二 10 项）：桩测内嵌 `git diff --stat` 逐档断言 PASS（面 = 9 档 + `assets/**`）。
+
+#### 5.0.2 决策透明表（实施者对设计权威句的裁量，逐条）
+
+| # | 决策 | 依据 |
+|---|---|---|
+| 1 | 基线建立分支删 `out.gear = null`（B19 行为）⇒ 建基线后维持 `prev.gear` | 设计档 §2.8.2 ④「基线建分支……建基线后同样走保持条 ⇒ 启动时 prev.gear === null ⇒ 与今天同形」+ TC-48 字面「输出 = 上一档位（prev.gear）」。任务书 §一 F1 摘要未列此项 ⇒ 按任务书 §五「设计档 > 任务书摘要」取设计权威句；启动面（prev.gear=null）与今天同形、零观感差 |
+| 2 | `groundBounds` 的 JSDoc 压为一行注释（首版 5 行 ⇒ 行数超红线 348） | 任务书纪律 3「每个新常量/纯函数带一行用途注释」+ 行数红线（5.0.6）；一行含完整契约（null 透传 / 只抬 maxY / 新对象 / 消费点） |
+
+#### 5.0.3 审计与代码评审轮次与终态
+
+- **内部差异审计（explore，1 轮）**：A–H 八面逐条核对——四类偏差（部分实现 / 静默简化 / 文档漂移 / 超范围）**零发现**；🔵 观察项 4 条（O1 = 本段待写 → 本节即补；O2 = 评估次序合取等价 → 5.0.1 已登记；O3 = 日志/实机取证轨归验收轮；O4 = 桩测亲跑 → 46/46 PASS）。
+- **内部代码评审（advisor，2 轮）**：轮 1 墙钟 600 s 超时中断（全文核对完成、无发现表）；轮 2 收窄范围复跑 ⇒ **VERDICT: pass**（零 🔴；🟡 1 = 本段待写；🔵 4 = 档头标注 / 函数清单陈旧存量 / 不可用路径气泡面 / 冻结面核证手段）。
+- **评审后修正（1 项）**：`shell-pet-work.js:3` 档头批次标注 B19 → B19 / B26（同写域其余档同形）；修正后三道门 + 桩测全量复跑 PASS。
+- **终态**：`clean`（审计零红黄 + 评审 pass + 修正落地复验绿）。
+
+#### 5.0.4 NFR-19 重扫登记行（设计档 `PET-MOVEMENT.md` §2.2.13 末段的强制项）
+
+- **重扫口径** = `B20-pet-physics.md` §2.12 三逐字（单屏工作区 1920×1040 DIP；4 起点 × 8 方向 × 4 速 = 128 例；16 ms tick；地面 = `groundBounds`，maxY 770 → **800**）；
+- **实测（新地面 FEET_INSET_DIP=30）**：`total=128` · `≤4 s 档=72` · `4–5 s=46` · `timeout 强落=10` · `worstRest=5000 ms` · **档内（首触 |vy_imp|≤800）最坏 rest=2064 ms**（余量 1.94 s）· `maxFirstTouchVy=3891 px/s`；
+- **与旧基准对照（B20 §2.12 (4)：74/44/10）**：`≤4 s 74 → 72` · `4–5 s 44 → 46`（两例跨档——与新地面 +6% 冲击速度的设计预估一致）· `上界 10 → 10` 不变（恒为 45° 斜下快甩）；
+- **判据结论**：① 恒界内；② 全部 ≤5 s 收口（timeout 例收口在地面）；③ 首触 ≤800 档 ⇒ rest ≤4 s **全例成立**（violation=0；远超设计余量核算的 3.33 s 最坏预期）；④ gravity=0 ⇒ 5 s 上界收口在地面。**两档判据零逾期例。**
+
+#### 5.0.5 机检凭证（亲跑，2026-09-18）
+
+- `node .thincoder/b26-pet-feel-stub.mjs` ⇒ **46/46 PASS**（断言面 = AC21①② / AC24①②③ / AC31①② / TC-48 / TC-39① / NFR-19 重扫 / 冻结面零 diff ×2）；
+- 「改前树必红」双点亲验（`git show HEAD:` 导出旧实现跑同一时间线，不触碰工作区）：AC24① ③b 新鲜期推进 10 s ⇒ 旧树输出 `null` ✓ 红点成立；AC31① t=12 s 工具档 ⇒ 旧树 0 条 ✓ 红点成立；
+- `npm run lint` ⇒ `GATE lint PASS checks=6 selftest=14/14`（width PASS / lines PASS / dag PASS(0 环) / fanout PASS(frozen=6) / assembly PASS(13/13)）；
+- `npm run test:full` ⇒ `GATE test:full PASS pass=45 fail=0 skipped=0 ms≈1071`（零回归）；
+- `npm run test:integration` ⇒ `GATE test:integration PASS scenarios=3 pass=3 fail=0`。
+
+#### 5.0.6 行数实测（换行符口径）
+
+| 档 | 实施前 | 实施后 | 红线 | 判 |
+|---|---|---|---|---|
+| pet-work-core.js | 158 | 166 | ≤168 | ✓ |
+| shell-pet-work.js | 264 | 264 | ≤280 | ✓ |
+| shell-pet.js | 454 | 455 | ≤462 | ✓ |
+| pet-physics-core.js | 334 | 347 | ≤348 | ✓ |
+| shell-pet-physics.js | 323 | 327 | ≤331 | ✓ |
+
+#### 5.0.7 观察行（如实登记，均非缺陷）
+
+- 评审 🔵：`shell-pet-work.js:197` 不可用路径（无选中记录）跳过气泡状态机 ⇒ 同档跨「不可用间隙」重入时 `shown` 不重置（更严不更松——少弹、不刷屏）；既有接线形态，非本批引入；
+- 评审 🔵：`shell-pet.js` 档头函数清单缺 B19/B20 世代新增符号（`petBaseState` 等）= 存量陈旧；按批次档 §1.5 硬约束 1（无关不改）本批不动；
+- 开发期桩测 `.thincoder/b26-pet-feel-stub.mjs`（235 行，gitignored 非交付物）：按测试纪律「① 单元测试 = 开发期工具、批次收口默认退役」**判退役**（逻辑断言已被两 core 档真实实现覆盖、不可复用为业务场景面）——留待主 agent §6 收口裁定。
+
 ## §6 验收核销（主 agent）
 
 <!-- 由主 agent 填 -->

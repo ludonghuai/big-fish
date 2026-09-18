@@ -1,6 +1,6 @@
 'use strict';
 /**
- * pet-work-core.js — 工作状态档位派生纯函数核心：常量表 / 形态守卫 / 记录信号 / 四段选取 / 陈旧守卫 / 档位派生 / 气泡节流（B19；设计档 docs/design/PET-ANIMATION.md §2.8.1 / §2.8.2 / §2.8.5）。
+ * pet-work-core.js — 工作状态档位派生纯函数核心：常量表 / 形态守卫 / 记录信号 / 四段选取 / 陈旧守卫 / 档位派生（含 B26 保持条）/ 气泡节流（B19 / B26；设计档 docs/design/PET-ANIMATION.md §2.8.1 / §2.8.2 / §2.8.5 / §2.12）。
  * 边界（设计档 §2.7）：零 fs / 零 IPC / 零 electron / 零定时器 / 零 DOM——可被 node 直接装载（NFR-17，桩测装载真实实现）；双环境导出尾巴见档末。
  * 字段白名单（NFR-15 / §2.8.1）：只消费 turnBoundary.val.{openTurnStartSeq,lastTurn} · sessionStats.val.{openStep,pendingCalls} · 记录文件名——零字段取自内容行。
  * 函数清单：guardRows · recordSignals · pickRecord · extractSignals · deriveGear · pickBubble；常量表 + 文案表（WORK_QUOTES）。
@@ -13,8 +13,10 @@ const WORK_TICK_MS = 1000;
 const WORK_STALE_MS = 60000;
 /** 收尾档保持期（ms；O19：一处可调，用户实机后可复核取值）。 */
 const WORK_DONE_HOLD_MS = 3000;
-/** 两条工作气泡的最小间隔（ms，§2.8.5）。 */
+/** 两条工作气泡的最小间隔（ms，§2.8.5；同档间隔）。 */
 const WORK_BUBBLE_MIN_GAP_MS = 30000;
+/** 跨档全局下限（ms，§2.8.5：任意两条工作气泡间隔 ≥ 它，防三档连弹；B26 新增）。 */
+const WORK_BUBBLE_GLOBAL_GAP_MS = 10000;
 /** 形态守卫：行版本（NFR-17 版本守卫；换代 ⇒ unavailable，不猜测）。 */
 const WORK_TURN_BOUNDARY_VER = 2;
 const WORK_SESSION_STATS_VER = 1;
@@ -97,11 +99,12 @@ function extractSignals(sig, mtime, now) {
 }
 
 /**
- * 档位派生（§2.8.2 规则 1–6，自上而下短路；「工具优先于思考」= 规则 2 先于 3——并行调用窗口内二者可同时在场）。
+ * 档位派生（§2.8.2 规则 1–8，自上而下短路；「工具优先于思考」= 规则 2 先于 3——并行调用窗口内二者可同时在场）。
  * prev = { gear, doneBaseline, doneUntil }（I/O 档持有的派生状态；初值三 null/0）。
  * 规则 5 基线三条（修正轮 1 #4，持久信号）：建立（doneBaseline===null 的首个「无在途 ∧ 新鲜」观测只建基线、不触发——避免开机对历史回合补演）/
  * 更新（触发收尾档即置 doneBaseline = lastTurn）/ 重置（I/O 侧在选取记录切换或开关重开时置 null）。
- * 收尾保持期：触发后 WORK_DONE_HOLD_MS 内不落规则 6；期内回合重新在途 ⇒ 规则 2 / 3 立即接管（分支在前）；期满 ⇒ 规则 6 清档。
+ * 收尾保持期：触发后 WORK_DONE_HOLD_MS 内不落规则 6；期内回合重新在途 ⇒ 规则 2 / 3 立即接管（分支在前）；期满后落规则 7（保持）或 8（清档）。
+ * 规则 7 保持条（B26 / §2.12.2）：选中记录新鲜期间不落 idle、维持上一档位（含 work-done；prev.gear === null ⇒ 仍 null）——自主动作被既有 petState==='idle' 守卫挡住（效力边界 = §2.12.3）。
  */
 function deriveGear(signals, prev) {
   const p = prev || { gear: null, doneBaseline: null, doneUntil: 0 };
@@ -112,9 +115,8 @@ function deriveGear(signals, prev) {
     if (signals.openStep !== null && signals.openStep !== undefined) { out.gear = 'work-thinking'; return out; } // 规则 3：生成中
     return out;                                                                       // 规则 4：保持上一档（step 边界瞬间，不抖动）
   }
-  if (signals.fresh && out.doneBaseline === null) {                                   // 基线建立：首个「无在途 ∧ 新鲜」观测
+  if (signals.fresh && out.doneBaseline === null) {                                   // 基线建立：首个「无在途 ∧ 新鲜」观测只建基线、不触发——建基线后同样走保持条（§2.8.2 ④：out.gear 维持 prev.gear；启动时 prev.gear === null ⇒ 与今天同形）
     out.doneBaseline = signals.lastTurn;
-    out.gear = null;
     return out;
   }
   if (signals.fresh && signals.lastTurn > out.doneBaseline) {                         // 规则 5：收尾档（lastTurn 增量 ∧ 无在途 ∧ 新鲜）
@@ -123,32 +125,38 @@ function deriveGear(signals, prev) {
     out.doneUntil = signals.now + WORK_DONE_HOLD_MS;
     return out;
   }
-  if (p.gear === 'work-done' && p.doneUntil > signals.now) { out.gear = 'work-done'; return out; } // 收尾保持期内不落规则 6
-  out.gear = null;                                                                    // 规则 6：长期空闲 / 陈旧记录 / 保持期满 ⇒ 清档
+  if (p.gear === 'work-done' && p.doneUntil > signals.now) { out.gear = 'work-done'; return out; } // 收尾保持期内不落清档
+  if (signals.fresh) return out;                                                             // 规则 7：记录新鲜 ⇒ 维持上一档位（含 work-done；B26 / §2.12.2）
+  out.gear = null;                                                                    // 规则 8：记录陈旧 / 长期空闲 ⇒ 清档（B26 起 = 有界端）
   return out;
 }
 
 /**
- * 气泡节流（§2.8.5 判据句）：同一档位在一次连续停留内至多 1 条；两条工作气泡间隔 ≥ WORK_BUBBLE_MIN_GAP_MS；
- * 收尾档（文案表无键）与清档不弹。state = { gear, shown, lastAt }；返回 { text, state }（text = null ⇒ 本次不弹，不影响档位切换）。
+ * 气泡节流（§2.8.5 判据句，B26 三条件）：① 同档一次（档内首 tick）；② 同档两条 ≥ WORK_BUBBLE_MIN_GAP_MS；
+ * ③ 跨档全局下限：任意两条工作气泡（跨档）间隔 ≥ WORK_BUBBLE_GLOBAL_GAP_MS（防三档连弹）。
+ * 收尾档（文案表无键）与清档不弹。state = { gear, shown, lastAtByGear, lastAtAll }（B26：原单值 lastAt 拆为按档 + 全局两面）；
+ * 返回 { text, state }（text = null ⇒ 本次不弹，不影响档位切换）。
  */
 function pickBubble(gear, state, now) {
-  const p = state || { gear: null, shown: false, lastAt: 0 };
-  const next = { gear: p.gear, shown: p.shown, lastAt: p.lastAt };
+  const p = state || { gear: null, shown: false, lastAtByGear: {}, lastAtAll: 0 };
+  const next = { gear: p.gear, shown: p.shown, lastAtByGear: p.lastAtByGear, lastAtAll: p.lastAtAll };
   const g = gear === undefined ? null : gear;
   if (next.gear !== g) { next.gear = g; next.shown = false; }                         // 新的连续停留（或离开工作档）⇒ 重置该档「已弹」位
   const quotes = g !== null && Object.prototype.hasOwnProperty.call(WORK_QUOTES, g) ? WORK_QUOTES[g] : null;
   if (!quotes) return { text: null, state: next };                                    // 清档 / 收尾档 ⇒ 不弹
-  if (next.shown) return { text: null, state: next };                                 // 同档一次
-  if (now - next.lastAt < WORK_BUBBLE_MIN_GAP_MS) return { text: null, state: next }; // 间隔不足 ⇒ 本次不弹
+  if (next.shown) return { text: null, state: next };                                 // 条件①：同档一次
+  if (now - next.lastAtAll < WORK_BUBBLE_GLOBAL_GAP_MS) return { text: null, state: next }; // 条件③：跨档全局下限不足 ⇒ 不弹
+  const lastAtGear = Object.prototype.hasOwnProperty.call(next.lastAtByGear, g) ? next.lastAtByGear[g] : 0;
+  if (now - lastAtGear < WORK_BUBBLE_MIN_GAP_MS) return { text: null, state: next };  // 条件②：同档间隔不足 ⇒ 不弹
   const text = quotes[Math.floor(Math.random() * quotes.length)];
   next.shown = true;
-  next.lastAt = now;
+  next.lastAtByGear = { ...next.lastAtByGear, [g]: now };                             // 按档写入（新对象，不改性入参）
+  next.lastAtAll = now;
   return { text, state: next };
 }
 
 const PetWorkCore = {
-  WORK_TICK_MS, WORK_STALE_MS, WORK_DONE_HOLD_MS, WORK_BUBBLE_MIN_GAP_MS,
+  WORK_TICK_MS, WORK_STALE_MS, WORK_DONE_HOLD_MS, WORK_BUBBLE_MIN_GAP_MS, WORK_BUBBLE_GLOBAL_GAP_MS,
   WORK_TURN_BOUNDARY_VER, WORK_SESSION_STATS_VER, WORK_QUOTES,
   guardRows, recordSignals, pickRecord, extractSignals, deriveGear, pickBubble,
 };

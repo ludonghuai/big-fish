@@ -1,12 +1,14 @@
 'use strict';
 /**
- * shell-pet-physics.js — 桌宠物理域实现：拖动期光标采样 + 起飞门 + 飞行循环 + 停泊收口 + 挤压 IPC（B20；设计档 docs/design/PET-MOVEMENT.md §2.2.1 / §2.2.2 / §2.2.5 / §2.2.6 / §2.2.11）。
+ * shell-pet-physics.js — 桌宠物理域实现：拖动期光标采样 + 起飞门 + 飞行循环 + 停泊收口 + 挤压 IPC（B20 / B26；设计档 docs/design/PET-MOVEMENT.md §2.2.1 / §2.2.2 / §2.2.5 / §2.2.6 / §2.2.11 / §2.2.13）。
  * 函数清单：physLog · init · isFlying · handleTrailStart / sampleCursor / handleTrailEnd · evaluateArm / armFlight ·
  *   startFlightLoop · flightTick · sendSquash · stopFlight（停泊收口）· handlePhysicsToggle · registerScreenStops · quit。
  * 依赖方向：只读 geometry helper（petWorkAreaBounds / petCurrentDisplay / petSettlePos / petApplyPos /
  *   petCalibrateSize / petSavePos / petGeomSnapshot / petPosText）+ 经 init(deps) 注入的访问器
  *   （getPetWindow / getPetDrag / getMoveTimer / settings / setPetState）。
  * 禁（NFR-8 / NFR-18）：不自造第二份几何判定、不新增尺寸写入路径；flightTick 体内零 petSavePos / 零 petCalibrateSize / 零 getSize。
+ * 地面口径（B26 / §2.2.13）：飞行 bounds = core.groundBounds(geometry.petWorkAreaBounds(...))——物理地面 = 可见身体底沿（原窗口矩形口径只作 maxY 中间量）；
+ *   groundBounds 经 module.exports 转暴露（散步 y 归位同口径取用，不新增 require 边）。
  */
 
 const { app, screen } = require('electron');
@@ -116,7 +118,9 @@ function handleTrailEnd(_event, reasonRaw) {
 function evaluateArm(seq) {
   const now = performance.now();
   const win = getPetWindow && getPetWindow();
-  const bounds = win && !win.isDestroyed() ? geometry.petWorkAreaBounds(geometry.petCurrentDisplay()) : null;
+  // 地面口径（B26 / §2.2.13）：groundBounds 只抬 maxY（可见脚底踩实），null 透传 ⇒ G8 no-bounds 照旧
+  const waBounds = win && !win.isDestroyed() ? geometry.petWorkAreaBounds(geometry.petCurrentDisplay()) : null;
+  const bounds = core.groundBounds(waBounds);
   const gate = core.armGate({
     enabled: settings.get().petPhysicsEnabled === true,
     windowAlive: !!(win && !win.isDestroyed()),
@@ -320,4 +324,4 @@ function physPos(win) {
   return (win && !win.isDestroyed()) ? geometry.petPosText(win.getPosition()) : 'n/a';
 }
 
-module.exports = { init, isFlying, handlePhysicsToggle, registerScreenStops, quit, stopFlight, handleTrailStart, handleTrailEnd };
+module.exports = { init, isFlying, handlePhysicsToggle, registerScreenStops, quit, stopFlight, handleTrailStart, handleTrailEnd, groundBounds: core.groundBounds };
