@@ -560,6 +560,69 @@ VERDICT: pass
 
 ---
 
+### §5 实施记录（eng-coder）——续做 + 补齐验收轮
+
+**背景**：上一轮 eng-coder 会话进程重启死亡——代码已全部落盘、未出交付报告、未跑自审与内部评审。本轮 = 在既有实现上完成验证链（不重写已验证成果）。
+
+#### 5.1 交付面（11 档 git 面 + 2 档 gitignored 工具）
+
+| # | 文件 | 动作 | 要点 |
+|---|---|---|---|
+| 1 | `pet-physics-core.js` | 新建（334 行） | 纯函数核心：PHYSICS 参数表（restitution 0.55 = 裁定 B）/ 常量表 / trimTrail / gatePeakSpeed / isQuietPlacement / canTakeOff / estimateReleaseVelocity（四类 null）/ throwStep（landed 标志）/ landingSquash / squashScale / decideOwnership / armGate（G1–G11）；双环境导出；零 require / 零 fs / 零定时器 |
+| 2 | `shell-pet-physics.js` | 新建（309 行） | 域实现：采样器（16 ms）/ evaluateArm（setImmediate）/ armFlight（起飞归一化 + prevGrounded 初值）/ flightTick（抢占首行 + 同目标去重）/ stopFlight（停泊序列 + timeout 强制落地 snap）/ handlePhysicsToggle / registerScreenStops / quit；日志 `pet-physics.log`（BIGFISH_PET_DEBUG=1） |
+| 3 | `shell-pet.js` | 改（+16/−1） | doWander 守卫 `|| physics.isFlying()`（1 处）/ physics.init 注入点（shell-pet.js:29-35）/ destroyPetWindow:221 + clearPetTimers:247 停点 |
+| 4 | `main.js` | 改（+8） | require:38 / 接线注释区 / registerScreenStops:179（whenReady 内、几何三条 screen.on **之前**，E7）/ before-quit:210 停点 |
+| 5 | `shell-ipc.js` | 改（+6） | pet-drag-start / pet-drag-end 两条本模块自有监听（:26-27，注册点唯一；既有绑定行零改动） |
+| 6 | `shell-tray.js` | 改（+11） | 「甩抛物理手感」checkbox（open-1 ①；open-2 ① 专注模式置灰）+ setPetPhysics（落盘 + handlePhysicsToggle + rebuild） |
+| 7 | `shell-settings.js` | 改（+1） | `petPhysicsEnabled: false`（U-1 ② 默认关） |
+| 8 | `pet.html` | 改（+19/−6） | `#pet-squash` 包裹层（包 #pet-stage + #pet）+ reduce-motion 分支 + `<script src="pet-physics-core.js">`（曲线单一来源） |
+| 9 | `pet.js` | 改（+22） | onPhysicsSquash → playSquash（rAF 逐帧 scaleY；曲线/时长取 window.PetPhysicsCore 按名引用） |
+| 10 | `pet-preload.js` | 改（+1） | 暴露 `onPhysicsSquash`（通道 `pet:physics-squash`，O-5 规则句形态） |
+| 11 | `package.json` | 改（+2） | `build.files` 增列两个新源档；dependencies 零 diff |
+| 12 | `.thincoder/b20-pet-physics-stub.mjs` | 新建（389 行，gitignored） | 开发期桩测（112 断言，装载真实核心）；另有开发期自检工具 `b20-static-checks.cjs`（64 断言）/ `b20-smoke-load.cjs`（同 gitignored 区，非交付物） |
+
+#### 5.2 本轮补齐的改动（相对上一轮落盘形态；其余全部为上一轮已存在成果，零重写）
+
+| # | 位置 | 改动 | 理由 |
+|---|---|---|---|
+| 1 | shell-pet-physics.js:186-189 | flightTick 首行 drag-preempt 分支补 `phys-stop reason=drag-preempt` 取证行（先于 stopFlight） | §2.2.2 交接② / §2.2.10 行 6 的字面判据「drag-preempt 之后无 phys-tick wrote=1」——原实现只有 phys-rest 行，phys-stop 行缺失 |
+| 2 | shell-pet-physics.js:121-128 | evaluateArm 的 G4 分支不再换词（`drag-active` 照抄词表，删去对 drag-preempt 的误映射） | §2.2.11 词表 14 个中两者并存（drag-active = G4 未飞面 / drag-preempt = 抢占面）；原实现把 G4 的 reason 改写成 drag-preempt ⇒ 词表失真 |
+| 3 | shell-pet-physics.js:277-279 | handlePhysicsToggle(false) 补 `stopTrailSampler()` | 评审 🔵：拖动中关闭时采样器残留至 drag-end 自停——AC8④/TC-23「零定时器」严格化（1 行） |
+| 4 | shell-pet-physics.js:298 / :274 注释 | quit() 与显式停点注释按实际行为改写（quit 在窗口存活时步骤 3 照常执行——对将死窗口无害） | 评审 🔵：注释与行为不符（行为本身正确不动） |
+
+#### 5.3 验证实测（亲跑输出）
+
+- 桩测：`node .thincoder/b20-pet-physics-stub.mjs` ⇒ **112/112 PASS**
+- 静态机检：`node .thincoder/b20-static-checks.cjs` ⇒ **64/64 PASS**
+- 装载烟测：`node .thincoder/b20-smoke-load.cjs` ⇒ 导出面 8 符号 / 核心导出 35 符号 / restitution 0.55 / T 500
+- `node --check`：main / pet / pet-preload / pet-physics-core / shell-pet / shell-pet-physics / shell-ipc / shell-settings / shell-tray / 桩测 ⇒ 全绿
+- 零 diff 面：`git status --porcelain` 恰 11 档（写域内）；`git diff --stat` 对 shell-pet-geometry.js / shell-pet-drag.js / pet-chain.js / pet-chain-core.js / assets/** / docs/** ⇒ **空输出**；`pool.json` weights.move = 0
+- 行宽/行数：11 档 + 桩测全部 ≤300 宽 / ≤500 行（最大 shell-pet.js 438 行）；文件头三判据（新档 2 + stub）全过
+- 静态门：squashScale / SQ_DURATION_MS / TAKEOFF_MIN_SPEED / estimateReleaseVelocity / throwStep / decideOwnership / armGate / landingSquash 全仓**定义数 == 1**（均在 pet-physics-core.js）；pet.js 按名引用 window.PetPhysicsCore
+- 飞行期取屏 0 次：petCurrentDisplay 仅 :105（arm 路径）+ 注释 :6；flightTick 体内零 petSavePos / 零 petCalibrateSize / 零 getSize
+- 顺序门：getPetDrag 判定(185) < drag-preempt 日志(186) < setPosition(201)；clearInterval(246) < petSettlePos(259)；main.js registerScreenStops(179) < 几何三条 screen.on(180-182)
+
+#### 5.4 偏离审计（内部 explore 子代理，1 轮）——结论 DEVIATIONS（无 🔴）
+
+已披露偏离 A/B/C 成色核验**全部通过**（各有设计档其他节明文支持）：
+- **A**（G11 先于 G10 评估）：§2.2.12「一律判放置」语义要求静默支先行；TC-35/TC-36 两支可区分断言在场。
+- **B**（dock 集合 {atRest, timeout, toggle, error}）：§2.2.8 / §2.2.10 行 7 / TC-24 的明文要求（toggle/error 走停泊序列）——§2.2.6 步骤 2 字面集合属设计档未同步面，**建议行**：设计者下轮补齐措辞。
+- **C**（drag-preempt 两行并存）：两行均在 §2.2.11 词表内，运行时判据由首行自停保证。
+
+另 3 条 🔵 字面级差异：physics.init 落点在 shell-pet.js（经 main.js 间接，行为等价）；quit 在窗口存活时步骤 3 照常执行（无害）；pendingRelease 未物化快照（G4 兜底等价）。**建议行**（文档面，归主 agent/设计者）：A/B 的裁决记录 + 设计档 §2.2.6 dock 措辞同步。
+
+#### 5.5 内部代码评审（内部子代理，1 轮）——结论 pass（无 🔴）
+
+10 个重点判面（dt 漂移 / timeout 双写 / lastApplied 基准 / sessionSeq 竞窗 / G3 幂等 / stale 分支 / atRest 第二支 / quit 路径 / 注册顺序 / #pet-squash 插层）9 项确认无误 + 1 项为规格级观察项。处置：#3（toggle 停采样器）已修；#4（quit 注释）已修；#1（atRest 第二支「贴墙即停」与样本 physics.ts:310 逐字同形）= 规格继承，不改代码，**登记为实机标定轮观察项**；#5（snap 写不查去重，幂等）/#6（reduce-motion 下 rAF 空转，U-9 由 CSS 分支承担）/#7（getCursorScreenPoint 无 try/catch，与冻结面既有同款同形）= 登记，不阻断。
+
+#### 5.6 残余风险与未覆盖面（如实标注）
+
+1. **观感类无机器判据**（Q 弹好不好看 / 手感轻重 / 弹跳可感性）= 人工目视项——本会话无实机（T9 未验）。
+2. **实机链路**（拖动→甩→飞→停泊 + 日志面 `phys-stop/phys-arm/phys-rest` 行为 + 跨屏拖动）待用户环境亲跑；判据已由设计档 §3.3 限制节登记。
+3. **AC11⑤ 分布**（≤4s 74 / 4–5s 44 / 上界 10）：桩测按 ±2 容差断言通过（实跑值在 72–76 区间内为绿）；与批次档 §2.12 重算数同源。
+4. **真机手感面不在本轮闭环内** ⇒ restitution 0.55 / T 500 / 档界 800 均为「待实机标定」值（U-10 / O-12，到期条件已落档）。
+5. AC10④ 拖动期 CPU 增量（NFR-1 <5% 预算）需实机 10 s 采样——同 2 待用户环境。
+
 ## §6 验收核销（主 agent）
 
 <!-- 由主 agent 填 -->

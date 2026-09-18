@@ -35,6 +35,7 @@ const backend = require('./shell-backend.js');
 const geometry = require('./shell-pet-geometry.js');
 const drag = require('./shell-pet-drag.js');
 const pet = require('./shell-pet.js');
+const physics = require('./shell-pet-physics.js');
 const affinity = require('./shell-affinity.js');
 const mode = require('./shell-mode.js');
 const plugins = require('./shell-plugins.js');
@@ -76,6 +77,9 @@ backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: plugins.sanitizeP
 geometry.init({ getPetWindow: pet.getPetWindow, getPetDrag: drag.getPetDrag });
 drag.init({ getPetWindow: pet.getPetWindow, pet });
 pet.init({ showMainWindow: win.showMainWindow, openExchangeWindow: affinity.openExchangeWindow, broadcastAffinity: affinity.broadcastAffinity });
+// 物理域接线（B20）：physics.init 只保存 deps + 注册 ipcMain 监听器（不触 screen，§2.8）——
+//   真正的飞行启动依赖 pet-drag-start/end 事件与 settings 的 petPhysicsEnabled（默认 false，零开销）；
+//   三条 screen.on 停点在 whenReady 内、几何三条之前注册（E7，见下）
 affinity.init({ getPetWindow: pet.getPetWindow, pet, setQuitting, APP_NAME });
 mode.init({ getMainWindow: win.getMainWindow, destroyPetWindow: pet.destroyPetWindow, ensurePet: pet.ensurePet, rebuildTrayMenu: tray.rebuildTrayMenu, notify: notifier.notify, APP_NAME });
 plugins.init({ updaterLog: update.updaterLog });
@@ -170,6 +174,9 @@ if (!gotLock) {
     affinity.startAffinityWatcher();
     update.scheduleUpdateChecks();
     // 显示器配置变化（E5 三事件，DD-8）：失效拖动缓存 + 校正到可见区 + 落盘
+    // 物理停点先于几何三条（E7 / 交接⑥：飞行中先零写入停物理，再由几何事件路径校正；
+    //   判据 = 日志 phys-stop reason=display-change 早于 geom tag=display，§2.8）
+    physics.registerScreenStops(screen);
     screen.on('display-added', (_e, display) => geometry.handleDisplayChange('added', display));
     screen.on('display-removed', (_e, display) => geometry.handleDisplayChange('removed', display));
     screen.on('display-metrics-changed', (_e, display, changedMetrics) => geometry.handleDisplayChange('metrics', display, changedMetrics));
@@ -200,6 +207,7 @@ if (!gotLock) {
   app.on('before-quit', () => {
     quitting = true;
     drag.petStopDrag('destroyed'); // 退出路径终止拖动（设计档 §2.2.4 的主进程清空点）
+    physics.quit();                // 退出路径终止物理飞行（B20：§2.2.10 第 9 行——只停循环 + 日志，零写入）
     geometry.petSavePos();             // 退出前兜底落盘（US-13，§2.3.2 调用时机表）
     globalShortcut.unregisterAll();
     notifier.stopCompletionWatcher();

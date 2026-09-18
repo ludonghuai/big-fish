@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
   launchAtLogin: false,
   autoCheckUpdates: true, // 自动检查更新开关（启动检查 + 6h 轮询；托盘 checkbox，§2.2.7）
   petEnabled: true,
+  petPhysicsEnabled: false, // 甩抛物理手感（B20 / US-27）：默认关（U-1 ②「默认行为保守」——开关改的是可感知的松手后行为）
   mode: 'whale',        // 'whale' 鲸鱼模式（桌宠+背景图） | 'focus' 专注模式（无桌宠、纯色背景）
   modeChosen: false,    // 是否已弹过模式选择
   lastModeVersion: '',  // 上次选择模式时的版本号（更新后重新弹窗）

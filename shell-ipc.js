@@ -6,6 +6,7 @@
 const { ipcMain } = require('electron');
 const pet = require('./shell-pet.js');
 const drag = require('./shell-pet-drag.js');
+const physics = require('./shell-pet-physics.js');
 const affinity = require('./shell-affinity.js');
 const market = require('./shell-market.js');
 const update = require('./shell-update.js');
@@ -19,6 +20,11 @@ function register() {
   ipcMain.on('pet-clicked', pet.handlePetClicked);
   ipcMain.on('pet-right-clicked', pet.handlePetRightClicked);
   ipcMain.on('pet-set-ignore-mouse', drag.handlePetSetIgnoreMouse);
+  // Pet physics（B20）：物理域自有的拖动事件监听（**注册点唯一 = 本文件**；设计档 §2.2.5 第 2 条 / §2.8——
+  //   shell-pet-physics.js 的 init 只保存 deps、不重复注册；与冻结面既有绑定并存不依赖顺序：
+  //   起飞评估在 setImmediate，晚于本事件全部监听器（含冻结面收口））
+  ipcMain.on('pet-drag-start', physics.handleTrailStart);
+  ipcMain.on('pet-drag-end', physics.handleTrailEnd);
   // 插件市场 IPC
   ipcMain.handle('market:list', market.marketList);
   ipcMain.handle('market:state', market.marketState);

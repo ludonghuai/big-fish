@@ -148,6 +148,28 @@ window.petAPI.onSay((msg) => {
   setTimeout(() => bubble.classList.remove('show'), 4000);
 });
 window.petAPI.onState((s) => setState(s));
+
+// Q 弹挤压（B20 / US-25，设计档 docs/design/PET-MOVEMENT.md §2.2.7）：落地撞击时在 #pet-squash 上
+//   逐帧 scaleY（squashScale 曲线 + SQ_DURATION_MS 均取自 window.PetPhysicsCore——单一来源，不复制定义）；
+//   reduce-motion 由 CSS 分支处置（U-9：不播放）。重入 ⇒ 重起一段（新撞击中断旧动画）。
+const squashLayer = document.getElementById('pet-squash');
+let squashRaf = 0;
+function playSquash(depth) {
+  if (!squashLayer || !window.PetPhysicsCore) return;
+  if (squashRaf) cancelAnimationFrame(squashRaf);
+  const duration = window.PetPhysicsCore.SQ_DURATION_MS;
+  const scale = window.PetPhysicsCore.squashScale;
+  const start = performance.now();
+  const frame = (now) => {
+    const u = Math.min(1, (now - start) / duration);
+    squashLayer.style.transform = 'scaleY(' + scale(u, depth) + ')';
+    if (u < 1) { squashRaf = requestAnimationFrame(frame); return; }
+    squashLayer.style.transform = '';
+    squashRaf = 0;
+  };
+  squashRaf = requestAnimationFrame(frame);
+}
+window.petAPI.onPhysicsSquash((depth) => playSquash(depth));
 // 好感度：level / points / pointsToNext / progress(0~1)
 window.petAPI.onAffinity((a) => {
   if (a && affinityFill && affinityLabel) {

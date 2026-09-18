@@ -48,6 +48,13 @@
     }
     .pet-media.is-front { opacity: 1; }
     /* 好感度条（紧贴窗口底边） */
+    /* Q 弹挤压包裹层（B20 / US-25）：包住视频通道与 PNG 通道，落体撞击时逐帧 scaleY；
+       链引擎只按 id 取元素（pet-chain.js）⇒ 插层零影响；曲线/时长取自 window.PetPhysicsCore（单一来源，§2.2.7） */
+    #pet-squash {
+      position: absolute; left: 0; top: 0; width: 250px; height: 270px;
+      transform-origin: 50% 100%;
+    }
+    #pet-squash .pet-media, #pet-squash #pet { pointer-events: none; }
     #affinity {
       position: absolute; bottom: 2px; left: 50%;
       transform: translateX(-50%);
@@ -91,24 +98,28 @@
       #pet.animate-bob { animation: none; }
       #bubble.show { animation: none; }
       #affinity-fill { transition: none; }
+      #pet-squash { transform: none !important; } /* B20 / US-25：reduce-motion 下不播放挤压（U-9 ①） */
     }
   </style>
 </head>
 <body>
   <div id="pet-wrap">
     <div id="bubble"></div>
-    <div id="pet-stage">
-      <video class="pet-media is-front" muted playsinline preload="none"></video>
-      <video class="pet-media" muted playsinline preload="none"></video>
+    <div id="pet-squash">
+      <div id="pet-stage">
+        <video class="pet-media is-front" muted playsinline preload="none"></video>
+        <video class="pet-media" muted playsinline preload="none"></video>
+      </div>
+      <img id="pet" draggable="false" alt="">
     </div>
     <div id="affinity">
       <div id="affinity-bar"><div id="affinity-fill"></div></div>
       <div id="affinity-label">Lv.1 好感 0</div>
     </div>
-    <img id="pet" draggable="false" alt="">
   </div>
   <script src="pet-chain-core.js"></script>
   <script src="pet-chain.js"></script>
+  <script src="pet-physics-core.js"></script>
   <script src="pet.js"></script>
 </body>
 </html>

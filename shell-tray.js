@@ -15,6 +15,7 @@ const update = require('./shell-update.js');
 const market = require('./shell-market.js');
 const affinity = require('./shell-affinity.js');
 const pet = require('./shell-pet.js');
+const physics = require('./shell-pet-physics.js');
 const notifier = require('./shell-notify.js');
 
 // 注入面（组合根 main.js 接线）：setQuitting（组合根）/ APP_NAME（常量）
@@ -75,6 +76,8 @@ function rebuildTrayMenu() {
       submenu: [
         { label: '自动检查更新', type: 'checkbox', checked: settings.get().autoCheckUpdates, click: (item) => setAutoCheckUpdates(item.checked) },
         { label: '任务完成时通知', type: 'checkbox', checked: settings.get().notifyOnComplete, click: (item) => setNotify(item.checked) },
+        // 甩抛物理手感（B20 / US-27）：专注模式（无桌宠窗口）下开关无对象 ⇒ 置灰（open-2 ①，同「找回鲸鱼娘」）
+        { label: '甩抛物理手感', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petPhysicsEnabled, click: (item) => setPetPhysics(item.checked) },
         { label: '开机自启', type: 'checkbox', checked: settings.get().launchAtLogin, click: (item) => setAutoStart(item.checked) },
         {
           label: 'Windows 右键菜单',
@@ -117,6 +120,14 @@ function setAutoStart(enabled) {
 function setAutoCheckUpdates(enabled) {
   settings.get().autoCheckUpdates = enabled;
   settings.saveSettings();
+  rebuildTrayMenu();
+}
+
+/** 甩抛物理手感开关（B20 / US-27）：落盘 settings.json 顶层布尔；关闭时正在飞 ⇒ 立即停泊收口（§2.2.8）。 */
+function setPetPhysics(enabled) {
+  settings.get().petPhysicsEnabled = enabled;
+  settings.saveSettings();
+  physics.handlePhysicsToggle(enabled);
   rebuildTrayMenu();
 }
 

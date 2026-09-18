@@ -13,6 +13,7 @@ const core = require('./pet-chain-core.js');
 const settings = require('./shell-settings.js');
 const geometry = require('./shell-pet-geometry.js');
 const drag = require('./shell-pet-drag.js');
+const physics = require('./shell-pet-physics.js');
 
 // 注入面（组合根 main.js 接线）：showMainWindow（window）/ openExchangeWindow、broadcastAffinity（affinity）
 let showMainWindow = null;
@@ -24,6 +25,14 @@ function init(deps) {
   broadcastAffinity = deps.broadcastAffinity;
   // 渲染层请求一次散步（复用既有 doWander 的守卫与位移纪律；本批不改其内部，DD-6）
   ipcMain.on('pet-chain-move', () => doWander());
+  // 物理域接线（B20）：doWander 守卫读 physics.isFlying()（下面 require 定序先于本 init 调用）
+  physics.init({
+    getPetWindow,
+    getPetDrag: drag.getPetDrag,
+    getMoveTimer,
+    settings,
+    setPetState,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +218,7 @@ function destroyPetWindow() {
   clearPetTimers();
   petWanderDir = null;
   petBounceLeft = 0;
+  physics.quit(); // 物理飞行态一并终止（B20：销毁路径停点，docs/design/PET-MOVEMENT.md §2.2.10 第 9 行）
   if (petWindow && !petWindow.isDestroyed()) petWindow.destroy();
   petWindow = null;
   drag.petStopDrag('destroyed'); // 拖动跟随循环一并终止（幂等：clearPetTimers 已停过则此处 no-op）
@@ -234,6 +244,7 @@ function clearPetTimers() {
   clearTimeout(chatterTimer);
   clearInterval(moveTimer);
   wanderTimer = sleepTimer = eatTimer = moveTimer = chatterTimer = null;
+  physics.quit(); // 物理飞行 / 采样循环同样是桌宠定时器，一并终止（NFR-4：异常路径也清空；B20）
   drag.petStopDrag('destroyed'); // 拖动跟随循环同样是桌宠定时器，一并终止（NFR-2：异常路径也清空）
 }
 
@@ -272,8 +283,9 @@ function scheduleWander() {
  * 边界 = 桌宠当前所在屏的工作区（US-9，不跨屏）；y 写前归位（根因 2）。
  */
 function doWander() {
-  // 拖动态守卫：任何来源的散步都不得在拖动中移动窗口（根因 D）
-  if (!petWindow || petWindow.isDestroyed() || petState !== 'idle' || drag.getPetDrag() !== null) {
+  // 拖动态守卫：任何来源的散步都不得在拖动中移动窗口（根因 D）；B20：物理飞行中散步同样不得启动
+  //（位移仲裁交接④：守卫失败即 scheduleWander() 重排 = 既有自愈，docs/design/PET-MOVEMENT.md §2.2.2）
+  if (!petWindow || petWindow.isDestroyed() || petState !== 'idle' || drag.getPetDrag() !== null || physics.isFlying()) {
     scheduleWander();
     return;
   }

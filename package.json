@@ -47,6 +47,8 @@
       "shell-pet-geometry.js",
       "shell-pet-drag.js",
       "shell-pet.js",
+      "pet-physics-core.js",
+      "shell-pet-physics.js",
       "shell-affinity.js",
       "shell-mode.js",
       "shell-plugins.js",
