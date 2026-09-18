@@ -75,6 +75,99 @@
 
 ---
 
+### 2.1 本批覆盖的需求条目（三方同源之一）
+
+需求档 = `docs/requirements/PET.md`（新增 5 条 US + 5 条 NFR，另 4 处修订 / 限定注记）；设计档 = `docs/design/PET-MOVEMENT.md`（新建，主题档）。
+
+| 需求条目 | 一句话 | 设计档验收标准 |
+|---|---|---|
+| US-24 甩抛与飞行 | 松手初速 → 抛物线 → 碰壁 / 触地反弹 → 摩擦衰减 → 静止 | AC1、AC2、AC3 |
+| US-25 撞击形变反馈（Q 弹） | 落地瞬间「压扁—回弹」，力度随冲击速度 | AC4 |
+| US-26 位移单写者仲裁 | 拖拽 > 物理 > 散步；单写者 + 交接 + 互斥 | AC5、AC6、AC7 |
+| US-27 物理开关与默认值 | 托盘 checkbox + `settings.json` 顶层布尔；默认值待裁 | AC8 |
+| US-28 停下即停泊（含降级面） | 停下 = 离散停泊；物理不可用 ⇒ 回退今天 | AC9、AC10 |
+| NFR-18 物理写入纪律与开销 | 每 tick ≤1 次写 + 同目标去重 + tick 内零落盘零尺寸 + 关闭态零开销 | AC10 |
+| NFR-19 静止收敛与有界 | ≤4 s 静止 + 只停一次 + 5 s 硬上界 + 轨迹界内 | AC11 |
+| NFR-20 可测性 | 纯函数核心 + 双环境导出 + 桩测装载真实实现 | AC12 |
+| NFR-21 零回退与规范 | 冻结面零 diff + 零新依赖 + 行宽行数文件头 + 署名 | AC13 |
+| NFR-22 与既有机制的交互 | O10 不接管；B19 / B03 口径零改动 | AC14 |
+| 修订注记（US-3 / US-12 / NFR-1 / NFR-2） | 松手后由物理接管（B01 期条文的显式语义修订，**待用户追认 = U-7**）；物理关闭态逐字照旧 | AC9、AC13 |
+
+### 2.2 明确出批（本批不做，不写代码）
+
+- 阻尼弹簧拖拽（U-5 ①；冻结面）· 跨屏飞行（O-1）· 多宠物碰撞（`petCollision`）· 用户可调参数（只给开关）· 飞行中位置钳制 · 撞墙 / 撞顶形变 · 点击 / 喂食挤压；
+- **任何**对 `shell-pet-geometry.js` / `shell-pet-drag.js` / `pet-chain.js` / `pet-chain-core.js` / `assets/**` 的改动；
+- B03 / B18 / B19 各档面（只读）· 本批不新增 `tests/**` 档 · T29（B03 桩损坏）不修。
+
+### 2.3 实现写域（file 级权威表；超声明按实披露）
+
+| # | 文件 | 动作 | 说明（细节 = 设计档 §2.2 / §2.3） |
+|---|---|---|---|
+| 1 | `pet-physics-core.js` | 新建 | 纯函数核心（参数表 / trimTrail / estimateReleaseVelocity / throwStep / 挤压曲线 / decideOwnership / armGate）；**零 electron / 零 fs / 零定时器**；双环境导出 |
+| 2 | `shell-pet-physics.js` | 新建 | 域实现（采样 / 飞行循环 16 ms / armGate 消费 / 停泊收口 / 日志 / IPC → 挤压）；只读几何既有 helper |
+| 3 | `shell-pet.js` | 改 | `doWander` 守卫加 `|| physics.isFlying()`（1 处）；`init` 注入点；`destroyPetWindow` / `clearPetTimers` 路径停物理 |
+| 4 | `main.js` | 改 | require + `physics.init(deps)`（模块接线区）+ 本模块三条 `screen.on`（**`whenReady` 内、几何三条之前**；E7，见 §2.8）+ `before-quit` 停点 |
+| 5 | `shell-ipc.js` | 改 | 增注册本模块自有的 `pet-drag-start` / `pet-drag-end` 监听器（**不改既有绑定行**） |
+| 6 | `shell-tray.js` | 改 | 「设置」子菜单 +1 checkbox（标签 = `open-1` 待定，实施按推荐 ①）+ setter |
+| 7 | `shell-settings.js` | 改 | `DEFAULT_SETTINGS` + `petPhysicsEnabled`（默认值 = U-1 裁定；未裁前按推荐 `false`） |
+| 8 | `pet.html` | 改 | 插入 `#pet-squash` 包裹层（包 `#pet-stage` + `#pet`）+ keyframes + reduce-motion 分支 |
+| 9 | `pet.js` | 改 | `onPhysicsSquash` → 逐帧 `squashScale` 播放（220 ms） |
+| 10 | `pet-preload.js` | 改 | 暴露 `onPhysicsSquash(cb)` |
+| 11 | `package.json` | 改 | `build.files` 增列两个新源档（白名单制，**必需**） |
+| 12 | `.thincoder/b20-pet-physics-stub.mjs` | 新建 | 开发期桩测（gitignored 非交付物）；装载真实核心，末行 `pass/total PASS`，`total ≥ 40` |
+
+**零 diff 面（机检，硬门禁）**：`shell-pet-geometry.js`（437 行）· `shell-pet-drag.js`（239）· `pet-chain.js`（240）· `pet-chain-core.js`（198）· `assets/**` · `package.json` 的 `dependencies` / `devDependencies` 段。
+**贴线档**：本批写域内无 ≥480 行档（最大 `shell-pet.js` 426 → ≈434）⇒ 无需拆分计划。
+
+### 2.4 验收标准（AC → 取证；判据详见设计档 §3.1）
+
+| AC | 判据摘要 | 取证 |
+|---|---|---|
+| AC1 | 轨迹界内 + 反弹系数 0.78±0.02 + 摩擦衰减 + ≤4 s 静止 | 桩测 |
+| AC2 | `ceilingBounce` 真 / 假两态（夹回反弹 / 越界不夹不弹） | 桩测 |
+| AC3 | 估速五类 null 分支 + 平滑甩动方向与量级带 + 软上限 ≤3600×p | 桩测（扫描） |
+| AC4 | `landingSquash` 单调不增（0.8…0.55）+ `squashScale` 端点 / 上界（≤1.12）+ 渲染面在场 | 桩测 + 静态（+ 目视） |
+| AC5 | `decideOwnership` 8 组合 + tick 内「先判 `getPetDrag` 后写」+ 抢占后零写入 | 桩测 + 静态 + 日志面 |
+| AC6 | armGate G1–G9 逐条置假 ⇒ 逐条 reason + 零写入；全通过 ⇒ `phys-arm` 的 `pos` == `drag-end` 的 `pos` | 桩测 + 日志面 |
+| AC7 | tick 体内零 `petSavePos` / `petCalibrateSize` / `getSize`；`clearInterval` 先于停泊序列；停泊点 `geom-fix reason=physics-rest` 零行、`pos-save` ≤1 行、尺寸型 `geom-fix` ≤1 行 | 静态 + 日志面 |
+| AC8 | 托盘项在场且取值一致 + `settings.json` 键落盘读回 + 默认值 == 裁定值 + 关闭零日志 | 静态 + 实机 |
+| AC9 | 降级 10 行逐行行为与日志 reason 一致；关闭态与今天逐位一致 | 桩测 + 静态 + 日志面 |
+| AC10 | 每 tick `setPosition` ≤1 且同目标去重；飞行期取屏 0 次；关闭态零定时器 | 静态 + 桩测 |
+| AC11 | 8 方向 × {500,1200,2400,3600} × 4 起点 ⇒ 全部 ≤4 s `atRest`；`gravity=0` ⇒ 5 s 上界收口；最坏值记 §5 | 桩测（扫描） |
+| AC12 | 核心档零 `electron` / 零 `fs` + 双环境导出 + 桩测末行 PASS（`total ≥ 40`） | 命令亲跑 |
+| AC13 | 四档 + `assets/**` 零 diff；依赖段零 diff；`build.files` +2；行宽 / 行数 / 文件头 | 命令 + 静态 |
+| AC14 | `pool.json`（`weights.move = 0`）· `pet-chain*.js` · `PET-MULTIMONITOR.md` 零 diff | 静态 |
+
+用例表：TC-1…TC-29（正常 / 边界 / 异常；含撞击 / 反弹 / 静止收敛与「与拖拽 / 散步的交接」两类专项）= 设计档 §3.2。
+
+### 2.5 实施前置（启动前必须闭合）
+
+1. **待用户裁定（不得由实施者自裁）**：U-1 默认开关（推荐 ② 默认关）· U-2 参数取值（推荐 ① 照搬样本）· U-3 实现路径（推荐 ① 按规格重写）· U-4 散步去留（推荐 ② 保留）· U-5 拖动跟手（推荐 ① 不改，② 与硬门禁相抵）· U-6 O10 接管（推荐 ① 不接管）。
+2. **本设计新增的三项（源 = 设计期勘察，须一并裁定）**：**U-7** US-3 / NFR-2 的语义追认（推荐 ① 追认——否则「松手后接管」不成立、本批不成立）· **U-8** 飞行边界口径（推荐 ① 当前屏工作区）· **U-9** reduced-motion 下关闭挤压（推荐 ① 关闭）。
+3. **open（UI / 交互，实施前定案）**：`open-1` 托盘项标签文案（推荐 ①「甩抛物理手感」）· `open-2` 专注模式处置（推荐 ① 置灰）· `open-3` 撞墙形变（本批不做）。
+4. **设计评审**：发起权在用户（本批设计就绪待评审）；评审在途不改本档与被审设计档（D5）。
+5. **实施前置技术项**：`package.json` 的 `build.files` 必须先登记两个新源档（否则打包缺档）；桩测须能装载真实核心（零 electron）；基线 = 上一批收口点的四档零 diff。
+6. **回归面**：本批回归判据 = **几何面零 diff**（B03 dev 桩损坏 = T29，本批不修；O-7）。
+
+### 2.6 三方条目一致声明
+
+**批次档 §2 本批条目（US-24…US-28 / NFR-18…NFR-22）= 设计档 `docs/design/PET-MOVEMENT.md` §3.1 验收标准回指的条目 = 需求档 `docs/requirements/PET.md` §三 / §四 的条目**——三处同源，计数一致：
+
+- US：**5** 条（24…28）· NFR：**5** 条（18…22）· AC：**14** 条（AC1…AC14）· TC：**29** 条（TC-1…TC-29）· DD：**14** 条（DD-1…DD-14）· 选型组：**7** 组（A–G）· U：**9** 项（U-1…U-9）· open：**3** 项 · 观察项：**10** 项（O-1…O-10）。
+- 需求档计数：US 23 → **28**；NFR 17 → **22**（含本批 4 处修订 / 限定注记，类别已在需求档变更记录标明）。
+
+### 2.7 本段修正记录（eng-designer）
+
+| 日期 | 修正点 |
+|---|---|
+| 2026-09-18 | 建档（本批任务书）：覆盖条目 / 出批 / 实现写域 12 项 / 零 diff 面 / AC1–AC14 / 前置（含**本设计新增的 U-7…U-9** 与 open-1…open-3）/ 三方一致声明与计数。 |
+
+#### 2.8 实施细则（口径补充，2026-09-18）
+
+- **`main.js` 的调用点（E7 约束）**：本模块的三条 `screen.on`（`display-added` / `display-removed` / `display-metrics-changed`）**必须在 `whenReady` 内、几何三条 `screen.on` 紧邻之前**注册——`screen` 模块只能 `app` ready 之后使用（证据 E7，见 `docs/design/PET-MULTIMONITOR.md` §2.2）。
+- `physics.init(deps)` 本身可在模块接线区调用（只保存 deps + 注册 `ipcMain` 监听器，不触 `screen`）；判据 = 监听器执行顺序（日志 `phys-stop reason=display-change` 早于 `geom tag=display`）。
+- 本细则为对 §2.3 第 4 行与设计档 §2.2.1 / §2.2.2 交接 ⑥ / §2.2.10 第 5 行的**同源收窄**（非语义变更）；设计档已同批更新。
+
 ## §3 设计评审（评审子代理）
 
 <!-- 由评审子代理填 -->
