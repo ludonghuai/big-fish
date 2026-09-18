@@ -385,9 +385,19 @@ docs/CONVENTIONS.md
 | ② 单元与桩测 | `npm run test`（快层）· **`npm run test:full`**（全量 = 门） | `tests/**/*.test.js`；慢测层自动 skip | `GATE test:full PASS pass=45 fail=0 skipped=0 ms=<n>` |
 | ③ 集成场景 | `npm run test:integration` → `node scripts/test-integration.js` | 三场景（A.2.2.4），逐场景 spawn `electron` | `GATE test:integration PASS scenarios=3 pass=3 fail=0` |
 
+**四条 script 的字面值**（实施 = 原样写入 `package.json` scripts 块；**单一命令源** —— F4 / NFR-A4 的「与 CI 逐字同形」依赖它）：
+
+| script | 字面值 |
+|---|---|
+| `lint` | `node scripts/gates/run.js` |
+| `test` | `node scripts/test-run.js` |
+| `test:full` | `node scripts/test-run.js --full` |
+| `test:integration` | `node scripts/test-integration.js` |
+
 - **退出码**：`0` = 绿 · `1` = 判据红 · `2` = 门禁自身无法完成（**fail-closed**：档发现失败 / 基线档缺失 / 解析异常一律 2，绝不静默通过）。
 - **命名来源**：`test:full` / `test:integration` = `AGENTS.md` §三 已声明的门名（单一权威源，**不重命名**）；`test` = 快层（同族的默认面）。
 - **口径**：`test:full` **不含**集成层（否则第三道门冗余）——三层互不重叠、各自独立判红。
+- **层注入口径（命令面无层 flag）**：层由**运行器**注入 —— 运行器按自身开关（`test` 缺省 / `test:full` 传 `--full`）置 `BIGFISH_TEST_LAYER` 后再 spawn 子进程，`tests/layer.js` 的 `isFastLayer()` 只读该环境变量（A.2.2.3）。⇒ `npm run test:full --slow` 的旧写法**作废**（层不经命令行参数传递）。
 - **本批实施序（步序契约）**：① 落地 `scripts/gates/**` + `tests/layer.js` → ② 写 `baseline.json`（**取实施当日实测值**，见 A.2.2.6）→ ③ `test-run.js` + b12 的 `slow()` 改标 → ④ 集成三层（`harness.js` + 3 场景 + `test-integration.js` + stub 扩展）→ ⑤ `package.json` scripts → ⑥ `gates.yml` → ⑦ 本地三条门全绿取证。
 
 ##### A.2.2.2 机检判据逐条（六条：A · B · C · D①②③ —— 判据句 + 口径 + 机检方式 + 现状）
@@ -397,21 +407,29 @@ docs/CONVENTIONS.md
 `.electron-builder-cache` · `.dsh-home*` · `.test-userdata*` · `.test-dsh-home` · `*.log` ·
 `probe-electron.js` · `download-electron.js` · `download-node.js`。
 **口径选择理由**：`git ls-files` 口径会**放过未 `git add` 的新档** ⇒ 「只拦新增」（U-4）的判据失效；故取「磁盘实际档树 − 非仓库内容」。清单唯一权威处 = `scripts/gates/lib.js`。
-非文本档（读为 utf8 后含 NUL）跳过；生成档（`package-lock.json` 等）**不设豁免**（若超宽则入基线 —— **不新增豁免面**，承 DD-8）。
+非文本档（读为 utf8 后含 NUL）跳过；生成档（`package-lock.json` 等）**不设豁免**（承 DD-8 / DD-A11：不新增豁免面）。
+**生成档现状实测（as-of 2026-09-18）：`package-lock.json` 5,313 行 ⇒ 超宽 0 行**；未来依赖变更若引入 >300 字符行 ⇒ 该行不可拆（生成档）、又不在豁免面内 ⇒ **处置 = 停下报用户裁定**（基线**不得**用于冻结**新增**违规，见 A.2.2.6 判定规则 1；候选 ① 新增「生成档」豁免面 ② 改锁定源形态），**不静默放行**。
 
-| # | 判据 | 判据句 | 口径与豁免 | 机检方式 |
+| # | 判据 | 判据句（权威源） | 机检口径（本附节 = 机检实现面） | 机检方式 |
 |---|---|---|---|---|
-| A | 语法 | 扫描面内每个 `.js` / `.mjs` 经 `node --check` **退出 0** | 无豁免 | `execFileSync('node', ['--check', 档])` 逐档 |
-| B | 行宽 | 文本档每行「**去行尾 CR 后**字符数 ≤300」 | 口径 = 不含行尾 CR（承 DD-7）；豁免 = 台账 / 地图 / 归档档的**表格行**（`trim()` 后首字符 `\|`）+ **批次档 §3 段**（`^## §3 …` 起至下一 `^## ` 标题止） | 逐行测长 + 豁免面过滤；**基线** = 非豁免超宽行按档计数的冻结值 |
-| C | 行数 | 单档（`.js` / `.mjs`）**≤500 行** | 口径 = `\n` 计数（末行有换行不额外计）；`≥480` 输出**提示行**（不拦 —— 承规范档 §五「贴线档先给拆分计划」） | 同 B 的遍历 |
-| D① | 依赖无环 | 自研档静态相对 `require` 图必须是 **DAG（0 环）** | 只认字面量 `require('.<相对>')`；边 = 解析到扫描面内档 | DFS 着色求环 |
-| D② | fan-out | **域模块**（扫描面内 `.js`/`.mjs` 去掉 `tests/` · `scripts/` · `probe-*`）静态相对 require **出度 ≤3** | 组合根 `main.js` **免 ②**（装配面天然高扇出） | 逐档出度计数；**基线** = 超限档的冻结值 |
-| D③ | 接线点唯一 | 组合根 `main.js` 每个绑定 `const <名> = require('<相对>')` 须「**恰一处** `<名>.init(` 调用」 | 不提供 `init` 导出的档须列入**免检清单**（含理由）；**未解析的 require 形态 = 红**（fail-closed） | 绑定正则 + 调用计数正则；免检清单在基线档 |
+| A | 语法 | 扫描面内每个 `.js` / `.mjs` 经 `node --check` **退出 0**（**权威 = 本附节** —— B16 新增判据，规范档暂无对应条文） | 无豁免 | `execFileSync('node', ['--check', 档])` 逐档 |
+| B | 行宽 | 回指 `docs/CONVENTIONS.md` §五（单行 ≤300 字符） | 口径 = **不含行尾 CR**（承 DD-7）；豁免 = 台账 / 地图 / 归档档的**表格行**（`trim()` 后首字符 `\|`）+ **批次档 §3 段**（`^## §3 ` 起至下一 `^## ` 标题止）；**豁免面计数不含归档档**（D1） | 逐行测长 + 豁免面过滤；**基线** = 非豁免超宽行按档计数的冻结值 |
+| C | 行数 | 回指 `docs/CONVENTIONS.md` §五（单档 ≤500 行） | 口径 = `\n` 计数（末行有换行不额外计）；`≥480` 输出**提示行**（不拦 —— 承规范档 §五「贴线档先给拆分计划」） | 同 B 的遍历 |
+| D① | 依赖无环 | 回指 `docs/CONVENTIONS.md` §四 D① | 只认字面量 `require('.<相对>')`；边 = 解析到扫描面内档 | DFS 着色求环 |
+| D② | 域模块 fan-out | 回指 `docs/CONVENTIONS.md` §四 D② | 域模块 = 扫描面内 `.js` / `.mjs` 去掉 `tests/` · `scripts/` · `probe-*`；组合根 `main.js` 免判（装配面天然高扇出） | 逐档出度计数；**基线** = 超限档的冻结值 |
+| D③ | 接线点唯一 | 回指 `docs/CONVENTIONS.md` §四 D③ | **覆盖面 = 组合根绑定面**（口径见下条）；面内不导出 `init` 的档列入**免检清单**（含理由）；**未解析的 `require` 形态 = 红**（fail-closed） | 绑定正则 + 调用计数正则；免检清单在基线档 |
+
+- **判据句单一权威源（D2）**：B / C 的判据句权威 = `docs/CONVENTIONS.md` §五，D①②③ 的判据句权威 = `docs/CONVENTIONS.md` §四；本表只承载**机检口径与机检方式**，**不复述判据句**（防两处措辞分叉）；规范档只留判据句 + 机检实现面的指针。
+- **D③ 的覆盖面 = 组合根绑定面**（判据闭合，2026-09-18 实测）：D③ 只对 `main.js` 的相对 `require`（`const <名> = require('<相对>')`）**绑定到的**档适用 —— `main.js:32-46` 共 **15** 条相对 require。
+  `docs/CONVENTIONS.md` §四 列的「无 `init` 4 档」中：`shell-settings.js` / `shell-ipc.js` **在绑定面内** ⇒ 入免检清单；`shell-assets.js` / `shell-market.js` **未被组合根绑定**（`main.js` 全文无其 require）⇒ 不进绑定面、无需入清单。
+  故基线 `assemblyExempt` = **2 档**，与现状 `13/13 恰一处` 闭合。
+- **D③ 即 §1.4-5 的 T39 ②「装配面唯一」的机检落点**（T37 的组装面接线漏调亦由本判据拦）——与 D①② 的分工见下。
 
 **各判据现状（as-of 2026-09-18）**：
 
 - **A**：51 档（50 `.js` + 1 `.mjs`）→ **0 失败**。
-- **B**：非豁免 **92 行 / 16 档**；豁免面另计 = 批次档 §3 **121** 行 + 台账 / 地图表格行 **45** 行。
+- **B**：非豁免 **92 行 / 16 档**；豁免面另计 = 批次档 §3 **121** 行 + 台账 / 地图 / 归档档的**表格行** **43** 行（台账 **31** + 地图 **12**，as-of 2026-09-18）。
+  **豁免面计数不含归档档**（主 agent 裁决 D1：归档档已定案、不参与门禁计数 —— 计入会随每次归档漂数）；`docs/TODO-archive.md` **在扫描面内**、按**表格行豁免口径**处理（含归档 = 46 行，**不计**）。
   前三 = `docs/batches/B03-pet-multimonitor.md` **40** · `docs/design/PET-MULTIMONITOR.md` **18** · `docs/batches/B18-pet-animation-chain.md` **7**。
 - **C**：最大 = `market.js` **500**（贴线）· `updater.js` 497 · `tests/b12-plugin-guards.test.js` 491；**0 档超限**。
 - **D①**：**0 环**（基线不设条目）。
@@ -421,18 +439,21 @@ docs/CONVENTIONS.md
 
 - **F1 覆盖面 = 六条判据**（A 语法 · B 行宽 · C 行数 · D① 无环 · D② fan-out · D③ 接线点唯一）——与 A.2.2.1 的 `checks=6` 同口径；六条各出一行 `CHECK …` 摘要（A.3.1 AC-B16-6/7/8 据此逐条回指）。
 - **自证面**：内联 `--selftest` 自证 **TC-B16-01…14**（结构面，每次 `npm run lint` 跑）；**TC-B16-15…24** 由各自执行面承载（慢层运行器 / 集成场景 / 结构 grep），不在自证内。
-- **D③ 的拦截面与 T39 ② 的分工**：D③ 拦「接线漏调 / 重调」（B20 实机事故）；D② 拦「拼接式耦合」（域间 `require` 泛滥）。二者判据不同，**不得合并**。
+- **自证夹具隔离面（承 TC-B16-06 / 09 / 13）**：判据函数以**参数**接收 `root` 与 `baseline`（缺省 = 真实值）⇒ 夹具在 `fs.mkdtempSync(path.join(os.tmpdir(), 'b16-gate-'))` 的**临时档树**内造档，**不往仓库写任何档**。
+  夹具树内容 = 自造超宽行 `.md` / 互 `require` 的 `.js` / 违规基线条目；清理 = `try` / `finally` 内 `fs.rmSync(root, { recursive: true, force: true })`。
+  **与跳过清单的关系**：夹具根在 `os.tmpdir()` ⇒ **永不在门禁扫描面内**（扫描面 = 仓库根起递归）⇒ 无需新增跳过条目；若改用「仓库内临时根」（**不推荐**）⇒ 该根须同时写入跳过清单并保证 `finally` 清理，否则残档会被真实判据当**新增违规** ✗。
+- **D③（= T39 ②「装配面唯一」）的拦截面与 D①② 的分工**：D③ 拦「接线漏调 / 重调」（B20 实机事故 = T37 面）；D② 拦「拼接式耦合」（域间 `require` 泛滥）；D① 拦环。三者判据不同，**不得合并**。
 - **判据 B/C 的自陈**：本批新增/修改档自身须过判据 B/C（NFR-A6）——即门禁**扫自己**（防「新写的机检档自己超宽」）。
 
 ##### A.2.2.3 测试分层与运行契约
 
 - **域划分（机检可判）**：`tests/**/*.test.js` = **单元/桩测层**（`test` / `test:full`）；`tests/integration/**/*.scenario.js` = **集成层**（`test:integration`）。两域**后缀不同** ⇒ 运行器发现规则互不误收（DD-A12）。
 - **慢测层契约**：`tests/layer.js` 导出 `slow(name, fn)`（= 以 `[slow] ` 前缀注册用例，并在快层置 `skip`）与 `isFastLayer()`（读 `process.env.BIGFISH_TEST_LAYER === 'fast'`）。
-  - 快层（`npm run test`）⇒ `[slow]` 用例 skip；全量（`npm run test:full --slow`）⇒ 全部执行。
+  - 快层（`npm run test`）⇒ `[slow]` 用例 skip；全量（`npm run test:full`）⇒ 全部执行（**层由运行器注入 `BIGFISH_TEST_LAYER`、命令面无层 flag** —— 见 A.2.2.1）。
   - **硬红**：运行器解析 TAP 逐用例时长，任何**非 `[slow]`** 用例 >500 ms ⇒ 层判红，输出 `SLOW-UNREGISTERED <档> :: <用例> <ms>`。
   - **现状实测**：45 用例中**恰 1 例** >500 ms = `tests/b12-plugin-guards.test.js` 的 `TC-82 降级夹具：无 profile manifest / 空 node_modules ⇒ 不抛、返回空集`（**756.6 ms**）⇒ 本批改标 `slow()`（机械改标 + 引入 1 行，非重写）。
   - **集成层不参与**快/慢二分（天然全慢），由 `test:integration` 单独承载。
-- **断言面纪律**：新增断言只写 ① **行为面**（进程退出码 / 产品自身落盘物与诊断日志行 / 文件系统结果）② **结构机检面**（档内容结构）。**禁**「读非测试档 + 子串断言」式散文锚（NFR-A5）。
+- **断言面纪律**：新增断言只写 ① **行为面**（进程退出码 / 产品自身落盘物与诊断日志行 / 文件系统结果）② **结构机检面**（档内容结构）。**禁**「读非测试档 + 子串断言」式散文锚（NFR-A5）；禁止面的**可判形态**与**允许面**见 A.3.1 AC-B16-9。
 - **收编口径**：既有 3 档 `*.test.js` 正文**不改**（唯一例外 = 上条 `slow()` 改标）；`tests/update-stub.mjs` 作**假源桩**被集成层复用（A.2.2.5）。
 
 ##### A.2.2.4 集成场景契约（首发三场景）
@@ -458,7 +479,19 @@ docs/CONVENTIONS.md
 
 **S3 判据**：两子态均须 —— `updater.log` 含 `update gate reason=startup face=app skipped=dev`（**App 面 dev 不检查**）**且不含** `result=error`；
 子态 a 另含 `update check reason=startup type=harness result=up-to-date latest=0.1.5-rc.1 current=<当前>`；
-子态 b 另含 `result=update-available latest=0.1.9` **且不含** `harness install phase=`（**放行 = 只提示不自动装**，不自动改环境）。
+  子态 b 另含 `result=update-available latest=0.1.9` **且不含** `harness install phase=`（**放行 = 只提示不自动装**，不自动改环境）。
+
+**判据串的源码证据行（as-of 2026-09-18 实测；串 = 逐字取自源码模板）**：
+
+- `BIGFISH_PET_DEBUG` 读取面：`shell-pet-geometry.js:34` · `shell-pet-drag.js:27` · `shell-pet-physics.js:52` · `shell-pet.js:46` · `pet-chain.js:17`（均 `=== '1'`，关闭时零日志）。
+- `geom tag=<tag> pos=… size=… center=… display=… scale=… wa=… visible=…`：模板 = `shell-pet-geometry.js:193-197`；`tag=start` 的调用点 = `main.js:207`；`tag=display` = `shell-pet-geometry.js:334` / `:345`。
+- `backend web url captured port=<数字> token=<yes|no>`：`shell-backend.js:155`；反例串 `backend web url not captured port=<数字> reason=…`：`shell-backend.js:257`。
+- 两个落盘物：`bigfish.log` = `shell-backend.js:44` / `:60-61`（`writeDiag`）· `:215`；`pet-geometry.log` = `shell-pet-geometry.js:51-55`（`:53` 拼 userData 路径）。
+- `update gate reason=startup face=app skipped=dev`：模板 = `shell-update.js:274`；`reason=startup` 的来源 = `shell-update.js:293`（`runAutoChecks('startup')`，启动后 5 s）。
+- `update check reason=<r> type=harness result=<up-to-date|update-available> latest=… current=…`：`updater.js:239`；`result=error` 行 = `updater.js:243`；`updater.log` 落点 = `shell-update.js:53`。
+- `harness install phase=<phase> ok=… detail=…`：`updater.js:350`（回滚面 `:391` / `:432`）。
+- `DSH_NODE`：`shell-backend.js:110` · `shell-plugins.js:48`（未设 ⇒ 回退 `'node'`）。
+- S2 驱动的 `handleDisplayChange('metrics', <display>, [])`：定义 = `shell-pet-geometry.js:323`（签名 `kind, display, metrics`）· 导出 = `:429` · 生产绑定 = `main.js:202`；`petGeomSnapshot` 导出 = `:423`。
 
 - **S1 的关键前置（否则必挂）**：`modeChosen:true` 且 `lastModeVersion` = 当前 app 版本 —— 否则 `shell-mode.js:103` 的 `dialog.showMessageBoxSync` 会**阻塞**在模态框上（同族：`main.js:145` 的后端失败对话框 ⇒ 启动失败时进程阻塞而非退出，故场景必须以**超时**判红并记录「无 captured 行 + 进程仍活」这条判别线索）。
 - **进程回收**：场景结束杀**进程树**（Windows `taskkill /PID <pid> /T /F`；POSIX 进程组 `SIGTERM`）—— 不新增产品测试钩子（DD-A10）。
@@ -492,6 +525,8 @@ docs/CONVENTIONS.md
   }
 }
 ```
+
+（**以上为节选**：`width` 块只列前 2 档，实际档数与逐档值见 A.2.2.2 现状；`fanout` 列全 6 档。实施首步按 R3 取**当日实测值**写入，**不得照抄本示例数字**。）
 
 **判定规则（四条，可机检）**：
 
@@ -534,8 +569,8 @@ docs/CONVENTIONS.md
 | `package.json` | **136** 行（scripts 12 项） | 增 `lint` / `test` / `test:full` / `test:integration` 四项（依赖块不动） | +6 行 → 142 · **实施须等 B19 / B20 让出** |
 | `tests/b12-plugin-guards.test.js` | **491** 行（贴线） | `TC-82` 机械改标 `slow()` + 引入 `tests/layer.js`（**不重写正文**） | +2 行 → 493 · 拆分计划见下 |
 | `tests/update-stub.mjs` | **91** 行 | 增 `?latest=<version>` 只读参数（缺省不变） | +8 行 → 99 |
-| `docs/CONVENTIONS.md` | **175** 行 | §四 增三条结构判据句 + §五 的「升门禁句」行改为已落地 + 变更记录 1 行 | ≈+15 行 → 190 · **落笔归属待裁（A.2.7 ①）** |
-| `docs/design/REPO-CONVENTIONS.md` | **286** 行 | 本附节（A.1–A.3）+ 顶注 1 行 + §2.3 出批项 O3 注 1 行 + 变更记录 1 行（**已落**：662 行，as-of 2026-09-18） | **+376** 行 → **662** |
+| `docs/CONVENTIONS.md` | **175** 行 | §四 增三条结构判据句 + §五 的「升门禁句」行改为已落地 + 变更记录 1 行 | ≈+15 行 → **190**（**已落**，as-of 2026-09-18 实测；写权 = eng-designer，A.2.7 ① 已闭合） |
+| `docs/design/REPO-CONVENTIONS.md` | **286** 行 | 本附节（A.1–A.3）+ 顶注 1 行 + §2.3 出批项 O3 注 1 行 + 变更记录 2 行（**已落**：**700** 行，as-of 2026-09-18 实测） | **+414** 行 → **700** |
 
 **拆出档（贴线档 ≥480 行，规范档 §五 要求的必填面）**
 
@@ -593,7 +628,7 @@ docs/CONVENTIONS.md
 
 | # | 待确认 | 影响面 |
 |---|---|---|
-| ① | **规范档 `docs/CONVENTIONS.md` 的落笔归属**：写权矩阵（`AGENTS.md` §一）= eng-designer，但本批 ② 的任务书写域只列「设计档 + 批次档 §2」⇒ 需要主 agent 裁定由谁落（§四 三条结构判据句 + §五 门禁句 + 变更记录行，文本已在 A.2.2.2 / A.2.2.1 定稿） | 规范档 3 处；未落则该批的「机检判据有规范档条文支撑」面缺失（门禁仍可跑） |
+| ① | ~~规范档 `docs/CONVENTIONS.md` 的落笔归属~~ **已裁 / 已落（2026-09-18）**：写权 = eng-designer（`AGENTS.md` §一 写权矩阵）；§四 结构判据三条 + §五 门禁句 + 变更记录行已落（批次档 §2.8）。**判据句权威 = 规范档 §四 / §五**（本附节只留机检口径 + 回指，见 A.2.2.2） | 无（项已闭合） |
 | ② | 本设计的落点 = **本档附 A**（照批次档 §1 头部指令）；若改判为独立档 `docs/design/TEST-GATES.md`（理由：主题 = 验证链、与 B11「规范载体」不同），A.1–A.3 整体平移、**零语义改动** | 本档顶注 + 地图 1 行（主 agent） |
 | ③ | **CI 真绿为实机项**：本地无法证明 CI 上跑绿（需一次真实 push / PR） | AC-B16-5 的实机段；实施后由主 agent 触发核销 |
 | ④ | **集成层在 CI runner 上的可跑性**（Electron GUI + 真后端 + 冷 runner 时长）同样为实机项；本机可跑 = 硬约束（§1.5-4），CI 面实施后首次验证 | 若 CI 不可跑 ⇒ 停下上报（不静默降级为「只本地跑」） |
@@ -605,7 +640,7 @@ docs/CONVENTIONS.md
 
 | # | 验收标准（回指 §1） | 判据（可机检） |
 |---|---|---|
-| AC-B16-1 | **`lint` 门在场且本地可跑**（§1.4-1） | `npm run lint` 退出 0，stdout 含 `GATE lint PASS` 与 `GATE lint selftest PASS`；`package.json` scripts 含 `lint` |
+| AC-B16-1 | **`lint` 门在场且本地可跑**（§1.4-1） | `npm run lint` 退出 0 且 stdout 含 `GATE lint PASS checks=6 selftest=14/14`（串 = A.2.2.1 契约表的摘要行，二者同源）；`package.json` scripts 的 `lint` = `node scripts/gates/run.js`（A.2.2.1 字面值表） |
 | AC-B16-2 | **`test:full` = 收编后的统一入口**（§1.4-2） | `npm run test:full` 退出 0 且 TAP 摘要 `# pass 45` + `# fail 0` + `# skipped 0` |
 | AC-B16-3 | **快层：慢测自动 skip**（§1.5-3） | `npm run test` 退出 0 且 `# skipped 1` + `# pass 44`（被 skip 者 = `TC-82`） |
 | AC-B16-4 | **集成层三场景**（§1.4-3） | `npm run test:integration` 退出 0，stdout 含 `SCENARIO S1 PASS` / `SCENARIO S2 PASS` / `SCENARIO S3 PASS`（S3 含 a/b 两子态行） |
@@ -613,7 +648,7 @@ docs/CONVENTIONS.md
 | AC-B16-6 | **行宽 / 行数判据落地**（§1.4-5 ① / **T26**） | `npm run lint` 输出 `CHECK width PASS` 与 `CHECK lines PASS`；selftest 的边界 / 错误面（A.3.2 TC-B16-01…08）全绿 |
 | AC-B16-7 | **结构判据 D①② 落地**（§1.4-5 ③ / **T39**） | `npm run lint` 输出 `CHECK dag PASS (cycles=0)` 与 `CHECK fanout PASS`；selftest 的注入面（TC-B16-09…14）全绿 |
 | AC-B16-8 | **组装面接线点唯一**（§1.4-5 ② / **T37**） | `npm run lint` 输出 `CHECK assembly PASS (13/13)`；selftest 的「删一处 `init(` ⇒ 红」「双调用 ⇒ 红」「未解析形态 ⇒ 红」（TC-B16-11）全绿 |
-| AC-B16-9 | **禁散文锚**（§1.5-5） | 新增档的断言面在 A.3.2 逐条标注（行为面 / 结构面）；机检面 = 新增档内「对**非测试档**的读取 + 子串断言」**0 处** |
+| AC-B16-9 | **禁散文锚**（§1.5-5） | 新增档的断言面在 A.3.2 逐条标注（行为面 / 结构面）；**禁止形态（收窄为可判）= 新增档内「读 `docs/**` 或源码正文（`.js` / `.mjs` / `.html`）+ 子串断言」0 处** —— 判据 = 逐档核 `readFileSync` 等读取调用的目标路径，0 处指向 `docs/**` 或源码正文即过（命中即红）；**行为面断言不在禁止面内**（进程退出码 / 产品自身落盘物与诊断日志行 / fs 结果属**允许面**，承 A.2.2.3 断言面纪律） |
 | AC-B16-10 | **零业务行为变更**（§1.5-1） | 运行时代码面 `git status --porcelain` 为空（白名单 = A.2.3 的修改 5 档）；既有 45 用例全绿；`SCENARIO S1` / `S2` PASS |
 | AC-B16-11 | **零新增依赖**（§1.5-4） | `git diff package.json` 只含 `scripts` 块（依赖块零 diff） |
 | AC-B16-12 | **本批自身形态合规**（§1.5-6） | 判据 B/C 扫本批新增 / 修改档 ⇒ **0 新增违规**（门禁扫自己）；新增 `.js` 档第 1 行 = `'use strict';` 且 JSDoc 含 `docs/design/REPO-CONVENTIONS.md §`（规范档 §一 三条判据） |
@@ -661,4 +696,5 @@ docs/CONVENTIONS.md
 | 2026-09-17 | **修正轮 2**：§2.2.3 文件头三条判据的 ① 补**扩展名口径**（`.js` 适用 / `.mjs` 免——ESM 隐式严格；`tests/update-stub.mjs` 据此计合规面）；§3.1 AC2 增「命名现状口径（例外清单 + 计数）」与「判据 ① 扩展名口径」两条机检细则；`docs/CONVENTIONS.md` 行号 as-of 刷新（`:109` / `:122` / `:150` 等）。 |
 | 2026-09-17 | **修正轮 3**：§2.2.3 文件头标准形改标**推荐形（写作面）**、判据 ② 收为**宽口径**（同源于 `docs/CONVENTIONS.md` §一）；§3.1 AC2 增「判据 ② 的口径」机检细则（含 4 处合规面形态差异须逐名登记、三分 22 / 3 / 17 = 42 不变）。 |
 | 2026-09-17 | **修正轮 4**（独立复核轮次 2 的清理）：§2.2.3 后缀 5 处行号更正为实测值（`:10` / `:29` / `:117` / `:130` / `:158`）并注「行号只作 as-of 参考」（D4）· 目标行数标「**起草期目标**」（现值见批次档 §2.13 实测）；§3.1 半自动候选同步为 6 行；AC2 判据列取值串补齐第三条（口径条数 3 不变）。 |
-| 2026-09-18 | **B16 面设计落档（附 A）**：三层契约（`lint` / `test:full` / `test:integration` + 退出码 + 摘要行）· 五条机检判据（语法 / 行宽 / 行数 / 依赖环与域模块 fan-out / 组装面接线点唯一）· 冻结基线 + 到期条件 · 慢测层 `slow()` 与 >500 ms 硬红 · 集成三场景 · DD-A1…13 · AC-B16-1…12 + TC-B16-01…24 · 出批项 O-A1…6；顶注补附 A 一行、§2.3 出批项 O3 标「已落设计」。 |
+| 2026-09-18 | **B16 面设计落档（附 A）**：三层契约（`lint` / `test:full` / `test:integration` + 退出码 + 摘要行）· **六条**机检判据（语法 / 行宽 / 行数 / 依赖无环 / 域模块 fan-out / 组装面接线点唯一）· 冻结基线 + 到期条件 · 慢测层 `slow()` 与 >500 ms 硬红 · 集成三场景 · DD-A1…13 · AC-B16-1…12 + TC-B16-01…24 · 出批项 O-A1…6；顶注补附 A 一行、§2.3 出批项 O3 标「已落设计」。 |
+| 2026-09-18 | **B16 修正轮 1**（评审轮 1 pass 后）：②门命令契约统一（四条 script 字面值 + 层由运行器注入）· AC-B16-1 串对齐契约表 · D③ 覆盖面 = **组合根绑定面**（免检 2 档闭合）· 集成三场景判据补 file:line 证据行 · AC-B16-9 禁用面收窄为可判形态 · D①②③ 判据句权威 = 规范档 §四 · 自证夹具隔离面（`os.tmpdir()`）· 计数订正（`build.yml` 74 行 · 六条判据）· 豁免面 43 行（D1）· A.2.7 ① 已闭合。 |

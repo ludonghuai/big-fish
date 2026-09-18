@@ -23,7 +23,7 @@
 |---|---|---|
 | 1 | **整体架构面无档** —— 现有设计档 7 档**全是「按功能板块」**（拖拽 / 多屏 / 动画链 / 物理 / 壳 UX / 更新 / 规范），没有一份讲「这个 app 由哪些部分组成」 | `docs/README.md` 档位清单（`:23`–`:47`）；`docs/design/` 目录实测 7 档 |
 | 2 | **`shell-*` 16 档无角色/依赖方向档** —— `main.js` 为枢纽（require 12 档 `shell-*`），模块间另有依赖（如 `shell-affinity` ← `main` / `shell-ipc` / `shell-tray`） | 实测 require 图（本批立案勘察：全仓 `require('./…')` 扫描） |
-| 3 | **8 档 `probe-*` 未入档**（R11 ② 原话点名）；且 `probe-pet-media.js` **硬绑 `main.js`** | 实测：`probe-displays.js` / `probe-displays2.js` / `probe-pet-media.js` / `probe-position-accuracy.js` / `probe-resizable-setsize.js` / `probe-settle-scan.js` / `probe-size-readback.js` / `probe-straddle-size.js`；台账 **T29** |
+| 3 | **8 档 `probe-*` 未入档**（R11 ② 原话点名）；且 `probe-pet-media.js` **硬绑 `main.js`** | 实测 8 档（`probe-displays` / `probe-displays2` / `probe-pet-media` / `probe-position-accuracy` / `probe-resizable-setsize` / `probe-settle-scan` / `probe-size-readback` / `probe-straddle-size`，后缀均为 `.js`）；台账 **T29** |
 | 4 | **数据面（`~/.dsh`）无汇总档** —— 谁写谁读散在各设计档（如 `storages/session_projcache/**` 有两个读者） | 实测：`shell-notify.js` 的 `completionGate()` 与 B19 新增读面；台账 **T33** |
 | 5 | **构建面（`build.files` 白名单机制）无档** —— 43 条**扁平路径**（非目录通配）是发行包的唯一白名单；`afterPack.js` / `make-*` / `download-*` 未入档 | 实测：`package.json` `build.files[0..41]`；根目录 6 档脚本/构建 |
 | 6 | **插件·技能·bundle 三面无关系档** —— 三个目录（`bundled-plugins` / `bundled-skills` / `dsh-bundle`）的区别与装配关系未成文 | 实测三目录存在（1 / 5 / 4 项） |

@@ -36,7 +36,7 @@
 **现状 = 0/3**（实测，as-of 2026-09-17）：
 
 1. `package.json:13-26` 的 scripts（**12 项**；行号只作 as-of 参考）**无 `test`**（= postinstall / prestart / start / pack / dist / dist:win / dist:mac / dist:linux / icons / make-latest / bundle:refresh / bundle:check）。
-2. `.github/workflows/build.yml`（75 行）**无 lint / test 步骤**（只有构建与产物上传）。
+2. `.github/workflows/build.yml`（74 行）**无 lint / test 步骤**（只有构建与产物上传）。
 3. 全仓**无 lint / format 配置**（`.eslintrc*` / `eslint.config.*` / `.prettierrc*` 全零命中）。
 
 **目标（归 B16，本档只声明目标与指针，不写实现）**：三道门 = `lint` → `test:full` → `test:integration`，并由 CI（`.github/**`）接线。
