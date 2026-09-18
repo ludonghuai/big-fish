@@ -550,6 +550,22 @@ VERDICT: pass
 
 ## §4 评审裁决与实施启动（主 agent）
 
+### 4.1 实机发现与修偏轮（2026-09-18）
+
+**D-1（实施偏差 —— 用户实机发现，非设计问题）**
+
+- **用户报告（2026-09-18 12:03）**：「我看到菜单项目了，但是没有效果」——托盘「甩抛物理手感」可勾选、勾上后甩桌宠无任何反应。
+- **主 agent 三段实证（非推测）**：
+  1. `main.js` 组合根接线区（`:75-88`）—— 其余 **11 个域模块逐一有 `init({...})`**（`notifier` / `backend` / `geometry` / `drag` / `pet` / `affinity` / `mode` / `plugins` / `update` / `win` / `tray`），**唯独 `physics` 无调用**（`:80-82` 仅为三行注释 ✗）。
+  2. 模块专属日志 `userData/pet-physics.log` **不存在** ✗（⇒ 模块从未运行）。
+  3. `settings.json` 的 `petPhysicsEnabled = **true**` ✓（⇒ 托盘链路与落盘正常 ⇒ 故障点唯一）。
+- **根因** = **`physics.init(deps)` 漏调用** ⇒ 模块收不到 5 个依赖（`getPetWindow` / `getPetDrag` / `getMoveTimer` / `settings` / `setPetState`，实读点 `shell-pet-physics.js:32-38`）⇒ `ipcMain` 监听未注册 ⇒ 采样器不启动 ⇒ 甩抛无反应。
+- **修法**（不涉设计变更 —— 设计档 §2.7 本就要求该接线，属实施遗漏 ✓）：按 §2.7 注入面表，在组合根接线区补 `physics.init({...})`（与其余 11 模块同处）。
+- **复验判据**：① 带 `BIGFISH_PET_DEBUG=1` 启动 ⇒ `userData/pet-physics.log` 出现 `phys-*` 行；② 实机推抛 ⇒ 起飞 / 弹跳 / 停泊 / 逐次挤压可见；③ 关闭开关 ⇒ 零日志、零定时器（AC8④）。
+- **流程缺口（归台账 T37）**：本批 AC 集覆盖了「托盘有该项 / 设置落盘 / 两处 IPC 监听在场」，但**未覆盖「组合根是否真的调了 init」** ⇒ 组装面机检缺失（12 个域模块中任一漏调，现有 AC 全绿而功能全失 ✗）。
+
+---
+
 <!-- 由主 agent 填 -->
 
 ---
