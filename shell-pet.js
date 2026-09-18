@@ -315,6 +315,8 @@ function doWander() {
   // y 归位：写入前钳入所在屏工作区，消除「纵向失踪」（根因 2 / TC-9）
   const targetY = Math.round(Math.min(Math.max(y, bounds.minY), bounds.maxY));
   const run = petForceRun || Math.random() < 0.2;
+  // B21：petForceRun 为真时用 escape 档名（US-31）
+  const escape = petForceRun;
   petForceRun = false;
   // 随机走一段（不一定到墙）
   const distance = run ? 200 + Math.random() * 300 : 80 + Math.random() * 200;
@@ -334,7 +336,7 @@ function doWander() {
   }
   const speed = run ? 0.34 : 0.17; // px/ms
   const duration = Math.max(250, dist / speed);
-  setPetState((run ? 'run-' : 'walk-') + petWanderDir);
+  setPetState((escape ? 'escape-' : (run ? 'run-' : 'walk-')) + petWanderDir);
   const startX = x;
   const startTime = Date.now();
   let segStartLogged = false;

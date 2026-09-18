@@ -89,6 +89,8 @@ function beginDrag(e) {
   window.petAPI.dragStart();
   stopDragHeartbeat();
   dragHeartbeatTimer = setInterval(() => window.petAPI.dragHeartbeat(), PET_DRAG_KEEPALIVE_MS);
+  // B21：上报动画链 drag 档
+  if (window.petChain) window.petChain.setDragging(true);
 }
 
 /** 清空拖动标志（不通知主进程）。 */
@@ -100,6 +102,8 @@ function clearDragState() {
     try { document.body.releasePointerCapture(dragPointerId); } catch { /* 已隐式释放 */ }
     dragPointerId = null;
   }
+  // B21：上报动画链结束 drag 档
+  if (window.petChain) window.petChain.setDragging(false);
 }
 
 /** 拖动结束：清标志并通知主进程终止跟随（reason ∈ pointerup|pointercancel|lostcapture）。 */

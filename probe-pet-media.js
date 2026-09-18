@@ -7,8 +7,9 @@
  *   ② `file://` 页面相对路径 `<video>` 加载：readyState / videoWidth / videoHeight / error / 播放推进；
  *   ③ 首帧 alpha 包围盒（解码级，canvas 采样）→ 校准 pet-chain-core.js 的 PET_MEDIA_BODY；
  *   ④ `<video class="pet-media">` 元素计数（NFR-10 的「恒 2」判据）+ 双通道命中矩形（§2.2.6）；
- *   ⑤ reduce 模式计算样式（AC10 四项；`--reduce` 经 CDP Emulation.setEmulatedMedia 模拟）。
- * 跑法：npx electron probe-pet-media.js [--reduce] [--durations]
+ *   ⑤ reduce 模式计算样式（AC10 四项；`--reduce` 经 CDP Emulation.setEmulatedMedia 模拟）；
+ *   ⑥ B21：叠化窗两路采样 / `overlap=` 读数 / 拖动档（`--drag`）/ 逃跑档（`--state escape-left`）取证。
+ * 跑法：npx electron probe-pet-media.js [--reduce] [--durations] [--chain 秒] [--trigger] [--state 名（可逗号分隔多状态）] [--entry] [--drag]
  *   `--durations` = 逐段时长清单（池设计取证：段时长决定链的换段频率）。
  * 说明：探针自建同配置透明窗（transparent / frame:false / sandbox:true / pet-preload.js，与 shell-pet.js 建窗同源），
  *   不改产品代码、不写任何文件；`--allow-file-access-from-files` 仅为 canvas 取帧诊断（不属产品配置）。
@@ -36,6 +37,7 @@ const CHAIN = (() => { const i = process.argv.indexOf('--chain'); return i < 0 ?
 const TRIGGER = process.argv.includes('--trigger');
 const STATE = (() => { const i = process.argv.indexOf('--state'); return i < 0 ? null : process.argv[i + 1]; })();
 const ENTRY = process.argv.includes('--entry');
+const DRAG = process.argv.includes('--drag');   // B21：链驱动期内走真实 setDragging(true/false) 路径取证
 
 /** 主进程侧的文件探针（core 零 fs ⇒ 由调用方注入）。 */
 function poolProbe(rel) {
@@ -167,8 +169,36 @@ async function runChain(sec) {
       return 0;
     })()`);
   }
-  if (STATE) timers.push(setTimeout(() => pet.setPetState(STATE), 2000));
+  if (STATE) {   // B21：支持逗号分隔多状态（隔 2.5 s 依次下发，取证折返 hold-mirror / 重入 hold-same）
+    STATE.split(',').forEach((s, i) => timers.push(setTimeout(() => pet.setPetState(s), 2000 + i * 2500)));
+  }
   if (TRIGGER) timers.push(setInterval(() => pet.handlePetClicked(), 12000));
+  if (DRAG) {   // B21：起拖 → 入 drag 档 → 松手重断言（真实渲染层手势面）
+    timers.push(setTimeout(() => { pet.getPetWindow().webContents.executeJavaScript('window.petChain && window.petChain.setDragging(true);'); }, 2000));
+    timers.push(setTimeout(() => { pet.getPetWindow().webContents.executeJavaScript('window.petChain && window.petChain.setDragging(false);'); }, 5000));
+  }
+  // B21：叠化窗两路 paused 采样（注 E ④；10 ms 采样，随链窗口启动）
+  await pet.getPetWindow().webContents.executeJavaScript(`(() => {
+    const vids = document.querySelectorAll('video.pet-media');
+    window.__fade = { n: 0, both: 0, one: 0, zero: 0 };
+    window.__fadeTimer = setInterval(() => {
+      let playing = 0;
+      for (const v of vids) if (!v.paused) playing += 1;
+      window.__fade.n += 1;
+      if (playing === 2) window.__fade.both += 1;
+      else if (playing === 1) window.__fade.one += 1;
+      else window.__fade.zero += 1;
+    }, 10);
+    return 0;
+  })()`);
+  // B21：--reduce 经 CDP 仿真（TC-45：叠化归零 + 预触发仍在）——与独立采样窗同口径
+  if (REDUCE) {
+    const rwc = pet.getPetWindow().webContents;
+    rwc.debugger.attach('1.3');
+    await rwc.debugger.sendCommand('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+    });
+  }
   await new Promise((r) => setTimeout(r, Math.max(0, sec - 3) * 1000));
   const mem1 = memOf();
   for (const t of timers) { clearTimeout(t); clearInterval(t); }
@@ -195,6 +225,27 @@ async function runChain(sec) {
   for (const l of lines) console.log('  ' + l);
   const count = (k) => lines.filter((l) => l.includes('anim ' + k + ' ')).length;
   console.log(`[probe] 行数统计：pool=${count('pool')} chain=${count('chain')} switch=${count('switch')} ended=${count('ended')} slot=${count('slot')} slot-miss=${count('slot-miss')} play-fail=${count('play-fail')} fallback=${count('fallback')} move-req=${count('move-req')}`);
+  // B21 取证：叠化窗采样回读 + overlap 带 + ended→shown
+  const fade = await pet.getPetWindow().webContents.executeJavaScript('(() => { clearInterval(window.__fadeTimer); return window.__fade; })()');
+  console.log(`[probe] 叠化窗采样（10 ms）：n=${fade.n} both=${fade.both} one=${fade.one} zero=${fade.zero}（判据 = both>0 ∧ 稳态 zero=0；zero>0 仅在 ended 兜底窗 [D,D+L] 属物理事实，注 E ④ 豁免）`);
+  const ovOf = (l) => { const m = l.match(/overlap=(\d+)/); return m ? Number(m[1]) : null; };
+  const switches = lines.filter((l) => l.includes('anim switch '));
+  const auto = switches.filter((l) => /reason=(pre-end|ended|event-end|slot-rotate)( |$)/.test(l));
+  const preEnd = auto.filter((l) => ovOf(l) !== null && ovOf(l) > 0);
+  const band = preEnd.filter((l) => { const v = ovOf(l); return v >= core.PET_OVERLAP_MS - 250 && v <= core.PET_OVERLAP_MS + 250; }).length;
+  const ratio = auto.length ? preEnd.length / auto.length : NaN;
+  console.log(`[probe] overlap：switch=${switches.length} 链自主=${auto.length} pre-end=${preEnd.length} 占比=${Number.isFinite(ratio) ? ratio.toFixed(3) : '-'}（判据 ≥0.9）带内[950,1450]=${band}/${preEnd.length}`);
+  let endedN = 0, endedLate = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/anim ended .* t=(\d+)/);
+    if (!m) continue;
+    const t = Number(m[1]);
+    for (let j = i + 1; j < lines.length; j++) {
+      const s = lines[j].match(/anim switch .* shown=(\d+)/);
+      if (s) { endedN += 1; if (Number(s[1]) - t > 300) endedLate += 1; break; }
+    }
+  }
+  console.log(`[probe] ended→shown：n=${endedN} 超 300 ms=${endedLate}（AC28 ③ 判据 = 0）；hold-same=${count('hold reason=same')} hold-mirror=${count('hold reason=mirror')}`);
 }
 
 app.whenReady().then(async () => {

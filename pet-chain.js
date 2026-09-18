@@ -1,34 +1,26 @@
 'use strict';
 /**
- * pet-chain.js — 双缓冲视频播放器 + 动画链运转 + 三级回落 + 链日志（B18；设计档 docs/design/PET-ANIMATION.md §2.2.5 / §2.2.8 / §2.2.9 / §2.2.11）。
+ * pet-chain.js — 双缓冲视频播放器 + 动画链运转 + 三级回落 + 链日志（B18 + B21 衔接 + R1/R2 + drag/escape）。
  * 边界（设计档 §2.2.1）：零 fs / 零 fetch——池数据只来自主进程的 `pet-chain-config`；本档不碰窗口几何。
- * 函数清单：onConfig · setSlot · startSlot · chainStep · switchTo · handleEnded · requestMove · onPlayFail · setChannel · applyMediaBox · log。
- * 全局出口（渲染层内部接口，承设计档 §2.2.1）：window.petChain = { videoActive, hitRect, setSlot }。
+ * 函数清单：onConfig · setSlot · setDragging · startSlot · chainStep · switchTo · handleEnded · requestMove · onPlayFail · setChannel · applyMediaBox · log。
+ * 全局出口（渲染层内部接口，承设计档 §2.2.1）：window.petChain = { videoActive, hitRect, setSlot, setDragging }。
  */
 
 const core = window.PetChainCore;
 
-const els = {
-  stage: document.getElementById('pet-stage'),
-  img: document.getElementById('pet'),
-  media: Array.prototype.slice.call(document.querySelectorAll('video.pet-media')),
-};
+const els = { stage: document.getElementById('pet-stage'), img: document.getElementById('pet'), media: Array.prototype.slice.call(document.querySelectorAll('video.pet-media')) };
 
-let debug = false;          // 链日志总开关（主进程按 BIGFISH_PET_DEBUG 下发；关闭时零日志）
-let mode = 'png';           // 回落链的当前通道（设计档 §2.2.8）
+let debug = false, mode = 'png';  // 链日志总开关（按 BIGFISH_PET_DEBUG 下发，关闭时零日志）/ 回落链当前通道（§2.2.8）
 let entering = false;       // 已收到合法池、首个视频帧未就绪（此期间 PNG 仍在场——US-16：不得两帧皆空）
 let pool = null;            // 已校验池（含 src 映射）
 let slot = 'idle';          // 当前语义档位（主进程 pet-state）
-let facing = 'left';        // 朝向：由 walk-* / run-* 档位推导；'right' ⇒ 视频镜像
-let front = 0;              // 前台渲染位索引
-let gen = 0;                // 自增代次（竞态防护）
-let pending = null;         // { name, loop, gen }
-let playing = null;         // { name, kind, loop, slotKey }
+let facing = 'left';        // 朝向：walk-* / run-* / escape-* 档位推导；'right' ⇒ 视频镜像
+let front = 0, gen = 0;     // 前台渲染位索引 / 自增代次（竞态防护）
+let pending = null, playing = null;  // { name, loop, gen } / { name, kind, loop, slotKey, mirror }
 let cur = null;             // 当前段名（链的「避开连播」基准）
-let failCount = 0;          // 连续失败计数（级③ 回落判据）
-let moveWait = null;        // 散步请求的观测定时器
-let blocked = false;        // 级③：播放连续失败已整体回落 ⇒ 本会话不再进视频通道
-const lastPick = {};        // 池键 → 上一次该档抽中的段（避开连播同一段，US-17 / AC6）
+let failCount = 0, moveWait = null, blocked = false;   // 级③ 回落判据 / 散步请求观测定时器 / 整体回落标志
+let preEndTimer = null, pauseTimer = null, dragActive = false;  // B21：预触发定时器 / 淡出窗末 pause 定时器 / 拖动在途（避 pet.js 同名 let）
+const lastPick = {};        // 池键 → 上一次该档抽中的段（避开连播，US-17 / AC6）
 
 const box = core.mediaBox({
   canvas: core.PET_MEDIA_CANVAS, body: core.PET_MEDIA_BODY,
@@ -48,32 +40,20 @@ function applyMediaBox() {
   els.stage.style.height = box.h.toFixed(1) + 'px';
 }
 
-/**
- * 通道切换（下行 = 立即交回 PNG）；上行不在此处完成——`enterVideo()` 只就位媒体盒、PNG 留在场，
- * 首个视频帧就绪时由 `commitVideo()` 一次性交换（US-16：任何时刻不得两帧皆空）。禁止形态① 遵守：
- * 本函数**不动** `is-front` 归属（摘旧帧的唯一发生点 = `switchTo` 的就绪回调）。
- */
+/** 通道切换（下行 = 立即交回 PNG）；上行只就位媒体盒、PNG 留在场，首个视频帧就绪由 commitVideo 一次性交换（US-16：不得两帧皆空）。禁止形态①：本函数不动 is-front 归属（摘旧帧的唯一发生点 = switchTo 的就绪回调）。 */
 function setChannel(next) {
   mode = next;
   entering = false;
   if (els.stage) els.stage.style.display = next === 'video' ? '' : 'none';
   if (els.img) els.img.style.display = next === 'video' ? 'none' : '';
-  if (next !== 'video') { for (const el of els.media) { el.onended = null; el.pause(); } pending = null; playing = null; }
+  if (next !== 'video') { clearPreEndTimer(); clearPauseTimer(); for (const el of els.media) { el.onended = null; el.pause(); } pending = null; playing = null; }   // B21：回落时清预触发 / 淡出窗定时器
 }
 
 /** 进视频通道的准备态：媒体盒就位、PNG 仍在场（入场窗口内窗口内容不为空）。 */
-function enterVideo() {
-  entering = true;
-  applyMediaBox();
-  if (els.stage) els.stage.style.display = '';
-}
+function enterVideo() { entering = true; applyMediaBox(); if (els.stage) els.stage.style.display = ''; }
 
 /** 首个视频帧就绪 ⇒ 真正切到视频通道（隐藏既有 PNG <img>；命中区来源随之切换，§2.2.6）。 */
-function commitVideo() {
-  entering = false;
-  mode = 'video';
-  if (els.img) els.img.style.display = 'none';
-}
+function commitVideo() { entering = false; mode = 'video'; if (els.img) els.img.style.display = 'none'; }
 
 /** 主进程池下发（`pet-chain-config`）：ok=0 时保持 PNG 通道（级① 回落）。 */
 function onConfig(config) {
@@ -93,12 +73,16 @@ function onConfig(config) {
 function setSlot(s) {
   if (typeof s !== 'string' || s === slot) return;
   slot = s;
-  if (s === 'walk-left' || s === 'run-left') facing = 'left';
-  else if (s === 'walk-right' || s === 'run-right') facing = 'right';
+  if (s === 'walk-left' || s === 'run-left' || s === 'escape-left') facing = 'left';
+  else if (s === 'walk-right' || s === 'run-right' || s === 'escape-right') facing = 'right';
   if (!pool || blocked) return;   // 级①（池不可用）/ 级③（已整体回落）：本会话不再进视频通道
+  if (dragActive) return;         // B21：拖动让位守卫——拖动期间只更新 slot 变量、不 startSlot
   if (s === 'idle' && mode === 'video' && playing && playing.kind === 'event' && !playing.loop) return;
   startSlot(s);
 }
+
+/** B21 拖动起止上报（pet.js 的 beginDrag / clearDragState 调用）：起拖入 drag 档，松手重断言当前 slot。 */
+function setDragging(v) { if (dragActive === v) return; dragActive = v; startSlot(v ? 'drag' : slot); }
 
 /** 档内抽段（§2.2.2 slot 语义）：避开该档上一次抽中的段（无史时避开当前正播段）；日志行 `anim slot`。 */
 function pickFor(key, slotVal) {
@@ -112,19 +96,23 @@ function pickFor(key, slotVal) {
 /** 回视频通道（级② 期间的情形）；池不可用 / 级③ 已回落时不进入。 */
 function toVideo() { if (mode !== 'video') enterVideo(); }
 
-/** 档位 → 池键（§2.2.3 的 11 档映射表）。 */
+/** 档位 → 池键（§2.2.3 的 11 档映射表 + B21 drag/escape）。 */
 function startSlot(s) {
   if (!pool || blocked) return;
   if (s === 'idle') { toVideo(); chainStep('slot-idle'); return; }
   if (s === 'walk-left' || s === 'walk-right') { toVideo(); switchTo(pickFor('moves.walk', pool.moves.walk), true, 'slot-walk', facing === 'right', 'walk'); return; }
   if (s === 'run-left' || s === 'run-right') {
     toVideo();
-    if (!pool.moves.run.length) {
-      log('anim slot-miss slot=moves.run fallback=walk');
-      switchTo(pickFor('moves.walk', pool.moves.walk), true, 'slot-run', facing === 'right', 'run');
-      return;
-    }
+    if (!pool.moves.run.length) { log('anim slot-miss slot=moves.run fallback=walk'); switchTo(pickFor('moves.walk', pool.moves.walk), true, 'slot-run', facing === 'right', 'run'); return; }
     switchTo(pickFor('moves.run', pool.moves.run), true, 'slot-run', facing === 'right', 'run');
+    return;
+  }
+  if (s === 'escape-left' || s === 'escape-right' || s === 'drag') {   // B21：escape / drag 交互档（单候选 ⇒ loop=true）
+    const key = s === 'drag' ? 'drag' : 'escape';
+    const sv = pool.events[key];
+    toVideo();
+    if (!sv) { log('anim slot-miss slot=events.' + key + ' fallback=png'); setChannel('png'); return; }
+    switchTo(pickFor('events.' + key, sv), true, s === 'drag' ? 'slot-drag' : 'slot-escape', s === 'drag' ? false : facing === 'right', 'event');
     return;
   }
   const slotVal = pool.events[s];
@@ -137,11 +125,9 @@ function startSlot(s) {
 /** 该次链决策所用池的候选数：单候选 ⇒ `loop=true`（§2.2.3 idle 行 / TC-5：不重载、不闪断）；turn 行固定 `false`。 */
 function chainPoolSize(d) {
   if (d.kind === 'idle') return pool.idle.length;
-  if (d.kind === 'action') {
-    const c = pool.categories.filter((x) => x.id === d.category)[0];
-    return c ? c.actions.length : pool.idle.length;
-  }
-  return 2;
+  if (d.kind !== 'action') return 2;
+  const c = pool.categories.filter((x) => x.id === d.category)[0];
+  return c ? c.actions.length : pool.idle.length;
 }
 
 /** 链的一步（只在 idle 档运转，§2.2.4 规则 1）；掷出 move ⇒ 发散步请求后重掷一次。 */
@@ -154,9 +140,58 @@ function chainStep(reason, allowMove) {
   switchTo(d.name, chainPoolSize(d) <= 1, reason, d.mirror, d.kind === 'turn' ? 'turn' : d.kind);
 }
 
-/** 切换序列（§2.2.5 五步）：写 back 位 → 等就绪 → 校验代次 → 换前台 → play。 */
-function switchTo(name, loop, reason, mirror, kind) {
+/** B21 定时器清理（被换段 / 回落 / 结束时调用）。 */
+function clearPreEndTimer() { if (preEndTimer) { clearTimeout(preEndTimer); preEndTimer = null; } }
+function clearPauseTimer() { if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; } }
+
+/** B21 段末前预触发（设计档 §2.13.4）：仅 loop=false 段；armed 于 play 成功后；回调校验 gen 与段名。 */
+function schedulePreEnd(el, dur) {
+  clearPreEndTimer();
+  const N = core.PET_OVERLAP_MS;   // 单一消费点（NFR-23 / AC27 ⑤）
+  if (!dur || dur <= N) return;
+  const armedAt = now();
+  const armedName = playing ? playing.name : null;
+  preEndTimer = setTimeout(() => {
+    preEndTimer = null;
+    if (!playing || !el || armedName !== playing.name || gen !== pending?.gen) return;
+    const overlap = Math.max(0, Math.round(dur - (now() - armedAt)));   // 实测剩余（定时器只晚不早 ⇒ ≤ N）
+    triggerChainDecision('pre-end', overlap);
+  }, Math.max(0, dur - N));
+}
+
+/** B21 段末决策统一入口（ended / 预触发共用 decideNext——决策同源，防两处漂移）。 */
+function triggerChainDecision(reason, overlap) {
+  if (mode !== 'video' || !pool || !playing) return;
+  if (playing.kind === 'turn') facing = facing === 'right' ? 'left' : 'right';   // 翻转由本档执行（§2.13.4；B18 同款）
+  const d = core.decideNext({ pool, weights: pool.weights, roll: Math.random(), slot, playing, cur, facing });
+  if (d.plan === 'rotate') { lastPick['events.' + slot] = d.name; switchTo(d.name, false, reason, d.mirror, 'event', overlap); return; }
+  if (d.plan === 'chain') { switchTo(d.name, chainPoolSize(d) <= 1, reason, d.mirror, d.kind === 'turn' ? 'turn' : d.kind, overlap); return; }
+  requestMove();   // plan === 'none'（= 掷出 move）：发散步请求后回链重掷
+  chainStep(reason, false);
+}
+
+/** 切换序列（§2.2.5 五步 + B21 衔接 + R1/R2）：写 back 位 → 等就绪 → 校验代次 → 换前台 → play。 */
+function switchTo(name, loop, reason, mirror, kind, overlap) {
   if ((mode !== 'video' && !entering) || !pool) return;
+  const j = core.judgeSwitch({ playing, name, mirror });   // B21 R1/R2 唯一前置判定
+  if (j === 'hold-same') {   // R1：同段不重播——使在途预载失效（不 gen++：保住挂起的淡出窗 pause 回调）+ 同步槽键 / 镜像
+    pending = null;
+    const elB = els.media[1 - front];
+    if (elB && elB.onended) { elB.onended = null; elB.onerror = null; elB.pause(); }   // 孤儿预载解除武装（onended 在场 ⇒ 在途预载，非淡出窗旧段）
+    if (playing) { playing.slotKey = slot; playing.mirror = mirror; }
+    log('anim hold reason=same same=1 name=' + name + ' key=' + (playing ? playing.slotKey : '-'));
+    return;
+  }
+  if (j === 'hold-mirror') {   // R2：仅镜像变化只改 transform，不重载（pending 失效同上）
+    pending = null;
+    const elB = els.media[1 - front];
+    if (elB && elB.onended) { elB.onended = null; elB.onerror = null; elB.pause(); }   // 孤儿预载解除武装（同上）
+    const elF = els.media[front];
+    if (elF) elF.style.transform = mirror ? 'scaleX(-1)' : '';
+    if (playing) { playing.slotKey = slot; playing.mirror = mirror; }
+    log('anim hold reason=mirror name=' + name + ' key=' + (playing ? playing.slotKey : '-'));
+    return;
+  }
   const src = pool.src[name];
   if (typeof src !== 'string') { log('anim slot-miss slot=' + slot + ' fallback=none'); return; }
   const el = els.media[1 - front], old = els.media[front];
@@ -165,6 +200,8 @@ function switchTo(name, loop, reason, mirror, kind) {
   const from = cur;
   const t0 = now();
   pending = { name, loop, gen: g };
+  clearPreEndTimer();
+  clearPauseTimer();
   el.loop = !!loop; el.muted = true; el.playsInline = true; el.autoplay = true;
   el.onended = loop ? null : () => handleEnded(el, g);
   el.onerror = () => onPlayFail(name, 'error');
@@ -174,37 +211,42 @@ function switchTo(name, loop, reason, mirror, kind) {
   const ready = () => {
     if (!pending || pending.gen !== g) return;   // 过期（竞态防护）：丢弃本次切换
     const tReady = now();
+    const overlapMs = overlap ?? 0;
     el.classList.add('is-front');
     if (entering) commitVideo();  // 首帧就绪与摘 PNG 同帧提交（入场不出现两帧皆空）
     old.classList.remove('is-front');            // 旧段摘前台只发生在此回调内（禁止形态①）
     old.onended = null;
-    old.pause();
+    // B21：旧段 pause 唯一调用点 = 淡出窗末回调（时长 = 运行期读 CSS transition-duration；reduce ⇒ 0 ⇒ 即刻 pause）
+    const transDur = getComputedStyle(el).transitionDuration;
+    const fadeMs = transDur && transDur !== '0s' && transDur !== 'none' ? Math.round(parseFloat(transDur) * 1000) : 0;
+    const oldEl = old, oldGen = g, oldName = from;
+    pauseTimer = setTimeout(() => {
+      pauseTimer = null;
+      // 失效守卫（F-3）：gen 未变 ∧ 元素仍承载旧段名 ∧ 未当前台 ⇒ 才 pause（防暂停新前台）
+      if (gen !== oldGen || !oldEl || oldEl.classList.contains('is-front')) return;
+      const srcName = decodeURIComponent(String(oldEl.currentSrc || '').split('/').pop() || '').replace(/\.webm$/, '');
+      if (srcName === oldName) oldEl.pause();
+    }, fadeMs);
     front = 1 - front;
-    playing = { name, kind, loop: !!loop, slotKey: slot };
+    playing = { name, kind, loop: !!loop, slotKey: slot, mirror };
     cur = name;
     el.play().then(() => {
       failCount = 0;
       log('anim switch anim=' + name + ' from=' + (from === null ? '-' : from) + ' t0=' + t0 + ' ready=' + tReady + ' shown=' + now()
-        + ' readyState=' + el.readyState + ' loop=' + (loop ? 1 : 0) + ' reason=' + reason);
+        + ' readyState=' + el.readyState + ' loop=' + (loop ? 1 : 0) + ' reason=' + reason + ' overlap=' + overlapMs);
+      if (!loop && Number.isFinite(el.duration) && el.duration > 0) schedulePreEnd(el, el.duration * 1000);   // B21：loop=false 段武装预触发
     }).catch((err) => onPlayFail(name, String(err)));
   };
   if (el.readyState >= 2) ready();
   else el.addEventListener('loadeddata', ready, { once: true });
 }
 
-/** 段结束（§2.2.4 规则 3）：事件段 → 档内轮换或回链；turn 段 → 翻转朝向回链；其余 → 回链。 */
+/** 段结束（§2.2.4 规则 3）：统一走段末决策（B21；overlap=0 兜底）。 */
 function handleEnded(el, g) {
   if (mode !== 'video' || gen !== g || !playing) return;
   const dur = Number.isFinite(el.duration) ? el.duration.toFixed(2) : '-';
   log('anim ended anim=' + playing.name + ' t=' + now() + ' dur=' + dur);
-  if (playing.kind === 'event') {
-    const next = playing.slotKey === slot ? core.nextInSlot(pool.events[slot], playing.name) : null;
-    if (next) { lastPick['events.' + slot] = next; switchTo(next, false, 'slot-rotate', false, 'event'); return; }
-    chainStep('event-end');
-    return;
-  }
-  if (playing.kind === 'turn') facing = facing === 'right' ? 'left' : 'right';
-  chainStep('ended');
+  triggerChainDecision('ended', 0);
 }
 
 /** move 档（§2.2.4 规则 4）：请求既有 doWander()，≤1 s 观测 walk-* / run-*，超时记 ack=timeout 并继续链。 */
@@ -232,9 +274,8 @@ setChannel('png'); // 初始 = PNG 通道（池未下发 / 非法时保持不变
 if (window.petAPI.onChainConfig) window.petAPI.onChainConfig(onConfig);
 
 window.petChain = {
-  /** 视频通道是否在场（pet.js 的命中区来源判据，§2.2.6）。 */
-  videoActive() { return mode === 'video'; },
-  /** 视频通道命中矩形（身体盒映射到窗口坐标；PNG 通道由 pet.js 读既有 img 矩形）。 */
-  hitRect() { return mode === 'video' ? box.hit : null; },
+  videoActive() { return mode === 'video'; },   // 视频通道是否在场（pet.js 命中区来源判据，§2.2.6）
+  hitRect() { return mode === 'video' ? box.hit : null; },   // 视频通道命中矩形（PNG 通道由 pet.js 读 img 矩形）
   setSlot,
+  setDragging,
 };

@@ -268,6 +268,61 @@ VERDICT: pass
 
 ---
 
+### 实施记录（eng-coder）
+
+**交付摘要**：B21 五件事全部落地（**父侧代笔注记**：本行原为单行 1012 字符、超行宽 300 ⇒ 由主 agent 折行为多条，措辞逐字未改）——
+
+- ① 衔接：`decideNext` 纯函数（`pet-chain-core.js`）+ 双触发点（`ended` 兜底 `overlap=0` / 段末前 `PET_OVERLAP_MS` 预触发，仅 `loop=false`、armed 于 play 成功后、回调校验 gen 与段名、被换段 / 回落 / 结束时清除）；旧段 `pause()` 唯一调用点 = 淡出窗末回调（时长 = 运行期读 `transition-duration`，reduce ⇒ 0 ⇒ 即刻）；AC4 三条禁止形态不回退。
+- ② 分类：文档面分类（§2.13.3），实现 = 行为一致（交互档可打断个人动作、个人动作不打断交互档——由既有 idle 守卫承载），运行时零来源通道。
+- ③ 交互档 `drag`：`pet.js` beginDrag/clearDragState 对称上报 → `setDragging` → `switchTo(events.drag, loop=true, reason=slot-drag)` + 让位守卫（`dragActive` 期间 `setSlot` 只更新 slot 变量）。
+- ③ 交互档 `escape`：`shell-pet.js` doWander 的 `petForceRun` ⇒ `escape-<dir>` 档名一行改动，阈值与方向语义逐字不动；链映射 `events.escape`、facing 同 walk/run、`loop=true`、`reason=slot-escape`。
+- ④ 选段修正 R1/R2：`judgeSwitch` 纯函数在 `switchTo` 入口唯一前置判定；R1 同段不重播（仅 `loop=true` 持续档）、R2 仅镜像变化只改 transform。
+- ④ 续（hold 路径收尾）：使 pending 失效 + 同步 `playing.slotKey/mirror` + **孤儿预载解除武装**（评审轮 1 #1 修复：`elB.onended` 在场 ⇒ 在途预载 ⇒ 清 onended/onerror + pause，防其自然结束触发链决策顶掉被持有段）。
+- ⑤ 池数据：`events.drag`/`events.escape` 各 1 段、`parsePool` `ok=1`、引用段 94 → 95 / 未引用 12 → 11。
+
+**决策透明表（file 域外 / 补充）**：
+| # | 项 | 处置 | 理由 |
+|---|---|---|---|
+| 1 | `.thincoder/probe-b21-state-diag.js` / `probe-b21-state-diag.mjs`（两档临时诊断件） | 已创建、用毕即删（不留痕） | 定位 `--state` IPC 无效果根因 = `pet-chain.js` 顶层 `let dragging` 与 `pet.js` 同名全局冲突 ⇒ pet.js 整个装载失败（SyntaxError）；已改名 `dragActive` 修复 |
+| 2 | `--state` 扩展为逗号分隔多状态序列 | probe 增量内 | 取证折返 hold-mirror / 重入 hold-same（TC-41/42/43 运行期面） |
+| 3 | `--reduce` 接入 `--chain` 驱动期（CDP 仿真） | probe 增量内 | TC-45 的「reduce 下叠化归零 + 预触发仍在」机检面（审计 #1 修复） |
+| 4 | 桩测的 hold 收尾面断言（pending 失效 + slotKey/mirror 同步） | 补入 stub | 审计 #3 修复（结构机检逐分支取体） |
+| 5 | 探针叠化窗判据文案补 ended 兜底窗豁免说明 | probe 增量内 | 审计 #4 修复 |
+
+**审计与代码评审轮次与终态**：
+- **内部 explore 分歧审计（轮 1）**：终态 `DEVIATIONS`——1 条 🟡（TC-45 reduce 机检面缺失）+ 3 条 🔵（reason 词表漂移 / stub hold 断言缺口 / 探针判据文案无豁免说明）；另 7 大要点逐条相符（时序 / 纯函数契约 / 交互档语义 / AC27 可机检性 / AC28 零空白帧 / AC30 零改动面 / TC 覆盖）。4 条全部修复后收敛。
+- **advisor 代码评审（轮 1）**：终态 `changes-required`——超时截断（600 s），产出 1 条 🟡 must-fix（hold 路径孤儿预载会触发链决策顶掉被持有段）+ 2 条 🔵（reason 词表漂移 / stub holdBlock 与格式化强耦合）+ 1 条 🔵（池缺键整通道回落承 B18 形态）。
+- **advisor 代码评审（轮 2，窄范围只核 pet-chain.js）**：终态 **pass**——#1 孤儿解除武装已验证正确（判别器可靠：back 位 onended 非空 ⇔ 在途预载；pauseTimer 与在途预载互斥；loop=true 孤儿无 onended 不在此面），无新问题；其余 🔵 非阻塞。
+
+**裁决表**：
+| # | Action | Detail |
+|---|---|---|
+| 1（评 1 🟡 must-fix） | Fixed | pet-chain.js hold-same/hold-mirror 两分支加 `elB.onended ⇒ { onended=null; onerror=null; pause() }`（:180/:188），防孤儿预载自然结束触发 `handleEnded` 顶掉被持有段 |
+| 2（评 1 🔵 reason 词表） | Deferred | 设计注 E 枚举 `{pre-end, ended, event-end, slot-rotate}`，实现只发 `pre-end`/`ended`——判据面无影响（探针正则超集）；词表收窄或补发差异化标签属设计侧裁定，如实上报父侧 |
+| 3（评 1 🔵 stub holdBlock 强耦合） | Not an issue | 结构机检响亮失败（红）而非静默通过；格式化变更时同步更新断言即可，不改 |
+| 4（评 1 🔵 池缺键整通道回落） | Not an issue | 承 B18 既有 slot-miss 形态；TC-47 判据面（渲染待机帧、不空白不报错）满足；下一次档位变化 `toVideo()` 重新入视频通道 |
+| 5（审计 #1 reduce 机检） | Fixed | probe `--reduce` 接入 runChain CDP 仿真 |
+| 6（审计 #3 stub hold 断言缺口） | Fixed | holdBlock 逐分支取体断言 |
+| 7（审计 #4 探针文案豁免） | Fixed | 判据文案补 ended 兜底窗豁免句 |
+
+**门禁与取证（本角色亲跑）**：
+- `npm run lint`：**PASS**（checks=6 selftest=14/14）。
+- `node .thincoder/b21-pet-selection-stub.mjs`：**27/27 PASS**（decideNext 三计划 / judgeSwitch 三判定 / 池数据 95/11 / PET_OVERLAP_MS 单点 / 改前树必红证据 = git show HEAD 旧树无 judgeSwitch 与 PET_OVERLAP_MS / hold 收尾面 / 静态接线）。
+- `npm run test:full`：**45/45 PASS**（零回归）。`npm run test:integration`：**3/3 PASS**。
+- 探针 `--chain 45`：pre-end 占比 **1.000**（≥0.9 ✓）、overlap 带内 [950,1450] **5/5**（后续 10/10）、叠化窗 `both>0 ∧ zero=0`、ended→shown 超 300ms=**0**、`pool ok=1 segs=95`。
+- 探针 `--drag`：`anim slot key=events.drag pick=被鼠标拖拽悬空反馈` + `reason=slot-drag loop=1` + 松手回链 ✓。
+- 探针 `--state escape-left`：`anim slot key=events.escape` + `reason=slot-escape loop=1` ✓；`--state escape-left,escape-right,escape-left`：hold-mirror 取证 **2/4 次** ✓。
+- 探针 `--chain 22 --reduce`（TC-45）：叠化窗 `both=0`（归零）+ 预触发仍在（占比 1.0）+ `zero=0` ✓。
+- 零改动面 13 档逐档 `git diff --stat` 空 ✓；`package.json` 依赖段与 `build.files` 零 diff ✓；素材零 diff ✓；`pool.json` 只增两键 ✓。
+- 行数实测（换行符口径）：pet-chain.js **282**（≤285）· pet-chain-core.js **218**（≤228）· pet.js **241**（≤244）· shell-pet.js **458**（≤461）· pool.json **77**（≤82）· probe-pet-media.js **397**（≤435，硬限 500）· stub **165**（150–250）。行宽全部 ≤300。
+
+**已知残余（如实登记）**：
+1. 衔接观感 / 拖动档观感 / 逃跑观感 = **待用户实机目视**（AC27 ⑥ / AC25 / AC29 ⑥ 人工项）。
+2. hold-same 运行期触发窗口在毫秒级竞态（桩测判定面已覆盖；真机逃跑折返主要由 hold-mirror 承载）。
+3. reason 词表漂移（裁决 #2 Deferred）待设计侧裁定。
+4. `PET_OVERLAP_MS=1200` 为临时值，实机标定后定值（§2.13.2 到期条件）。
+5. 探针 `--chain 600` 长窗（AC27 ③ 取样窗口）未在本轮跑满——45 s 窗已证占比 1.0，600 s 长窗留给父侧验收轮。
+
 ## §6 验收核销（主 agent）
 
 <!-- 由主 agent 填 -->

@@ -2,7 +2,7 @@
 /**
  * pet-chain-core.js — 动画链决策纯函数 + 池校验 + 媒体盒几何（B18；设计档 docs/design/PET-ANIMATION.md §2.2.2 / §2.2.4 / §2.2.6）。
  * 边界（设计档 §2.2.1）：零 DOM / 零 IPC / 零 fs——可被 node 直接装载（桩测装载真实实现，DD-14）。
- * 函数清单：rollKind · pick · pickWeightedCategory · pickSlot · nextInSlot · pickChainNext · mediaBox · segSrc · parsePool · validatePool；双环境导出尾巴见档末。
+ * 函数清单：rollKind · pick · pickWeightedCategory · pickSlot · nextInSlot · pickChainNext · decideNext · judgeSwitch · mediaBox · segSrc · parsePool · validatePool；双环境导出尾巴见档末。
  */
 
 // ---- 常量（设计档 §2.2.6 常量表）----
@@ -18,6 +18,8 @@ const PET_FEET_Y = 244;
 const PET_STAGE_W = 250;
 /** V3 单段体积上界（NFR-10）。 */
 const SEG_MAX_BYTES = 1.5 * 1024 * 1024;
+/** B21 衔接提前量（段末前多少毫秒起下一段；NFR-23 单点定义单点消费；初值 = 临时值，实机标定后定值）。 */
+const PET_OVERLAP_MS = 1200;
 
 // ---- 链决策（设计档 §2.2.4）----
 /** 按权重掷骰：roll ∈ [0,1) ⇒ 'idle' | 'turn' | 'move' | 'action'（余量全归 action，见档内「权重余量」契约）。 */
@@ -64,10 +66,7 @@ function nextInSlot(slot, current) {
 
 /** 链的一步决策；kind='move' ⇒ name=null（由调用方发散步请求，设计档 §2.2.4 规则 4）。 */
 function pickChainNext(input) {
-  const weights = input.weights;
-  const pool = input.pool;
-  const cur = input.cur;
-  const facing = input.facing;
+  const { weights, pool, cur, facing } = input;
   const kind = rollKind(input.roll, weights);
   if (kind === 'idle') return { kind, name: pick(pool.idle, cur), mirror: false, category: null };
   if (kind === 'turn') return { kind, name: pick(pool.turn, cur), mirror: false, category: null };
@@ -77,15 +76,35 @@ function pickChainNext(input) {
   return { kind: 'action', name: pick(cat.actions, cur), mirror: facing === 'right' && !cat.noMirror, category: cat.id };
 }
 
+/** B21 段末决策（设计档 §2.13.4）：输入池/权重/掷骰/当前档位/正播段/朝向 ⇒ 输出三类计划（rotate/chain/none；roll 注入保确定性）。 */
+function decideNext(input) {
+  const { pool, weights, roll, slot, playing, cur, facing } = input;
+  // 事件段仍在同档且有多个候选 ⇒ 档内轮换（复用 nextInSlot，其契约不改）
+  if (playing && playing.kind === 'event' && playing.slotKey === slot) {
+    const next = nextInSlot(pool.events[slot], playing.name);
+    if (next) return { plan: 'rotate', name: next, mirror: false };
+  }
+  const d = pickChainNext({ weights, pool, cur, facing, roll });
+  if (d.name === null) return { plan: 'none' };
+  return { plan: 'chain', name: d.name, mirror: d.mirror, kind: d.kind, category: d.category };
+}
+
+/** B21 R1/R2 选段修正（设计档 §2.13.5）：输入当前播放状态/目标段名/镜像 ⇒ 输出 reload/hold-same/hold-mirror。 */
+function judgeSwitch(input) {
+  const { playing, name, mirror } = input;
+  // 未在播或 loop=false ⇒ reload（一次性反馈段照常重播；R1/R2 只作用于 loop=true 持续档）
+  if (!playing || !playing.loop) return 'reload';
+  if (name === playing.name && mirror === playing.mirror) return 'hold-same';   // R1：同段同镜像不重播
+  if (name === playing.name) return 'hold-mirror';                              // R2：仅镜像变化只改 transform
+  return 'reload';
+}
+
 // ---- 媒体盒几何（设计档 §2.2.6；纯计算，无 DOM）----
 /**
  * 媒体盒与命中矩形（单位 = CSS px = DIP）；返回 scale / left·top·w·h（媒体盒）/ hit（身体盒映射）/ bodyBottom。
  */
 function mediaBox(input) {
-  const canvas = input.canvas;
-  const body = input.body;
-  const targetH = input.targetH;
-  const feetY = input.feetY;
+  const { canvas, body, targetH, feetY } = input;
   const stageW = input.stageW === undefined ? PET_STAGE_W : input.stageW;
   const scale = targetH / (body.y1 - body.y0);
   const w = canvas.w * scale;
@@ -189,8 +208,8 @@ function parsePool(text, probe) {
 }
 
 const PetChainCore = {
-  rollKind, pick, pickWeightedCategory, pickSlot, nextInSlot, pickChainNext, mediaBox, segSrc, parsePool, validatePool,
-  PET_MEDIA_CANVAS, PET_MEDIA_BODY, PET_BODY_TARGET_H, PET_FEET_Y, PET_STAGE_W, SEG_MAX_BYTES,
+  rollKind, pick, pickWeightedCategory, pickSlot, nextInSlot, pickChainNext, decideNext, judgeSwitch, mediaBox, segSrc, parsePool, validatePool,
+  PET_MEDIA_CANVAS, PET_MEDIA_BODY, PET_BODY_TARGET_H, PET_FEET_Y, PET_STAGE_W, SEG_MAX_BYTES, PET_OVERLAP_MS,
 };
 
 // 双环境导出尾巴：node（桩测 / 主进程 require）与浏览器（<script> 全局）同源装载。
