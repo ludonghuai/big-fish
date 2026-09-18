@@ -10,6 +10,11 @@ const path = require('node:path');
 const fs = require('node:fs');
 const assets = require('./shell-assets.js');
 const settings = require('./shell-settings.js');
+// B16 修偏（2026-09-18，实机发现）：测试卫生开关 BIGFISH_TEST_NO_NOTIFY=1 —— 集成层场景
+//   真启动时会据桩元数据走「发现新版本」路径并弹真实 Windows 通知（用户实机撞见 v0.1.9 假通知）。
+//   本开关启动时读一次，短路 notify()（通知唯一出口：更新气泡 / 完成提醒全走此）；
+//   默认关 = 生产零影响；模态弹窗面不经此（场景由 seed modeChosen + 永不走 manual 规避）。
+const NOTIFY_SUPPRESSED = process.env.BIGFISH_TEST_NO_NOTIFY === '1';
 // B09 §2.2.12「降级与可观测性」：判定诊断行经 backend.writeDiag(line) 双写 console + bigfish.log。
 // 依赖方向合规：同层（L1）+ 无环（shell-backend.js 只 require electron / node 内置 / harness-store.js）。
 const backend = require('./shell-backend.js');
@@ -47,6 +52,7 @@ let completionGateStaleLogged = false;               // stale 诊断行至多一
 // ---------------------------------------------------------------------------
 
 function notify(title, body, onClick) {
+  if (NOTIFY_SUPPRESSED) return; // B16 修偏：测试场景抑制真实桌面通知（默认关）
   if (!Notification.isSupported()) return;
   try {
     const n = new Notification({ title, body, icon: assets.appIconPath() });

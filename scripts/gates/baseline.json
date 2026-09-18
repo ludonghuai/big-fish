@@ -1,0 +1,38 @@
+{
+  "asOf": "2026-09-18",
+  "width": {
+    "docs/batches/B03-pet-multimonitor.md": 40,
+    "docs/design/PET-MULTIMONITOR.md": 18,
+    "docs/batches/B18-pet-animation-chain.md": 7,
+    "docs/batches/B09-notify-latency.md": 6,
+    "docs/batches/B20-pet-physics.md": 4,
+    "docs/batches/B08-dsh-bundle-version.md": 3,
+    "docs/batches/B19-pet-work-status.md": 3,
+    "docs/design/AUTO-UPDATE.md": 3,
+    "docs/batches/B10-affinity-token-source.md": 2,
+    "docs/batches/B12-market-security-blocking.md": 2,
+    "docs/batches/B01-pet-drag-follow.md": 1,
+    "docs/batches/B05-installer-cleanup.md": 1,
+    "docs/batches/B06-shell-ux.md": 1,
+    "docs/batches/B23-pet-action-unlock.md": 1,
+    "docs/batches/B24-pet-import-action.md": 1
+  },
+  "fanout": {
+    "shell-tray.js": 10,
+    "shell-ipc.js": 6,
+    "shell-pet.js": 5,
+    "shell-update.js": 5,
+    "shell-window.js": 5,
+    "shell-market.js": 4
+  },
+  "cycles": 0,
+  "assemblyExempt": [
+    { "file": "shell-settings.js", "why": "工具档，无 init 导出（settings 载入/保存/访问器）" },
+    { "file": "shell-ipc.js", "why": "以 register() 接线（通道→域处理器薄绑定），无 init" }
+  ],
+  "expires": {
+    "width": "随 T13 消解路径逐档归零（活文档面随 B14 修正；批次档历史段随该档下次被合法动笔）⇒ 条目归零即删",
+    "fanout": "随 T39 的归属批次（B17 代码优化串）把 6 档降到 ≤3 ⇒ 全部删除",
+    "hardRule": "本机制不得用于冻结任何新增违规（新档违规一律红）"
+  }
+}

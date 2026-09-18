@@ -6,6 +6,8 @@
  *   /registry/npmjs         Harness 兜底元数据（正常）
  * 打包版手测：BIGFISH_UPDATE_URL / BIGFISH_DSH_REGISTRY_URL / BIGFISH_DSH_REGISTRY_FALLBACK_URL 指向本服务。
  * 用法：node tests/update-stub.mjs [port]  （默认 127.0.0.1:8931）
+ * B16 集成层扩展（只读、缺省不变）：/registry/* 增 `?latest=<version>` ——覆盖 dist-tags.latest 与
+ *   versions 里对应条目（供 S3 子态 a/b）；缺省 = 现状 0.1.5-rc.1，对既有手测用法零行为变更。
  */
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -30,6 +32,27 @@ const REGISTRY_META = {
     },
   },
 };
+
+/** B16 集成层：?latest=<version> 只读覆盖（缺省 = 上面的现状值；对既有手测零行为变更）。 */
+function registryMetaFor(url) {
+  const latest = url.searchParams.get('latest');
+  if (!latest) return REGISTRY_META;
+  return {
+    ...REGISTRY_META,
+    'dist-tags': { ...REGISTRY_META['dist-tags'], latest },
+    versions: {
+      ...REGISTRY_META.versions,
+      [latest]: {
+        name: '@deepseek-ai/dsh',
+        version: latest,
+        dist: {
+          tarball: `http://${HOST}:${PORT}/tarball/dsh-${latest}.tgz`,
+          integrity: 'sha512-stub-integrity',
+        },
+      },
+    },
+  };
+}
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${HOST}:${PORT}`);
@@ -69,12 +92,12 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/registry/npmmirror') {
     if (url.searchParams.get('fail') === '1') { res.writeHead(404); res.end('not found'); return; }
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(REGISTRY_META));
+    res.end(JSON.stringify(registryMetaFor(url)));
     return;
   }
   if (url.pathname === '/registry/npmjs') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(REGISTRY_META));
+    res.end(JSON.stringify(registryMetaFor(url)));
     return;
   }
   res.writeHead(404);
@@ -88,4 +111,5 @@ server.listen(PORT, HOST, () => {
   console.log('  /installer?slow=1       慢速流（取消/超时路径测试）');
   console.log('  /registry/npmmirror?fail=1  404（TC-24：npmmirror 失败 → npmjs 兜底）');
   console.log('  /registry/npmjs          兜底元数据（正常）');
+  console.log('  /registry/*?latest=<v>   B16 集成层：只读覆盖 dist-tags.latest（缺省不变）');
 });

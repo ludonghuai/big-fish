@@ -1,0 +1,28 @@
+# gates.yml — B16 门禁 workflow（lint → test:full → test:integration；与本地逐字同形——只调 npm script，无裸命令）
+# 设计档：docs/design/REPO-CONVENTIONS.md 附 A §A.2.2.1（触发面：push + pull_request + workflow_dispatch）
+name: gates
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gates:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm install
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+
+      - run: npm run lint
+
+      - run: npm run test:full
+
+      - run: npm run test:integration

@@ -14,6 +14,7 @@ const Module = require('node:module');
 const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
+const { slow } = require('./layer.js'); // B16：慢测层标记（>500 ms 用例归册；快层自动 skip）
 
 // ---------------------------------------------------------------------------
 // 夹具基建（临时目录 / 假加载器 / fs 快照）
@@ -471,7 +472,7 @@ test('TC-81 计数器：N=2 与 N=3727 的 fs 调用计数相等；node_modules 
   assert.strictEqual(cN.readdirSync.filter((p) => p === nm).length, 1, 'node_modules 顶层 readdirSync 非 1 次');
 });
 
-test('TC-82 降级夹具：无 profile manifest / 空 node_modules ⇒ 不抛、返回空集', () => {
+slow('TC-82 降级夹具：无 profile manifest / 空 node_modules ⇒ 不抛、返回空集', () => {
   const { plugins } = scanFixture('tc82', false);
   plugins.init({ updaterLog: () => {} });
   assert.deepStrictEqual(plugins.listInstalledPlugins(), []);

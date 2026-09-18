@@ -22,7 +22,11 @@
     "icons": "node make-icons.js",
     "make-latest": "node make-latest.js",
     "bundle:refresh": "node scripts/refresh-dsh-bundle.js",
-    "bundle:check": "node scripts/refresh-dsh-bundle.js --check"
+    "bundle:check": "node scripts/refresh-dsh-bundle.js --check",
+    "lint": "node scripts/gates/run.js",
+    "test": "node scripts/test-run.js",
+    "test:full": "node scripts/test-run.js --full",
+    "test:integration": "node scripts/test-integration.js"
   },
   "dependencies": {},
   "devDependencies": {
