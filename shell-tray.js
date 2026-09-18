@@ -18,10 +18,11 @@ const pet = require('./shell-pet.js');
 const physics = require('./shell-pet-physics.js');
 const notifier = require('./shell-notify.js');
 
-// 注入面（组合根 main.js 接线）：setQuitting（组合根）/ APP_NAME（常量）
+// 注入面（组合根 main.js 接线）：setQuitting（组合根）/ APP_NAME（常量）/ setPetWorkStatus（B19：工作状态开关传播面，§2.7）
 let setQuitting = null;
 let APP_NAME = null;
-function init(deps) { setQuitting = deps.setQuitting; APP_NAME = deps.APP_NAME; }
+let setPetWorkStatus = null;
+function init(deps) { setQuitting = deps.setQuitting; APP_NAME = deps.APP_NAME; setPetWorkStatus = deps.setPetWorkStatus; }
 
 /** @type {Tray | null} */
 let tray = null;
@@ -78,6 +79,8 @@ function rebuildTrayMenu() {
         { label: '任务完成时通知', type: 'checkbox', checked: settings.get().notifyOnComplete, click: (item) => setNotify(item.checked) },
         // 甩抛物理手感（B20 / US-27）：专注模式（无桌宠窗口）下开关无对象 ⇒ 置灰（open-2 ①，同「找回鲸鱼娘」）
         { label: '甩抛物理手感', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petPhysicsEnabled, click: (item) => setPetPhysics(item.checked) },
+        // 工作状态联动（B19 / US-23）：与「任务完成时通知」同形；专注模式（无桌宠窗口）下开关无对象 ⇒ 置灰（同物理开关口径）
+        { label: '工作状态联动', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petWorkStatus, click: (item) => setPetWork(item.checked) },
         { label: '开机自启', type: 'checkbox', checked: settings.get().launchAtLogin, click: (item) => setAutoStart(item.checked) },
         {
           label: 'Windows 右键菜单',
@@ -128,6 +131,14 @@ function setPetPhysics(enabled) {
   settings.get().petPhysicsEnabled = enabled;
   settings.saveSettings();
   physics.handlePhysicsToggle(enabled);
+  rebuildTrayMenu();
+}
+
+/** 工作状态联动开关（B19 / US-23 / §2.8.3 #6）：写权 = 本处（落盘 settings.json 顶层布尔）；传播 = 注入面 setPetWorkStatus(checked)。 */
+function setPetWork(enabled) {
+  settings.get().petWorkStatus = enabled;
+  settings.saveSettings();
+  if (setPetWorkStatus) setPetWorkStatus(enabled);
   rebuildTrayMenu();
 }
 

@@ -30,9 +30,12 @@ let frameIndex = 0;
 let animTimer = null;
 
 function setState(s) {
-  if (!FRAMES[s]) return;
-  notifySlot(s);   // 语义档位上报给动画链（视频通道；池未就绪 / 已回落时链侧无副作用）
-  renderPng(s);
+  // B19（§2.8.7 行 3 / AC21）：链上报先行——未知档位（无 PNG 帧，如 work-*）也上报给动画链（视频通道照播）；
+  //   PNG 通道下未知档位渲染待机帧（不空白、不报错；现有 11 档逐位不变——FRAMES 有帧则照旧 renderPng(s)）。
+  //   重断言的重复下发幂等由 renderPng('idle') 的单帧无定时器形态承担（FRAME_MS.idle = 0 ⇒ 无 timer 重启、同值 src、bob class 不变）
+  notifySlot(s);
+  if (FRAMES[s]) { renderPng(s); return; }
+  renderPng('idle');
 }
 
 /** 语义档位 → 动画链（pet-chain.js 的全局出口；本档只上报，不参与选段，设计档 §2.2.1）。 */

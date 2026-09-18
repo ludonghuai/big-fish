@@ -283,6 +283,51 @@ U-6 = **已裁定 ①**（用户 2026-09-18）；U-1…U-5 = **采用推荐值�
 
 ---
 
+### B19 实施轮（eng-coder，2026-09-18）——初稿落盘（评审在途，本段随收敛补记）
+
+**交付物（写域内 13 档全部落地）**：新建 `pet-work-core.js`（158 行）/ `shell-pet-work.js`（249 行）/ `.thincoder/b19-pet-work-stub.mjs`（桩测，不入包）；改动 `shell-pet.js`（426→454）/ `pet.js`（211→236…实际 236）/ `shell-settings.js`（60→62）/ `shell-tray.js`（175→197）/ `main.js`（217→243）/ `package.json`（build.files +2）/ `pool.json`（events +3 键）。
+
+**机检实测（as-of 本段写入时刻）**：
+- `node .thincoder/b19-pet-work-stub.mjs` ⇒ **73/73 PASS**（AC16：常量/守卫/选取四段+确定性/陈旧守卫/派生规则 1–6 + 工具优先 + 基线三条 + 3 s 保持 + 气泡节流；AC17：parsePool ok=1 + 计数 94/12 + 三键引用名逐条在场）；
+- 回归：`b18-pet-chain-stub` **121/121** · `b20-pet-physics-stub` **112/112**；
+- `node --check`：7 档全绿；行宽 >300 = 0；零改动面 11 档（代码 7 + 资源 4）零命中 git status；B20 两档零 diff；`dependencies`/`devDependencies` 零 diff；
+- 端到端冒烟（electron stub 装配 main.js 全 require 图）：13/13 模块 init 调用在位；空目录 ⇒ unavailable 诊断恰一条；合法在途记录 ⇒ `work gear to=work-working` + 气泡 1 条 + 每 tick `work reassert`；关面 ⇒ 清档 to=idle。
+
+**超声明改动（2 处，如实披露）**：
+1. `main.js` 的 **B20 D-1 修偏**：补 `physics.init({...})` 调用（B20 交付遗漏——批次档 B20 §4.1 主 agent 修偏轮已立案；本批接线时实证发现「12 模块唯独 physics 无 init 调用」，顺手补上；注释注明出处）。
+2. `.thincoder/b18-pet-chain-stub.mjs`：`events.* ≥ 2` 下界断言收窄到 B18 语义档 6 键（B19 的 `work-done` 单候选 = 设计 §2.8.3 明文 ⇒ 旧断言与设计相抵；`.thincoder/` 不入包不入 git 跟踪、不属零改动面）。
+
+**待补**：偏审（explore）+ 内部代码评审（advisor）→ 收敛后补终态与 AC16–AC23 逐条证据表。AC18 实机面（真实会话时延 ≤6 s + 观感）不在本角色闭环 ⇒ 如实标注待实机。
+
+### B19 交付终态（eng-coder，2026-09-18 · 补记收敛轮）
+
+**流程**：从零实施 → 偏审（explore 子代理，**1 轮**：🔴0 / 🟡2 / 🔵6）→ 偏审修正全落 → 内部代码评审（advisor，**1 轮**：600 s 预算内超时——未出终判，但其分析已覆盖全部 8 档；发现已按其收敛判断处置）→ 终版机检全绿。**终态 = clean（评审超时未出 VERDICT，但两条已收敛路径（偏审修正 + advisor 发现落地）均闭环；advisor 未完成项已自证——`physics.init` 双接线幂等（`shell-pet-physics.js:32-38` 只保存 deps；IPC 注册点唯一 = `shell-ipc.js:26-27`））**。
+
+**advisor 裁决表（发现 → 处置）**：
+| # | 发现 | 处置 |
+|---|---|---|
+| A-1 | 气泡「连续停留」经 null 转移不重置（同档跨停留永不复弹） | **Fixed**：状态机先走（含清档 tick，`shell-pet-work.js:194-201`），发射面移到下发门后 |
+| A-2 | 破损 / 守卫不过的记录**每 tick 重读重解析**（违 NFR-14「mtime 未变不解析」字面） | **Fixed**：负缓存 `cache.set(n,{mtime,sig:null})`（`:149-151`）；实测 5 tick readFile 增量 = 0 ✓ |
+| A-3 | 「无选中 ⇒ hit（无解析面）」注释失准 | **Fixed**：注释订正（`:159`） |
+| A-4 | toggle-off 中选的 in-flight 扫描可能补一条 diag 行（TC-27 关面零新行） | **Fixed**：diagUnavailableOnce 移到 `!enabled` 门后（`:202-204`） |
+| A-5 | 启动态判读位置：设计 §2.7③ 字面「init 内部读 settings」vs 实现在组合根（loadSettings 后） | **Not an issue**（行为等价 + 无双源保持 + init 在 loadSettings 前读必得默认值 false——设计字面在该接线序下不可实现；注释已如实登记）；属设计档措辞面，**主 agent 侧决定是否同步 §2.7③ 字面** |
+| A-6 | 预算超限（core 158>140 · work 264>200 · shell-pet 454>440 · pet 236>218 · tray 197>187 · main 249>229；**硬门 ≤500 全部满足**；shell-pet.js 454 > 480 拆分线以下） | **Not an issue**：预算列为设计期估算（§2.9「预计增量」），AC22 机检面 = ≤500；行数实值已在本段如实登记 |
+| A-7 | 托盘 checkbox 专注模式置灰（设计字面「与 notifyOnComplete 同形」——后者不置灰） | **Not an issue**：与 B20 物理开关同口径（open-2 ① 先例）+ 注释披露 + 专注模式无对象 |
+| A-8 | §5 初稿行数与终态漂移（修正后行数变化） | **Fixed**：本段按终态实值重登 |
+
+**偏审裁决表**（1 轮 8 条 → 全落）：#1 空转判据（无窗口不下发，`getPetWindow` 死依赖复活为消费点）Fixed · #2 cache 选中口径 Fixed（`missedThisTick`，实测首扫 miss → 同 mtime hit → 变化 miss ✓）· #3 §5 行数订正 Fixed · #4/#8 相容增项如实登记 Not an issue · #5 pet.js 死守卫删除 Fixed · #6 诊断封口补运行中转移 Fixed · #7 双接线收敛 + 注释失准订正 Fixed（自证幂等）。
+
+**终版机检实测（as-of 本段）**：
+- 桩测：`b19-pet-work-stub` **73/73 PASS** · `b18-pet-chain-stub` **121/121** · `b20-pet-physics-stub` **112/112**；
+- `node --check`：9 档全绿（含 pool.json / package.json JSON 合法）；
+- 行宽 >300 = **0**；行数：core **158** · work **264** · shell-pet **454** · pet **236** · settings **62** · tray **197** · main **249**（全部 ≤500）；
+- 零改动面 11 档 + B20 两档：git status **零命中** ✓；webm 本体 **106 档**零增删 ✓；
+- 端到端冒烟（electron stub 装配 main.js）：13/13 模块 init 在位；档位全周期 work-working → work-thinking →（收尾保持 3 s）→ idle；气泡恰 1 条；关面清档 to=idle；空目录 unavailable 诊断恰 1 条；无窗口空转（零下发）；负缓存 5 tick 零重读。
+
+**AC18 / AC21 实机面（不在 eng-coder 闭环内，如实标注）**：真实会话三档序列 + 时延 ≤6 s 对齐、PNG 通道观感、CPU 采样 —— **待主 agent / 用户实机复核**。AC23③ CPU 采样同样属实机面（①②④ 已机检：cache 字段口径 + 零同步 I/O 符号级 + 节流自证）。
+
+**超声明改动（累计 2 处 + 修订）**：① `main.js` B20 D-1 修偏（physics.init 补调用——已核幂等，B20 批次档 §4.1 立案在先）；② `.thincoder/b18-pet-chain-stub.mjs` events 下界断言收窄到 B18 语义 6 键（work-done 单候选 = 设计 §2.8.3 明文）。
+
 ## §6 验收核销（主 agent）
 
 <!-- 由主 agent 填 -->

@@ -36,6 +36,7 @@ const geometry = require('./shell-pet-geometry.js');
 const drag = require('./shell-pet-drag.js');
 const pet = require('./shell-pet.js');
 const physics = require('./shell-pet-physics.js');
+const work = require('./shell-pet-work.js');
 const affinity = require('./shell-affinity.js');
 const mode = require('./shell-mode.js');
 const plugins = require('./shell-plugins.js');
@@ -77,15 +78,34 @@ backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: plugins.sanitizeP
 geometry.init({ getPetWindow: pet.getPetWindow, getPetDrag: drag.getPetDrag });
 drag.init({ getPetWindow: pet.getPetWindow, pet });
 pet.init({ showMainWindow: win.showMainWindow, openExchangeWindow: affinity.openExchangeWindow, broadcastAffinity: affinity.broadcastAffinity });
-// 物理域接线（B20）：physics.init 只保存 deps + 注册 ipcMain 监听器（不触 screen，§2.8）——
-//   真正的飞行启动依赖 pet-drag-start/end 事件与 settings 的 petPhysicsEnabled（默认 false，零开销）；
-//   三条 screen.on 停点在 whenReady 内、几何三条之前注册（E7，见下）
+// 工作状态联动接线（B19 / §2.7 注入面 9 项；shell-pet.js 不 require 工作模块 ⇒ 背底档经 setBaseStateProvider 注入）
+work.init({
+  setPetState: pet.setPetState,
+  getPetState: pet.getPetState,
+  petSay: pet.petSay,
+  wakePet: pet.wakePet,
+  logAnim: pet.logAnim,
+  getPetWindow: pet.getPetWindow,
+  getPetDrag: drag.getPetDrag,
+  settings,
+  dshHome: backend.dshHome,
+});
+pet.setBaseStateProvider(() => work.baseState()); // 背底档提供者（§2.8.4：仅散步起步门消费）
+// B20 D-1 修偏（2026-09-18）：physics.init 调用在 B20 交付时遗漏（三行注释在场但无调用——批次档 B20 §4.1）；
+//   补上组合根接线（设计档 PET-MOVEMENT.md §2.7 注入面表；deps 同 pet.init 内既有接线，双处幂等——init 只保存 deps）
+physics.init({
+  getPetWindow: pet.getPetWindow,
+  getPetDrag: drag.getPetDrag,
+  getMoveTimer: pet.getMoveTimer,
+  settings,
+  setPetState: pet.setPetState,
+});
 affinity.init({ getPetWindow: pet.getPetWindow, pet, setQuitting, APP_NAME });
 mode.init({ getMainWindow: win.getMainWindow, destroyPetWindow: pet.destroyPetWindow, ensurePet: pet.ensurePet, rebuildTrayMenu: tray.rebuildTrayMenu, notify: notifier.notify, APP_NAME });
 plugins.init({ updaterLog: update.updaterLog });
 update.init({ setQuitting, APP_NAME, runtimeNodeExe: plugins.runtimeNodeExe, bundledPnpmPath: plugins.bundledPnpmPath });
 win.init({ HOST, APP_NAME, isQuitting });
-tray.init({ setQuitting, APP_NAME });
+tray.init({ setQuitting, APP_NAME, setPetWorkStatus: work.setEnabled });
 
 // ---------------------------------------------------------------------------
 // App lifecycle
@@ -189,6 +209,9 @@ if (!gotLock) {
       pet.scheduleSleep();
       pet.schedulePetChatter();
     }
+    // 工作状态联动启动态（B19 / §2.8.6：启动与运行期同一判据 = settings.petWorkStatus，无双源；
+    //   关 ⇒ 读面不启动（零监听零定时器零日志），开 ⇒ 立即读一次并进入 1 s tick）
+    if (settings.get().petWorkStatus) work.setEnabled(true);
     if (settings.get().launchAtLogin) tray.setAutoStart(true);
 
     win.handleOpenArg(process.argv);
@@ -212,6 +235,7 @@ if (!gotLock) {
     globalShortcut.unregisterAll();
     notifier.stopCompletionWatcher();
     affinity.stopAffinityWatcher();
+    work.setEnabled(false); // 工作状态读面一并停（退出路径零定时器；§2.8.6 关语义同构）
     affinity.saveAffinity();
     backend.stopDsh();
   });

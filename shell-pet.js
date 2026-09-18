@@ -45,13 +45,16 @@ let animPoolResult = null; // 池装载结果缓存（每次重建窗口复用�
 /** debug 开关（承既有 `BIGFISH_PET_DEBUG` 口径；关闭时零日志、零监听）。 */
 function animDebug() { return process.env.BIGFISH_PET_DEBUG === '1'; }
 
-/** 链日志落盘：主进程行 + 渲染层 `[pet-anim]` 行同文件追加（设计档 §2.2.11）。 */
+/** 链日志落盘：主进程行 + 渲染层 `[pet-anim]` 行同文件追加（设计档 §2.2.11）；B19 起工作模块（shell-pet-work.js）的 `work *` 行同注入面（§2.8.8，不新建日志文件）。 */
 function animLog(line) {
   if (!animDebug()) return;
   try {
     fs.appendFileSync(path.join(app.getPath('userData'), ANIM_LOG_NAME), '[' + new Date().toISOString() + '] ' + line + '\n');
   } catch { /* 日志失败不影响链 */ }
 }
+
+/** 动画链日志注入面（B19 / §2.8.8）：供工作状态模块的 `work *` 诊断行复用同一日志文件与 debug 开关；已含 debug 判定。 */
+function logAnim(line) { animLog(line); }
 
 /** 池装载 + 校验（V1–V6 谓词与 JSON 破损在 pet-chain-core.js；本处只注入 fs 探针并给出日志行）。 */
 function loadAnimPool() {
@@ -228,6 +231,15 @@ function destroyPetWindow() {
 // Pet state machine (idle / eat / sleep / walk / run + happy/read/scared/starry)
 // ---------------------------------------------------------------------------
 let petState = 'idle';
+// 工作状态背底档提供者（B19）：由 shell-pet-work.js 经 setBaseStateProvider 注入（反注入——shell-pet.js 不 require 工作模块，
+//   docs/design/PET-ANIMATION.md §2.7）；仅用于散步起步门（§2.8.4「散步/入睡的让位」行），不改变任何既有状态语义。
+let petBaseStateProvider = null;
+
+/** 工作档背底档提供者注入（组合根接线；shell-pet-work.init 后调用）。 */
+function setBaseStateProvider(fn) { petBaseStateProvider = fn; }
+
+/** 背底档读取（§2.8.4）：提供者未注入 / 返回空 ⇒ 'idle'。散步起步门消费（scheduleWander）。 */
+function petBaseState() { return petBaseStateProvider ? petBaseStateProvider() ?? 'idle' : 'idle'; }
 let wanderTimer = null;
 let sleepTimer = null;
 let eatTimer = null;
@@ -271,7 +283,8 @@ function wakePet() {
 function scheduleWander() {
   clearTimeout(wanderTimer);
   wanderTimer = setTimeout(() => {
-    if (petState === 'idle') doWander();
+    // 起步门（B19 / §2.8.4）：仅 idle 态且无工作档在途（背底档）才起步——「工作档期间不启动散步」（US-21 / DD-23）
+    if (petState === 'idle' && petBaseState() === 'idle') doWander();
     else scheduleWander();
   }, 15000 + Math.random() * 20000);
 }
@@ -434,5 +447,8 @@ module.exports = {
   setForceRun,
   handlePetClicked,
   handlePetRightClicked,
+  logAnim,
+  setBaseStateProvider,
+  petBaseState,
   init,
 };
