@@ -110,6 +110,17 @@
 - **`init(deps)` 形态**：15 个 `shell-*.js` 中 **11 档**具名导出 `function init(deps)`：
   - 具名 `init`：`shell-affinity` · `shell-backend` · `shell-mode` · `shell-notify` · `shell-pet-drag` · `shell-pet-geometry` · `shell-pet` · `shell-plugins` · `shell-tray` · `shell-update` · `shell-window`。
   - 无 `init` 的 4 档：`shell-ipc.js` 用 `register()`（通道 → 域处理器薄绑定）；`shell-assets.js` / `shell-settings.js` 为工具档；`shell-market.js` 为域实现档（经 `shell-ipc.js` 接线，无跨模块状态注入）。
+- **结构判据三条**（成文判据；机检面 = `npm run lint` 的判据 D①②③，机检**随 B16 实施落地**——设计与基线契约见 `docs/design/REPO-CONVENTIONS.md` 附 A §A.2.2.2 / §A.2.2.6）：
+
+| # | 判据 | 判据句 | 口径与免检 |
+|---|---|---|---|
+| D① | 依赖无环 | 自研档的静态相对依赖图必须是 **DAG（0 环）** | 只认字面量 `require('.<相对路径>')`；边 = 解析到仓库内自研档 |
+| D② | 域模块扇出 | **域模块**的静态相对 `require` **出度 ≤3** | 域模块 = 仓库内自研 `.js` / `.mjs` 去掉 `tests/` · `scripts/` · `probe-*` 后的档；组合根 `main.js` **免判**（装配面天然高扇出） |
+| D③ | 接线点唯一 | 组合根 `main.js` 的每个绑定 `const <名> = require('<相对>')` 须有**恰一处** `<名>.init(` 调用 | 不导出 `init` 的档列入**免检清单**（含理由）；未解析的 `require` 形态 = **红**（fail-closed） |
+
+**现状（实测，as-of 2026-09-18）**：D① **0 环**；D② 超限 **6 档** = `shell-tray` **10** · `shell-ipc` **6** · `shell-pet` / `shell-update` / `shell-window` 各 **5** · `shell-market` **4**；D③ **13/13 恰一处**，免检 **2 档** = `shell-settings.js`（工具档，无 `init` 导出）· `shell-ipc.js`（以 `register()` 接线）。
+**基线处理**（随 B16 实施落地后、`scripts/gates/baseline.json` 生效）：存量违规**冻结 + 只拦新增**；上调冻结值须登记理由与**新到期条件**；**陈腐即红**（违规已清零而基条目未缩减 ⇒ 红）；**基线不是豁免面**，到期条件逐条写死（契约 = `docs/design/REPO-CONVENTIONS.md` §A.2.2.6）。
+
 - **依赖方向与拆分纪律**的唯一详述处 = `docs/design/SHELL-UX.md` §2.2.6（本档只给指针，不重述）。
 
 ---
@@ -119,11 +130,13 @@
 | 面 | 判据 | 口径与豁免面 |
 |---|---|---|
 | 行宽 | 单行 **≤300 字符** | 口径 = **不含行尾 CR** 的字符数（本仓工作区 42 档为 CRLF）。豁免面 = 台账 `docs/TODO.md` 与地图 `docs/README.md` 的**表格行**（用户 2026-09-17 裁定 A）+ 批次档 **§3**（裁定 A′）；**豁免仅限这两面，不得自行扩大** |
-| 单档行数 | **≤500 行**（`.js` / `.mjs`） | 实测最大 = `market.js` **恰 500 行**（贴线 · 零余量）；次高 `updater.js` 497 · `shell-pet-geometry.js` 437。先例：B06 F6 把 `main.js` 拆成 15 个 `shell-*.js`；`market-update.js` 即 `market.js` 触顶的产物（见 `market-update.js:4`） |
+| 单档行数 | **≤500 行**（`.js` / `.mjs`） | 实测最大 = `market.js` **恰 500 行**（贴线 · 零余量）；次高 `updater.js` 497 · `tests/b12-plugin-guards.test.js` 491 · `shell-pet-geometry.js` 437（as-of 2026-09-18）。先例：B06 F6 把 `main.js` 拆成 15 个 `shell-*.js`；`market-update.js` 即 `market.js` 触顶的产物（见 `market-update.js:4`） |
 
 - **贴线档（≥480 行）**在下一次改动**之前**须先给**拆分计划**（拆什么 / 拆到哪几个档 / 行为零回退判据）。
-- **行宽债现状**（实测）：非豁免面 **65 行**超宽——`docs/batches/B03-*` 40 · `docs/design/PET-MULTIMONITOR.md` 18 · `docs/design/AUTO-UPDATE.md` 3 · `docs/batches/B01` / `B05` / `B06` 各 1 · `docs/requirements/PET.md` 1；豁免面 56 行（台账 16 · 地图 6 · 批次档 §3 34）。**登记与处置归台账 T13**（写权 = 主 agent）。
-- 本判据**升为门禁句**（机检接入 CI）= 归 B16（见 `docs/design/REPO-CONVENTIONS.md` §2.3 出批项 O3）。
+- **行宽债现状**（实测，as-of **2026-09-18**）：非豁免面 **92 行 / 16 档**超宽（口径 = 不含行尾 CR 的字符数 >300；豁免面 = 台账 / 地图表格行 + 批次档 §3）——前三：`B03-pet-multimonitor.md` 40 · `PET-MULTIMONITOR.md` 18 · `B18-pet-animation-chain.md` 7，余 13 档 1–6 行。**与 B07 期登记的 65 行并存**——差异 = 扫描面 / 豁免面口径不同，**以本批门禁口径为准**；登记与处置归台账 T13（写权 = 主 agent）。
+- **本判据 = 门禁句**（B16）：机检入口 = `npm run lint`（判据 B = 行宽 · 判据 C = 行数；本地与 CI 同形——CI 只调 npm script）。
+  **口径** = 行宽按「不含行尾 CR 的字符数」· 行数按 `\n` 计数（末行有换行不额外计）；**豁免面仅限**台账 / 地图的表格行与批次档 §3（不得扩大）；行数 **≥480** 只出**提示行**（不拦）。
+  机检**随 B16 实施落地**（设计与基线契约 = `docs/design/REPO-CONVENTIONS.md` 附 A §A.2.2.2 / §A.2.2.6）；存量超宽 = **基线冻结 + 只拦新增**（陈腐即红 · 到期条件逐条写死）。
 
 ---
 
@@ -173,3 +186,4 @@
 | 2026-09-17 | **修正轮 3**：§一 判据 ② 收为**宽口径**（「JSDoc 块在场」+「块内含路径的设计档指针」），原「首行 = `文件名 — 职责（批次；设计档 全路径 §节）`」改为**推荐形（写作面；新档遵循、存量不追溯）**；判据 ① 的「JSDoc 紧随、不加空行」同标为推荐形；§1.1 增**合规面内的形态差异**（4 处逐名 · 非缺陷 · 三分 22 / 3 / 17 = 42 不变）。 |
 | 2026-09-17 | **修正轮 4**：§1.1 `tests/` 计数注改为「三档**均在** 22 档逐名清单内」（防并列误读为重复计数）· ESM 注**归因统一**——该档合规性由**判据 ② ③** 承载（本无 `'use strict';` 行），判据 ① 的扩展名口径**不改变**其归属（结论不变：22 档逐名含它、三分 22 + 3 + 17 = 42）。 |
 | 2026-09-17 | **B08 收口轮（实施后文档事实同步）**：§八 的 `build.files` 行锚按 as-of 实测更正 `package.json:39-80` → **`:41-82`**（成因 = 根 `package.json` 因 B08 增两行 scripts，其后各行整体 +2；注「行号只作 as-of 参考」）。**判据 / 计数不变。** |
+| 2026-09-18 | **B16 落笔轮**（主 agent 裁定：规范档写权 = eng-designer）：§四 增**结构判据三条**（D① 依赖无环 · D② 域模块扇出 ≤3 · D③ 接线点唯一）+ 口径与免检清单 + 现状实测（as-of 2026-09-18）+ 基线处理；§五 的「升门禁句」行改为**门禁句**（判据 B / C + 口径 + 豁免面 + 基线冻结）。机检**随 B16 实施落地**（设计 = `docs/design/REPO-CONVENTIONS.md` 附 A）。**既有条文与计数未动。** |

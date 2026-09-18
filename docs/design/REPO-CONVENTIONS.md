@@ -2,6 +2,7 @@
 
 > 设计档（长寿命）：需求层 / 设计层 / 测试层 + 变更记录。
 > 回指：批次档 `docs/batches/B11-conventions.md` §1（立案 · §1.3 体检实证 · §1.6 AC1–AC6）与 §2（任务书）。
+> **附 A = B16 面**（测试分层与门禁）：回指批次档 `docs/batches/B16-test-gates.md` §1（三方同源 = §1.4 五件 + §1.5 硬约束）；B11 面 = §一–§三（节号与指针零改动）。
 > 需求来源 = 台账 R11「接手项目规范化」① 规范载体——**工程/流程类需求，本仓无对应需求档**：需求条文由批次档 §1 承载（三方同源 = `docs/batches/B11-conventions.md` §1.6 的 AC1–AC6）。
 > 落点约定（层与清单）→ `docs/README.md`；本档不重述。
 
@@ -191,7 +192,7 @@ docs/CONVENTIONS.md
 |---|---|---|---|
 | O1 | **`.gitattributes`**（`* text=auto eol=lf`）把 EOL 口径固化到仓库（现依赖本机 `core.autocrlf`） | B15 仓库卫生 / 用户裁定 | §2.1.2：无 autocrlf 的克隆会把 CRLF 归一到错误方向 |
 | O2 | 文件头**迁移**：**20 档** = 17 档无设计档指针 + 3 档相对指针（`update.js` · `make-latest.js` · `market-update.js`）；迁至规范档 §一 标准形 | 随下次动档的批次 / B17 | 本批零 `.js` 改动（§2.5）；逐名清单见 `docs/CONVENTIONS.md` §1.1 |
-| O3 | 行宽/行数**升门禁句**（机检接入 CI） | B16 | §1.3 ⑤ / B16 范围 |
+| O3 | 行宽/行数**升门禁句**（机检接入 CI） | B16 | §1.3 ⑤ / B16 范围；**B16 已落设计**（本档 **附 A**：判据 B/C + `npm run lint`） |
 | O4 | 行宽债清理（非豁免面实测 **65 行**，见规范档 §五） | 台账 T13（主 agent） | 实测新增于 T13 登记面（AUTO-UPDATE 3 行）之外 |
 
 ### 2.4 关键决策记录
@@ -275,6 +276,382 @@ docs/CONVENTIONS.md
 
 ---
 
+## 附 A —— B16 面：测试分层与门禁（B16 批次修订）
+
+> 本附节 = **B16 批次**（测试与门禁：发布门 0/3 → 3/3 + 结构判据机检）的完整设计（需求层 / 设计层 / 测试层）。
+> 回指批次档 `docs/batches/B16-test-gates.md` §1；**B11 面 = §一–§三**（规范载体），其节号与指针零改动（本附节编号 A.x 独立）。
+> 需求来源 = 批次档 §1（**工程/流程类需求，本仓无对应需求档**——依 B11 先例）；三方同源 = §1.4「做」五件 + §1.5 硬约束七条。
+> 现状实测（as-of 2026-09-18，行号只作 as-of 参考）：`package.json:13-26` 的 **12** 项 scripts **无 `test`**；`.github/workflows/build.yml`（**74** 行）无 lint/test 步骤；
+> 全仓无 lint/format 配置；`tests/` **4** 档 = 3 档 `*.test.js`（**45 用例全绿**，实测 1.20 s）+ 1 档假源桩 `update-stub.mjs`；
+> 组装面 `main.js` 相对 require **15** 条 / `init(` 调用 **13** 处（免 `init` 2 档）；依赖图 **0 环**；fan-out 超限 **6** 档；非豁免面超宽行 **92** 行 / 16 档。
+
+### A.1 需求层
+
+#### A.1.1 总体需求
+
+为**接手本仓的人与 AI 代理**解决一个具体问题：本仓的「改坏了」目前只能靠人眼、靠运气、靠用户实机发现——**发布门 0/3**（无 `test` 脚本 · CI 无 lint/test · 无 lint/format 配置），且**结构判据无机检**：
+域模块 `init()` 漏调不可发现（B20 实测：批内 AC1–AC20 全绿而功能全死，= T37）· 域模块 fan-out 超限不可发现（= T39）。
+本批把**验证链立住**：三道门（`lint` → `test:full` → `test:integration`）**可本地跑且与 CI 逐字同形**，并把**结构判据**（依赖无环 / fan-out ≤3 / 接线点唯一）纳入机检；**零业务行为变更**。
+
+#### A.1.2 功能性需求（逐条 = 批次档 §1.4 的「做」五件）
+
+| # | 需求（回指 §1.4） | 范围边界（明确不做什么） |
+|---|---|---|
+| F1 | **`lint` 门**（§1.4-1）= **自研零依赖机检**（依 B11 §2.1.3 的既定取舍）：语法 · 行宽/行数 · 结构判据三条；入口 = `npm run lint` | 不引入 ESLint / Prettier / formatter（B11 已裁，本批**不重开选型**）；不做格式化；不改运行时代码；**不做文件头判据机检**（出批项 O-A1） |
+| F2 | **`test:full`**（§1.4-2）= 既有开发期桩测的**统一入口**（收编 3 档 45 用例）+ 慢测层机制 | 不重写既有 `tests/` 档正文（唯一例外 = TC-82 的 `slow()` 机械改标）；不新增第三方测试框架 |
+| F3 | **`test:integration`**（§1.4-3）= **业务场景层**，首发三场景：应用能起 · 桌宠主链路 · 更新门禁 | 不做真机目视面；不做发布流程（T5/T7/T8 属发布面）；不覆盖托盘 / 插件市场 / 好感度面（分期清单 = 出批项 O-A2） |
+| F4 | **CI 接线**（§1.4-4）= `lint` → `test:full` → `test:integration` 三步，**与本地逐字同形** | 不改 `build.yml` 的发版路径（tags 触发）；**CI 内不得出现裸命令**（只调 npm script） |
+| F5 | **机检门禁句三条**（§1.4-5）: 行宽/行数（T26）· 组装面 `init` 接线（T37）· 结构判据三条（T39：依赖无环 / 域模块 fan-out ≤3 / 接线点唯一） | 不重构既有模块结构（U-4 = **基线冻结 + 只拦新增**）；**不新增行宽豁免面** |
+
+#### A.1.3 非功能性需求
+
+| # | 约束 | 度量方式 |
+|---|---|---|
+| NFR-A1 | **零业务行为变更**（§1.5-1） | 运行时代码面（`main.js` · `pet*` · `shell-*` · `market*` · `updater.js` · `harness-store.js` · `update-lib.js` · `*.html` · `*.json` 的 `build` 块）`git diff` 为空；既有 45 用例全绿；S1/S2 场景绿 |
+| NFR-A2 | **零新增依赖**（§1.5-4 零依赖优先） | `package.json` 的 `dependencies` / `devDependencies` 并集不变（`git diff` 只含 `scripts` 块） |
+| NFR-A3 | **门禁必须可本地跑**（§1.5-4） | 三条门命令本地控制台 0 退出；集成层**零外网依赖**（只连 `127.0.0.1` 桩） |
+| NFR-A4 | **与 CI 逐字同形**（§1.5-4） | CI step 与本地**同源**（都调 `npm run <名>`；CI 不复制命令行内容）——同形由「单一命令源」保证，非逐字比对两份文本 |
+| NFR-A5 | **禁散文锚**（§1.5-5） | 新增断言面逐条标注（行为面 / 结构机检面）；对**非测试档**的「读取 + 子串断言」**0 处** |
+| NFR-A6 | **行宽 ≤300 / 单档 ≤500**（§1.5-6） | 本批新增/修改档在**门禁自身判据**下 0 新增违规；新增 `.js` 档全部 <500 行 |
+| NFR-A7 | **测试分层纪律**（§1.5-2/3） | 单例 >500 ms 必须 `slow()` 归册（机检硬红）；集成层单独承载，不进快/慢二分 |
+| NFR-A8 | **规则句可机检**（承 B11 NFR-3） | 每条验收标准给出可执行命令（见 A.3.1） |
+| NFR-A9 | 单一权威源（D2） | 门禁的详述处 = **本附节**；`AGENTS.md` 只声明门名与实况、规范档只留判据句与指针（均不重述机检实现） |
+
+#### A.1.4 回指
+
+- 验收标准 = A.3.1 的 **AC-B16-1…AC-B16-12**，逐条回指批次档 §1.4（F1–F5）与 §1.5（硬约束 1–7）。
+- 台账承载：**T4**（无测试基建）· **T26**（行宽/行数门禁）· **T37**（组装面机检）· **T39**（结构判据三条）；**T13**（行宽债）本批**只冻结不清偿**。
+- 排期：**实施排在 B19 / B20 之后**（`package.json` 争用 ✗；批次档 §1.8）。
+
+### A.2 设计层
+
+#### A.2.1 方案选型对比（判据来自 A.1.2 / A.1.3；被否决候选逐条写否决理由）
+
+**组 1 — `lint` 门的实现形态（候选 3）**
+
+| # | 候选 | 判据逐项评估 | 取舍（选定代价） | 结论 |
+|---|---|---|---|---|
+| 1 | **自研零依赖机检**（node 脚本：语法 / 行宽行数 / 结构三条） | 新依赖 0；`git blame` 无断层；判据可逐条写成可机检句；覆盖面 = 已成立判据（T26/T37/T39） | 代价：规则覆盖窄于 ESLint（无 style/潜在 bug 类规则）；脚本自身需自证（→ DD-A6） | **选定**（B11 §2.1.3 的既定取舍，本批执行） |
+| 2 | ESLint + Prettier | 与 B11 §2.1.3 的否决理由同：42 档以上代码首次全量重排 ⇒ blame 断层；`eslint:recommended` 对无 lint 历史存量产生大量告警 | — | **否决**（越 B11 裁定；本批不重开选型） |
+| 3 | 只做语法检查（`node --check`） | 成本最低；但 T26/T37/T39 三条机检句**全部落空** ⇒ 与 §1.4-5 范围不符 | — | **否决**（不满足 F5） |
+
+**组 2 — 单元层运行入口形态（候选 3）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **自研运行器**（`scripts/test-run.js`：档发现 → 设层环境变量 → spawn `node --test` → 解析 TAP 时长） | 一次解决三件事（① 档发现 · ② 层环境变量跨平台传递 · ③ >500 ms 未归册硬红）；零依赖（逐条实测依据见下注） | 代价：+1 档（≈110 行）需自证 | **选定** |
+| 2 | 直用 `node --test "<glob>"` | 命令行最短；但无法承载层环境变量与时长硬红 ⇒ NFR-A7 落空；且 glob 面依赖 Node 版本（CI Node 22 / 本机 Node 24 跨版本） | — | **否决** |
+| 3 | 第三方 runner（vitest / jest） | 与 §1.5「不引入重型测试框架」直接冲突；新增依赖 + 配置面 | — | **否决** |
+
+**为何必须自研运行器（三条实测依据）**：① `node --test <目录>` 在本仓**实测失败**（Node 24 把目录当模块解析 ⇒ `MODULE_NOT_FOUND`，退出 1）；glob 形态依赖 Node ≥21 的 glob 面。
+② npm script 内联 `set VAR=` 不可跨平台 ⇒ 层环境变量须由 JS 侧注入。③ 逐用例时长只有解析 TAP 才拿得到（硬红判据的数据源）。
+
+**组 3 — CI 接线落点（候选 2）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **新增 `.github/workflows/gates.yml`** | 关切单一（门禁）；触发面 = `push` + `pull_request` + `workflow_dispatch`（每次改动都判）；不动发版链路 | 代价：CI 配置面 +1 档 | **选定** |
+| 2 | 扩展 `build.yml` | 需改其触发面（现 = tags）⇒ 触碰发版链路；发版（三平台矩阵）与门禁（Windows 单平台）关切不同，混档后相互拖累与回归风险外溢 | — | **否决** |
+
+**组 4 — 集成场景的驱动形态（候选 3）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **混合**：S1/S3 = 真启动 + 外部观测；S2 = 进程内模块驱动 | S1/S3 覆盖**组合根真接线 + 真后端**（T37 的教训面）；S2 的拖拽跟手面在「不新增产品测试钩子」前提下无法确定性驱动光标 ⇒ 改取「建窗 → 几何读回 → 显示器事件校正 → 落盘」链路 | 代价：两条驱动形态各一套夹具；S2 不覆盖拖拽跟手（登记为边界，见 A.2.5） | **选定** |
+| 2 | 全进程内（`require` 产品模块 + 假 electron） | 覆盖面与既有桩测重叠，**不覆盖组合根与真后端**（正是 T37 的缺口面） | — | **否决** |
+| 3 | 全外部观测（只启动 app 看落盘物） | 桌宠链路缺稳定外部观测面（拖动需真实光标 / 真机）⇒ 场景二空心 | — | **否决** |
+
+**组 5 — 慢测层机制（候选 2）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **`slow()` 标记 + 快层自动 skip** | 承本仓既有口径（**>500 ms 归 `slow()`**，§1.5-3）；标记随用例走，无搬迁面；与「禁止新写散文锚」无关（标记是机检面） | 代价：每例改标决策需人判 ⇒ 由运行器硬红兜底 | **选定**（U-3 ①） |
+| 2 | 独立目录 `tests/slow/` | 机制简单；但迁移面大（既有用例搬迁）、与 A.2.2.3 的命名分域叠加易混 | — | **否决** |
+
+**组 6 — 结构判据的基线处理（候选 2）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **基线冻结 + 只拦新增**（U-4 ①） | 增量可控；不挡当前批次；**须带到期条件**（本设计逐条写死，见 A.2.2.6） | 代价：存量债仍在（92 行超宽 + 6 档 fan-out）；须有陈腐即红防永久豁免 | **选定** |
+| 2 | 门禁一立即全绿（先清 92 行超宽 + 6 档 fan-out 拆分） | 终态最干净；但把老账一次性逼出 ⇒ 范围外（§1.4「不做：不重构既有模块结构」）且挡住当前批次 | — | **否决** |
+
+#### A.2.2 契约与结构
+
+##### A.2.2.1 门禁三层契约（命令 · 内容 · 摘要行 · 退出码）
+
+| 层 | 命令 | 内容 | 摘要行（机器可 grep） |
+|---|---|---|---|
+| ① 静态机检 | `npm run lint` → `node scripts/gates/run.js` | 自证夹具（判据 A–C 与 D①②③ 的边界 / 错误面）→ **六条判据** | `GATE lint PASS checks=6 selftest=14/14` |
+| ② 单元与桩测 | `npm run test`（快层）· **`npm run test:full`**（全量 = 门） | `tests/**/*.test.js`；慢测层自动 skip | `GATE test:full PASS pass=45 fail=0 skipped=0 ms=<n>` |
+| ③ 集成场景 | `npm run test:integration` → `node scripts/test-integration.js` | 三场景（A.2.2.4），逐场景 spawn `electron` | `GATE test:integration PASS scenarios=3 pass=3 fail=0` |
+
+- **退出码**：`0` = 绿 · `1` = 判据红 · `2` = 门禁自身无法完成（**fail-closed**：档发现失败 / 基线档缺失 / 解析异常一律 2，绝不静默通过）。
+- **命名来源**：`test:full` / `test:integration` = `AGENTS.md` §三 已声明的门名（单一权威源，**不重命名**）；`test` = 快层（同族的默认面）。
+- **口径**：`test:full` **不含**集成层（否则第三道门冗余）——三层互不重叠、各自独立判红。
+- **本批实施序（步序契约）**：① 落地 `scripts/gates/**` + `tests/layer.js` → ② 写 `baseline.json`（**取实施当日实测值**，见 A.2.2.6）→ ③ `test-run.js` + b12 的 `slow()` 改标 → ④ 集成三层（`harness.js` + 3 场景 + `test-integration.js` + stub 扩展）→ ⑤ `package.json` scripts → ⑥ `gates.yml` → ⑦ 本地三条门全绿取证。
+
+##### A.2.2.2 机检判据逐条（六条：A · B · C · D①②③ —— 判据句 + 口径 + 机检方式 + 现状）
+
+**扫描面（六条判据共用的档集合）**：仓库根起 `fs` 递归，**跳过清单** = 与根 `.gitignore` 同源的非仓库内容——
+`node_modules` · `dist` · `electron-dist` · `node-runtime` · `samples` · `测试-更新功能` · `.git` · `.thincoder` · `.npm-cache` · `.electron-cache` ·
+`.electron-builder-cache` · `.dsh-home*` · `.test-userdata*` · `.test-dsh-home` · `*.log` ·
+`probe-electron.js` · `download-electron.js` · `download-node.js`。
+**口径选择理由**：`git ls-files` 口径会**放过未 `git add` 的新档** ⇒ 「只拦新增」（U-4）的判据失效；故取「磁盘实际档树 − 非仓库内容」。清单唯一权威处 = `scripts/gates/lib.js`。
+非文本档（读为 utf8 后含 NUL）跳过；生成档（`package-lock.json` 等）**不设豁免**（若超宽则入基线 —— **不新增豁免面**，承 DD-8）。
+
+| # | 判据 | 判据句 | 口径与豁免 | 机检方式 |
+|---|---|---|---|---|
+| A | 语法 | 扫描面内每个 `.js` / `.mjs` 经 `node --check` **退出 0** | 无豁免 | `execFileSync('node', ['--check', 档])` 逐档 |
+| B | 行宽 | 文本档每行「**去行尾 CR 后**字符数 ≤300」 | 口径 = 不含行尾 CR（承 DD-7）；豁免 = 台账 / 地图 / 归档档的**表格行**（`trim()` 后首字符 `\|`）+ **批次档 §3 段**（`^## §3 …` 起至下一 `^## ` 标题止） | 逐行测长 + 豁免面过滤；**基线** = 非豁免超宽行按档计数的冻结值 |
+| C | 行数 | 单档（`.js` / `.mjs`）**≤500 行** | 口径 = `\n` 计数（末行有换行不额外计）；`≥480` 输出**提示行**（不拦 —— 承规范档 §五「贴线档先给拆分计划」） | 同 B 的遍历 |
+| D① | 依赖无环 | 自研档静态相对 `require` 图必须是 **DAG（0 环）** | 只认字面量 `require('.<相对>')`；边 = 解析到扫描面内档 | DFS 着色求环 |
+| D② | fan-out | **域模块**（扫描面内 `.js`/`.mjs` 去掉 `tests/` · `scripts/` · `probe-*`）静态相对 require **出度 ≤3** | 组合根 `main.js` **免 ②**（装配面天然高扇出） | 逐档出度计数；**基线** = 超限档的冻结值 |
+| D③ | 接线点唯一 | 组合根 `main.js` 每个绑定 `const <名> = require('<相对>')` 须「**恰一处** `<名>.init(` 调用」 | 不提供 `init` 导出的档须列入**免检清单**（含理由）；**未解析的 require 形态 = 红**（fail-closed） | 绑定正则 + 调用计数正则；免检清单在基线档 |
+
+**各判据现状（as-of 2026-09-18）**：
+
+- **A**：51 档（50 `.js` + 1 `.mjs`）→ **0 失败**。
+- **B**：非豁免 **92 行 / 16 档**；豁免面另计 = 批次档 §3 **121** 行 + 台账 / 地图表格行 **45** 行。
+  前三 = `docs/batches/B03-pet-multimonitor.md` **40** · `docs/design/PET-MULTIMONITOR.md` **18** · `docs/batches/B18-pet-animation-chain.md` **7**。
+- **C**：最大 = `market.js` **500**（贴线）· `updater.js` 497 · `tests/b12-plugin-guards.test.js` 491；**0 档超限**。
+- **D①**：**0 环**（基线不设条目）。
+- **D②**：超限 **6 档** = `shell-tray` **10** · `shell-ipc` **6** · `shell-pet` / `shell-update` / `shell-window` 各 **5** · `shell-market` **4**。
+- **D③**：**13/13 恰一处**；免检 2 档 = `shell-settings.js`（工具档，无 `init`）· `shell-ipc.js`（走 `register()` 接线）。
+  T37（B20 实机：`physics.init` 漏调致功能全死而 AC 全绿）正是本判据的拦截面。
+
+- **F1 覆盖面 = 六条判据**（A 语法 · B 行宽 · C 行数 · D① 无环 · D② fan-out · D③ 接线点唯一）——与 A.2.2.1 的 `checks=6` 同口径；六条各出一行 `CHECK …` 摘要（A.3.1 AC-B16-6/7/8 据此逐条回指）。
+- **自证面**：内联 `--selftest` 自证 **TC-B16-01…14**（结构面，每次 `npm run lint` 跑）；**TC-B16-15…24** 由各自执行面承载（慢层运行器 / 集成场景 / 结构 grep），不在自证内。
+- **D③ 的拦截面与 T39 ② 的分工**：D③ 拦「接线漏调 / 重调」（B20 实机事故）；D② 拦「拼接式耦合」（域间 `require` 泛滥）。二者判据不同，**不得合并**。
+- **判据 B/C 的自陈**：本批新增/修改档自身须过判据 B/C（NFR-A6）——即门禁**扫自己**（防「新写的机检档自己超宽」）。
+
+##### A.2.2.3 测试分层与运行契约
+
+- **域划分（机检可判）**：`tests/**/*.test.js` = **单元/桩测层**（`test` / `test:full`）；`tests/integration/**/*.scenario.js` = **集成层**（`test:integration`）。两域**后缀不同** ⇒ 运行器发现规则互不误收（DD-A12）。
+- **慢测层契约**：`tests/layer.js` 导出 `slow(name, fn)`（= 以 `[slow] ` 前缀注册用例，并在快层置 `skip`）与 `isFastLayer()`（读 `process.env.BIGFISH_TEST_LAYER === 'fast'`）。
+  - 快层（`npm run test`）⇒ `[slow]` 用例 skip；全量（`npm run test:full --slow`）⇒ 全部执行。
+  - **硬红**：运行器解析 TAP 逐用例时长，任何**非 `[slow]`** 用例 >500 ms ⇒ 层判红，输出 `SLOW-UNREGISTERED <档> :: <用例> <ms>`。
+  - **现状实测**：45 用例中**恰 1 例** >500 ms = `tests/b12-plugin-guards.test.js` 的 `TC-82 降级夹具：无 profile manifest / 空 node_modules ⇒ 不抛、返回空集`（**756.6 ms**）⇒ 本批改标 `slow()`（机械改标 + 引入 1 行，非重写）。
+  - **集成层不参与**快/慢二分（天然全慢），由 `test:integration` 单独承载。
+- **断言面纪律**：新增断言只写 ① **行为面**（进程退出码 / 产品自身落盘物与诊断日志行 / 文件系统结果）② **结构机检面**（档内容结构）。**禁**「读非测试档 + 子串断言」式散文锚（NFR-A5）。
+- **收编口径**：既有 3 档 `*.test.js` 正文**不改**（唯一例外 = 上条 `slow()` 改标）；`tests/update-stub.mjs` 作**假源桩**被集成层复用（A.2.2.5）。
+
+##### A.2.2.4 集成场景契约（首发三场景）
+
+| 场景 | 驱动 | 上限 | 断言面 |
+|---|---|---|---|
+| **S1 应用能起** | 真启动 `electron .` + 外部观测落盘物 | 180 s | 行为面 |
+| **S2 桌宠主链路** | 进程内驱动（`electron tests/integration/s2-pet-main-path.scenario.js`） | 60 s | 行为面 |
+| **S3 更新门禁** | 真启动 + 外部观测（同 S1 夹具，`autoCheckUpdates:true`） | 200 s | 行为面 |
+
+**S1 环境与种子**：`BIGFISH_USER_DATA=<repo>/.test-userdata-b16/s1` · `DSH_HOME=<repo>/.test-dsh-home/s1` · `BIGFISH_SKIP_ENSURE_DEPS=1` ·
+更新源三 URL 指向本地桩 · `BIGFISH_UPDATE_INTERVAL_MS=86400000`；**种子 `settings.json`** = `modeChosen:true` + `lastModeVersion:<app 版本>` + `petEnabled:false` + `autoCheckUpdates:false`。
+
+**S1 判据**：`<userData>/bigfish.log` 出现 `[bigfish] backend web url captured port=<数字>`，**且**不出现 `backend web url not captured`，**且**断言时刻进程仍存活。
+
+**S2 环境**：真 `BrowserWindow`（透明 / 无框 / 尺寸 = `geometry.PET_SIZE_DIP`）+ 真 `shell-pet-geometry.js` + 真 `shell-settings.js`；`BIGFISH_PET_DEBUG=1`；`BIGFISH_USER_DATA=<…>/s2`。
+
+**S2 判据**：① `pet-geometry.log` 出现 `geom tag=start`（含 `pos=` / `size=` / `center=` / `visible=`）；
+② `settings.json` 的 `petPos` = 窗口实际位置（**±1 DIP**）；
+③ 触发一次真代码路径 `handleDisplayChange('metrics', <display>, [])` 后出现 `geom tag=display`，且窗口中心点仍落在某显示器 `workArea` 内。
+
+**S3 环境**：除 S1 外 + `BIGFISH_UPDATE_URL=<桩>/latest.json`；子态 a = registry `?latest=0.1.5-rc.1`；子态 b = registry `?latest=0.1.9`。
+
+**S3 判据**：两子态均须 —— `updater.log` 含 `update gate reason=startup face=app skipped=dev`（**App 面 dev 不检查**）**且不含** `result=error`；
+子态 a 另含 `update check reason=startup type=harness result=up-to-date latest=0.1.5-rc.1 current=<当前>`；
+子态 b 另含 `result=update-available latest=0.1.9` **且不含** `harness install phase=`（**放行 = 只提示不自动装**，不自动改环境）。
+
+- **S1 的关键前置（否则必挂）**：`modeChosen:true` 且 `lastModeVersion` = 当前 app 版本 —— 否则 `shell-mode.js:103` 的 `dialog.showMessageBoxSync` 会**阻塞**在模态框上（同族：`main.js:145` 的后端失败对话框 ⇒ 启动失败时进程阻塞而非退出，故场景必须以**超时**判红并记录「无 captured 行 + 进程仍活」这条判别线索）。
+- **进程回收**：场景结束杀**进程树**（Windows `taskkill /PID <pid> /T /F`；POSIX 进程组 `SIGTERM`）—— 不新增产品测试钩子（DD-A10）。
+- **取证**：场景失败时保留 `.test-userdata-b16/` 与 `.test-dsh-home/`（已在 `.gitignore` 内）供事后读日志；成功后清理。
+- **分批执行**：运行器支持 `--only S1|S2|S3`（开发期单场景回路）；默认顺序执行三场景。
+
+##### A.2.2.5 假更新源契约（复用 `tests/update-stub.mjs`）
+
+- 增**只读**查询参数 `?latest=<version>`（作用于 `/registry/npmmirror` 与 `/registry/npmjs`），缺省值 = 现状 `0.1.5-rc.1` ⇒ **对既有手测用法零行为变更**。
+- 用法 / 端口（`node tests/update-stub.mjs [port]`）/ `/latest.json` 的 App 假版本（0.9.9 → dev 面不消费）/ `?fail=1` 源回退面 / `?tamper=1` / `?slow=1` **均不变**。
+- 单一假源（不建第二桩，DD-A7）：集成层的 registry 与 manifest 两面都由本桩承载。
+
+##### A.2.2.6 基线契约（`scripts/gates/baseline.json`）
+
+**形态**（手写冻结档，**门禁永不自动写入**——自写基线的门禁 = 自证空洞）：
+
+```json
+{
+  "asOf": "2026-09-18",
+  "width":  { "docs/batches/B03-pet-multimonitor.md": 40, "docs/design/PET-MULTIMONITOR.md": 18 },
+  "fanout": { "shell-tray.js": 10, "shell-ipc.js": 6, "shell-pet.js": 5, "shell-update.js": 5, "shell-window.js": 5, "shell-market.js": 4 },
+  "cycles": 0,
+  "assemblyExempt": [
+    { "file": "shell-settings.js", "why": "工具档，无 init 导出（settings 载入/保存/访问器）" },
+    { "file": "shell-ipc.js", "why": "以 register() 接线（通道→域处理器薄绑定），无 init" }
+  ],
+  "expires": {
+    "width": "随 T13 消解路径逐档归零（活文档面随 B14 修正；批次档历史段随该档下次被合法动笔）⇒ 条目归零即删",
+    "fanout": "随 T39 的归属批次（B17 代码优化串）把 6 档降到 ≤3 ⇒ 全部删除",
+    "hardRule": "本机制不得用于冻结任何**新增**违规（新档违规一律红）"
+  }
+}
+```
+
+**判定规则（四条，可机检）**：
+
+1. **新增即拦**：`现状值 > 冻结值` ⇒ 红；新档（不在冻结表中）出现违规 ⇒ 红。
+2. **陈腐即红**：冻结条目在现状中已不复存在（超宽归零 / 出度 ≤3 / 免检档已获 `init`）⇒ 红，要求同步缩减条目（**防基线变永久豁免**；承「存量不是合法态」）。
+3. **只减不增**：上调冻结值须在批次档登记理由与**新到期条件**（`git diff` 即留痕，评审可见）。
+4. **到期条件逐条写死**（U-4 要求，见上 `expires`）——无到期条件的例外不得设；归零即删条目。
+
+- **基线建档口径**：实施首步（A.2.2.1 步序 ②）跑判据取**当日实测值**写入 —— 本附节的现状数字是 **as-of 2026-09-18** 参考值；在飞批次（B19 / B20 / B23 / B24）落档可能移动这些值（例：`market.js` 现 500 行贴线）。
+
+##### A.2.2.7 数据流（本批无 UI）
+
+门禁的输入 = ① 磁盘档树（扫描面）② `baseline.json`（冻结值）③ 环境变量（层 / 场景 / 桩端口）；输出 = ① stdout 摘要行（A.2.2.1）② 退出码（0/1/2）③ 场景落盘物（`.test-userdata-b16/` 等）；消费方 = 人（本地）· CI（`gates.yml`）· **批次 §6 核销**（U-6 = 摘录三层摘要行）。
+**多实现面（本地 / CI）约束**：命令**单源**于 `package.json` scripts，CI 只调用不复制 ⇒ 不存在两份命令文本的逐字一致问题（NFR-A4）。
+
+#### A.2.3 受影响文件全清单（新建 13 · 修改 5 · 运行时代码改动 0）
+
+**新建（13 档）**
+
+| 文件 | 动作 | 预计行数 |
+|---|---|---|
+| `scripts/gates/lib.js` | 新建：扫描面发现（跳过清单唯一权威处）+ 判据工具 + 基线载入 + 摘要输出 | ≈120 |
+| `scripts/gates/checks.js` | 新建：六条判据（A · B · C · D①②③）实现 | ≈230 |
+| `scripts/gates/selftest.js` | 新建：判据边界 / 错误面夹具（A.3.2 的 TC 面） | ≈170 |
+| `scripts/gates/run.js` | 新建：入口（自证 → 六条判据 → 摘要行 → 退出码） | ≈70 |
+| `scripts/gates/baseline.json` | 新建：冻结基线 + 到期条件（形态见 A.2.2.6） | ≈50 |
+| `scripts/test-run.js` | 新建：单元层运行器（档发现 + 层环境 + TAP 时长硬红 + 摘要行） | ≈120 |
+| `scripts/test-integration.js` | 新建：集成层运行器（逐场景 spawn `electron` + `--only` + 摘要行） | ≈100 |
+| `tests/layer.js` | 新建：`slow()` / `isFastLayer()` | ≈35 |
+| `tests/integration/harness.js` | 新建：临时 userData / DSH_HOME + settings 种子 + 桩启停 + 里程碑等待 + 杀进程树 | ≈160 |
+| `tests/integration/s1-app-start.scenario.js` | 新建：场景一 | ≈60 |
+| `tests/integration/s2-pet-main-path.scenario.js` | 新建：场景二 | ≈120 |
+| `tests/integration/s3-update-gate.scenario.js` | 新建：场景三（两子态） | ≈100 |
+| `.github/workflows/gates.yml` | 新建：门禁 workflow（`windows-latest`；`push` + `pull_request` + `workflow_dispatch`） | ≈50 |
+
+**修改（5 档——含 `package.json` 的排期争用）**
+
+| 文件 | 现状 | 本批动作 | 预计增量 |
+|---|---|---|---|
+| `package.json` | **136** 行（scripts 12 项） | 增 `lint` / `test` / `test:full` / `test:integration` 四项（依赖块不动） | +6 行 → 142 · **实施须等 B19 / B20 让出** |
+| `tests/b12-plugin-guards.test.js` | **491** 行（贴线） | `TC-82` 机械改标 `slow()` + 引入 `tests/layer.js`（**不重写正文**） | +2 行 → 493 · 拆分计划见下 |
+| `tests/update-stub.mjs` | **91** 行 | 增 `?latest=<version>` 只读参数（缺省不变） | +8 行 → 99 |
+| `docs/CONVENTIONS.md` | **175** 行 | §四 增三条结构判据句 + §五 的「升门禁句」行改为已落地 + 变更记录 1 行 | ≈+15 行 → 190 · **落笔归属待裁（A.2.7 ①）** |
+| `docs/design/REPO-CONVENTIONS.md` | **286** 行 | 本附节（A.1–A.3）+ 顶注 1 行 + §2.3 出批项 O3 注 1 行 + 变更记录 1 行（**已落**：662 行，as-of 2026-09-18） | **+376** 行 → **662** |
+
+**拆出档（贴线档 ≥480 行，规范档 §五 要求的必填面）**
+
+- `tests/b12-plugin-guards.test.js`（491 → 493 行）**拆分计划**：按夹具三面拆为 `tests/b12/guards.test.js`（守卫面 / 穿越枚举）·
+  `tests/b12/xss.test.js`（XSS + `vm` + DOM 桩）· `tests/b12/scan.test.js`（扫描面 + 计数器 + 黄金样本），共享夹具抽 `tests/b12/fixtures.js`。
+  **行为零回退判据** = 拆分前后用例数 **19 不变** + 全绿 + 断言集逐条对应。**执行 = 另批**（本批只给计划，不把测试拆分混进基建批）。
+- `market.js`（**恰 500** 行）· `updater.js`（497 行）本批**不触碰** ⇒ 无需计划（改它们时随批给）。
+
+**运行时代码（本批零改动，判据面）**：`main.js`（249 行）· 15 档 `shell-*.js` · `pet*` 6 档 · `market*` 4 档 · `update*`/`updater.js` · `harness-store.js` · `update-lib.js` · 4 档 `*.html` · `package.json` 的 `build` 块 — 逐档 `git diff` 为空（NFR-A1）。
+
+**出批（另批）项**
+
+| # | 项 | 归属建议 | 判据 |
+|---|---|---|---|
+| O-A1 | **文件头三条判据机检**（规范档 §一 判据 ①②③） | 随 T25 迁移面（B17 代码优化串） | 判据 ② 为**宽口径**（「JSDoc 块在场 + 块内含路径的设计档指针」）⇒ 解析歧义率高，误报集中于 20 档迁移面；不在 §1.4-5 三条范围内（**不扩本批范围**） |
+| O-A2 | 集成层**扩面**（托盘 / 插件市场 / 好感度 / 通知 / 首启模式弹窗） | 分期批（§1.4-3「分期扩面」） | 首发三场景之外的业务面；扩面须逐场景给判据 |
+| O-A3 | CI 的 `paths` 过滤（docs-only 改动跳过集成层） | **用户裁定** | 会引入改动类盲区；本批取「不设过滤」= 简单 + 不漏判 |
+| O-A4 | 集成层多场景**共享一次启动**（省时） | 视首次 CI 实测时长 | 现形态 = 逐场景独立（失败归因清晰）；时长成为负担再优化 |
+| O-A5 | **行宽债清偿**（现状 92 行；T13 记 65 —— 计数漂移见 A.2.7 ⑤） | T13 / B14（主 agent） | 基线冻结 ≠ 清偿；到期条件见 A.2.2.6 |
+| O-A6 | 测试**命名分域纪律**成文（`.test.js` vs `.scenario.js`） | 随 O-A1 同批入规范档 | 本批已实现，成文归规范档（本批不写规范档正文，见 A.2.7 ①） |
+
+#### A.2.4 关键决策记录
+
+| # | 决策 | 理由 | 否决备选 |
+|---|---|---|---|
+| DD-A1 | `lint` = **自研零依赖机检**（语法 + 形态 + 结构），不引 ESLint / Prettier | B11 §2.1.3 既定取舍（零依赖 + 保 `git blame`）；本批**不重开选型** | ESLint 生态 / 只语法检查 |
+| DD-A2 | 单元层入口 = **自研运行器**封装 `node --test` | 一次解决：档发现（`node --test <目录>` 本仓**实测失败**）、层环境变量跨平台、>500 ms 硬红；零依赖 | 直用 glob / 第三方 runner |
+| DD-A3 | CI = **新增 `gates.yml`**，不动 `build.yml` | 关切单一；发版路径（tags）与门禁（push/PR）分离，避免回归外溢 | 扩展 `build.yml` |
+| DD-A4 | 集成驱动 = **混合**（S1/S3 外部观测 + S2 进程内） | S1/S3 覆盖组合根真接线 + 真后端；S2 在「不新增产品钩子」下无法确定性驱动光标 ⇒ 取几何 / 事件 / 落盘链路 | 全进程内 / 全外部观测 |
+| DD-A5 | 慢测层 = `slow()` 标记 + 快层 skip | 承本仓既有口径（>500 ms 归 `slow()`）；标记随用例走 | 独立 `tests/slow/` 目录 |
+| DD-A6 | 判据自证 = **内联 `--selftest` 夹具**（每次门禁跑） | 门禁是承重件，边界 / 错误面须**可回放且常驻**；独立测试档会落「单元测试默认退役」处置 ⇒ 证明面消失 | 独立 `tests/gates.test.js` / 不做自证 |
+| DD-A7 | 假更新源 = **复用并扩展** `tests/update-stub.mjs` | D2：一个假源单一权威；扩展为只读参数、缺省不变 | 集成层自建第二桩 |
+| DD-A8 | 结构判据基线 = **冻结 + 只拦新增**（U-4 ①）+ 到期条件 + 陈腐即红 | 增量可控、不挡当前批次；陈腐即红防永久豁免 | 门禁一立即全绿 |
+| DD-A9 | 判据口径 = 行宽**不含行尾 CR** · 行数 = `\n` 计数 | 承 DD-7 与规范档 §五（防 CRLF 档误报；`market.js` 恰 500 的口径 = `\n` 计数） | 含 CR / 按显示行 |
+| DD-A10 | **不新增产品测试钩子**；进程回收 = 杀进程树 | 「零业务行为变更」优先；杀树足以回收后端子进程 | 新增 `BIGFISH_TEST_QUIT_AFTER_MS` 类钩子 |
+| DD-A11 | **不新增行宽豁免面**；**基线不是豁免面** | 承 DD-8（豁免须用户裁定）；基线 = 冻结台账 + 到期条件（可减可清） | 给生成档 / 锁档新增豁免 |
+| DD-A12 | 集成场景后缀 `.scenario.js`（与 `.test.js` 分域） | 机检可判的域划分，杜绝 `test:full` 误收集成层 | 同用 `.test.js` + 目录排除（排除规则易腐） |
+| DD-A13 | 三层门各自非零退即红 + 各出一行机器摘要 | §6 核销（U-6）与 CI 判读只需一行；三行 = 门禁全貌 | 只靠退出码（核销取证面缺失） |
+
+#### A.2.5 边界（本设计不做的事）
+
+- **不改任何运行时代码**：`main.js` / `shell-*` / `pet*` / `market*` / `updater.js` / `harness-store.js` / `update-lib.js` / `*.html` / `package.json` 的 `build` 块一律零改动（唯一 `package.json` 改动 = `scripts` 四项）。
+- **不重构既有模块结构**：6 档 fan-out 违规与 92 行超宽**只冻结不清理**（U-4 ① + §1.4「不做」）。
+- **不引入**第三方 linter / formatter / 测试框架；**零新增依赖**。
+- **不做**文件头判据机检（O-A1）· **不做**发布流程（T5 / T7 / T8）· **不动** `build.files` 白名单面（除必要 `test` 脚本面）。
+- **不覆盖**拖拽跟手面（S2 边界见 A.2.2.4）：真实光标不可确定性驱动 ⇒ 该面仍由 B03 桩测 + 真机目视承载（**如实声明，非静默省略**）。
+- **不写**规范档正文 / `AGENTS.md` / 台账 / 地图（归属与父侧，见 A.2.7）。
+- **不新增**行宽豁免面；**不把基线当豁免**。
+
+#### A.2.6 UI / 交互决策
+
+**N/A（本批无界面、无交互路径改动）** —— 显式声明，非遗漏：`git diff` 的运行时代码面为空；「交互」仅为 A.2.2.7 的门禁输入输出流，无 `open` 项。
+
+#### A.2.7 待确认 / open
+
+| # | 待确认 | 影响面 |
+|---|---|---|
+| ① | **规范档 `docs/CONVENTIONS.md` 的落笔归属**：写权矩阵（`AGENTS.md` §一）= eng-designer，但本批 ② 的任务书写域只列「设计档 + 批次档 §2」⇒ 需要主 agent 裁定由谁落（§四 三条结构判据句 + §五 门禁句 + 变更记录行，文本已在 A.2.2.2 / A.2.2.1 定稿） | 规范档 3 处；未落则该批的「机检判据有规范档条文支撑」面缺失（门禁仍可跑） |
+| ② | 本设计的落点 = **本档附 A**（照批次档 §1 头部指令）；若改判为独立档 `docs/design/TEST-GATES.md`（理由：主题 = 验证链、与 B11「规范载体」不同），A.1–A.3 整体平移、**零语义改动** | 本档顶注 + 地图 1 行（主 agent） |
+| ③ | **CI 真绿为实机项**：本地无法证明 CI 上跑绿（需一次真实 push / PR） | AC-B16-5 的实机段；实施后由主 agent 触发核销 |
+| ④ | **集成层在 CI runner 上的可跑性**（Electron GUI + 真后端 + 冷 runner 时长）同样为实机项；本机可跑 = 硬约束（§1.5-4），CI 面实施后首次验证 | 若 CI 不可跑 ⇒ 停下上报（不静默降级为「只本地跑」） |
+| ⑤ | 台账 **T13** 记「非豁免面 65 行」（as-of B11），现状实测 **92 行** ⇒ 计数漂移，归 T13 / B14 对账（本批冻结值取现状） | 台账 T13 行（主 agent） |
+
+### A.3 测试层
+
+#### A.3.1 验收标准（逐条回指批次档 §1）
+
+| # | 验收标准（回指 §1） | 判据（可机检） |
+|---|---|---|
+| AC-B16-1 | **`lint` 门在场且本地可跑**（§1.4-1） | `npm run lint` 退出 0，stdout 含 `GATE lint PASS` 与 `GATE lint selftest PASS`；`package.json` scripts 含 `lint` |
+| AC-B16-2 | **`test:full` = 收编后的统一入口**（§1.4-2） | `npm run test:full` 退出 0 且 TAP 摘要 `# pass 45` + `# fail 0` + `# skipped 0` |
+| AC-B16-3 | **快层：慢测自动 skip**（§1.5-3） | `npm run test` 退出 0 且 `# skipped 1` + `# pass 44`（被 skip 者 = `TC-82`） |
+| AC-B16-4 | **集成层三场景**（§1.4-3） | `npm run test:integration` 退出 0，stdout 含 `SCENARIO S1 PASS` / `SCENARIO S2 PASS` / `SCENARIO S3 PASS`（S3 含 a/b 两子态行） |
+| AC-B16-5 | **CI 接线与本地同形**（§1.4-4 / §1.5-4） | `.github/workflows/gates.yml` 在场；三步命令合计 **3** 命中；含 `runs-on: windows-latest`；触发含 `push` / `pull_request`；档内**无**裸 `node --test` 命令（同形 = 只调 npm script）。**CI 真绿 = 实机项**（A.2.7 ③） |
+| AC-B16-6 | **行宽 / 行数判据落地**（§1.4-5 ① / **T26**） | `npm run lint` 输出 `CHECK width PASS` 与 `CHECK lines PASS`；selftest 的边界 / 错误面（A.3.2 TC-B16-01…08）全绿 |
+| AC-B16-7 | **结构判据 D①② 落地**（§1.4-5 ③ / **T39**） | `npm run lint` 输出 `CHECK dag PASS (cycles=0)` 与 `CHECK fanout PASS`；selftest 的注入面（TC-B16-09…14）全绿 |
+| AC-B16-8 | **组装面接线点唯一**（§1.4-5 ② / **T37**） | `npm run lint` 输出 `CHECK assembly PASS (13/13)`；selftest 的「删一处 `init(` ⇒ 红」「双调用 ⇒ 红」「未解析形态 ⇒ 红」（TC-B16-11）全绿 |
+| AC-B16-9 | **禁散文锚**（§1.5-5） | 新增档的断言面在 A.3.2 逐条标注（行为面 / 结构面）；机检面 = 新增档内「对**非测试档**的读取 + 子串断言」**0 处** |
+| AC-B16-10 | **零业务行为变更**（§1.5-1） | 运行时代码面 `git status --porcelain` 为空（白名单 = A.2.3 的修改 5 档）；既有 45 用例全绿；`SCENARIO S1` / `S2` PASS |
+| AC-B16-11 | **零新增依赖**（§1.5-4） | `git diff package.json` 只含 `scripts` 块（依赖块零 diff） |
+| AC-B16-12 | **本批自身形态合规**（§1.5-6） | 判据 B/C 扫本批新增 / 修改档 ⇒ **0 新增违规**（门禁扫自己）；新增 `.js` 档第 1 行 = `'use strict';` 且 JSDoc 含 `docs/design/REPO-CONVENTIONS.md §`（规范档 §一 三条判据） |
+
+#### A.3.2 用例表（正常 / 边界 / 错误 —— 输入 / 期望输出 / 映射）
+
+| # | 类型 | 输入 | 期望输出 | 断言面 | 映射 |
+|---|---|---|---|---|---|
+| TC-B16-01 | 正常 | 判据 B：恰 300 字符行（去 CR 后） | 判合规（**不**报超宽） | 结构面 | AC-B16-6 |
+| TC-B16-02 | 错误 | 判据 B：301 字符行（非基线档） | 判红（点名档 + 行号） | 结构面 | AC-B16-6 |
+| TC-B16-03 | 边界 | 判据 B：CRLF 档「300 字符 + `\r`」 | 判合规（去 CR 后 300） | 结构面 | AC-B16-6 |
+| TC-B16-04 | 边界 | 判据 B：台账表格行 400 字符 | 判**豁免**（不计入） | 结构面 | AC-B16-6 |
+| TC-B16-05 | 边界 | 判据 B：批次档 §3 段内 400 字符 vs §2 段内 400 字符 | §3 豁免；§2 计入 | 结构面 | AC-B16-6 |
+| TC-B16-06 | 错误 | 判据 B：临时新增档含 2 行超宽（不在基线） | 判红（「新增即拦」） | 结构面 | AC-B16-6 |
+| TC-B16-07 | 边界 | 判据 C：恰 500 行 / 501 行 | 500 合规；501 红 | 结构面 | AC-B16-6 |
+| TC-B16-08 | 边界 | 判据 C：480 行 | 提示行（**不**判红） | 结构面 | AC-B16-6 |
+| TC-B16-09 | 错误 | 判据 D①：夹具内 A↔B 互 require | 判红（报环路径）；真实仓库 ⇒ 0 环绿 | 结构面 | AC-B16-7 |
+| TC-B16-10 | 错误 | 判据 D②：新档出度 4 | 判红；基线档出度 = 冻结值 ⇒ 绿 | 结构面 | AC-B16-7 |
+| TC-B16-11 | 错误 | 判据 D③：① 删一处 `init(` ② 同档双调用 ③ `const { init } = require(…)` 形态 | 三者均判红；① 点名该档（T37 面）③ = fail-closed | 结构面 | AC-B16-8 |
+| TC-B16-12 | 正常 | 判据 D③：真实 `main.js` | `13/13` 恰一处 ⇒ 绿 | 结构面 | AC-B16-8 |
+| TC-B16-13 | 错误 | 基线**陈腐**：夹具中基线条目对应的违规已清零而未缩减条目 | 判红（要求缩减基线） | 结构面 | AC-B16-6 / 7 |
+| TC-B16-14 | 错误 | 基线**上调**：冻结值 < 现状值 | 判红（只减不增） | 结构面 | AC-B16-6 / 7 |
+| TC-B16-15 | 正常 | 慢测层：`npm run test` / `npm run test:full` | 前者 `skipped 1`、后者 45 全跑（含 `TC-82`） | 行为面 | AC-B16-3 |
+| TC-B16-16 | 错误 | 硬红：某快用例注入 600 ms 等待且未标 `slow()` | 层红 + `SLOW-UNREGISTERED` 行 | 行为面 | AC-B16-3 |
+| TC-B16-17 | 正常 | S1：真启动（种子 settings 如 A.2.2.4） | 日志出现 `backend web url captured port=<数字>` + 进程存活 ⇒ PASS | 行为面 | AC-B16-4 |
+| TC-B16-18 | 错误 | S1：`DSH_NODE` 指向不存在的可执行 | 无 captured 行 ⇒ 超时 ⇒ FAIL（并留「失败对话框阻塞」线索） | 行为面 | AC-B16-4 |
+| TC-B16-19 | 正常 | S2：建窗 + `handleDisplayChange('metrics', …)` | `geom tag=start` / `geom tag=display` 在场 + `petPos` = 窗口位置（±1 DIP）+ 中心点 ∈ `workArea` | 行为面 | AC-B16-4 |
+| TC-B16-20 | 错误 | S2：注入「落盘被跳过」（夹具档隔离的写面） | 判 FAIL（落盘判据不成立） | 行为面 | AC-B16-4 |
+| TC-B16-21 | 正常 | S3-a：registry `?latest=0.1.5-rc.1` | `face=app skipped=dev` + `type=harness result=up-to-date` + 无 `result=error` | 行为面 | AC-B16-4 |
+| TC-B16-22 | 正常 | S3-b：registry `?latest=0.1.9` | `type=harness result=update-available latest=0.1.9` + **无** `harness install phase=` | 行为面 | AC-B16-4 |
+| TC-B16-23 | 错误 | S3：桩未启动 / 端口被占 | 判 FAIL（**不得**静默跳过或回退外网） | 行为面 | AC-B16-4 / NFR-A3 |
+| TC-B16-24 | 正常 | AC-B16-5 同形判据：`grep` `gates.yml` | 三步命令 3 命中 + 无裸命令 | 结构面 | AC-B16-5 |
+
+- **N/A 声明**：本批 **UI / 交互用例 = 无**（A.2.6）；集成层无「正常/边界/错误」三分法之外的面（场景即用例）。
+- **单价时长**：判据 A–D + 自证 <2 s；单元层 1.2 s；集成层 ≈3 次真启动 + 1 次进程内（本机量级分钟级）。
+
+---
+
 ## 四、变更记录
 
 | 日期 | 变更点 |
@@ -284,3 +661,4 @@ docs/CONVENTIONS.md
 | 2026-09-17 | **修正轮 2**：§2.2.3 文件头三条判据的 ① 补**扩展名口径**（`.js` 适用 / `.mjs` 免——ESM 隐式严格；`tests/update-stub.mjs` 据此计合规面）；§3.1 AC2 增「命名现状口径（例外清单 + 计数）」与「判据 ① 扩展名口径」两条机检细则；`docs/CONVENTIONS.md` 行号 as-of 刷新（`:109` / `:122` / `:150` 等）。 |
 | 2026-09-17 | **修正轮 3**：§2.2.3 文件头标准形改标**推荐形（写作面）**、判据 ② 收为**宽口径**（同源于 `docs/CONVENTIONS.md` §一）；§3.1 AC2 增「判据 ② 的口径」机检细则（含 4 处合规面形态差异须逐名登记、三分 22 / 3 / 17 = 42 不变）。 |
 | 2026-09-17 | **修正轮 4**（独立复核轮次 2 的清理）：§2.2.3 后缀 5 处行号更正为实测值（`:10` / `:29` / `:117` / `:130` / `:158`）并注「行号只作 as-of 参考」（D4）· 目标行数标「**起草期目标**」（现值见批次档 §2.13 实测）；§3.1 半自动候选同步为 6 行；AC2 判据列取值串补齐第三条（口径条数 3 不变）。 |
+| 2026-09-18 | **B16 面设计落档（附 A）**：三层契约（`lint` / `test:full` / `test:integration` + 退出码 + 摘要行）· 五条机检判据（语法 / 行宽 / 行数 / 依赖环与域模块 fan-out / 组装面接线点唯一）· 冻结基线 + 到期条件 · 慢测层 `slow()` 与 >500 ms 硬红 · 集成三场景 · DD-A1…13 · AC-B16-1…12 + TC-B16-01…24 · 出批项 O-A1…6；顶注补附 A 一行、§2.3 出批项 O3 标「已落设计」。 |
