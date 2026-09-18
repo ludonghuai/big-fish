@@ -6,7 +6,7 @@
 > 批次档：`docs/batches/B20-pet-physics.md`（§1 立案 / §2 本批任务书 / §5 实施记录 / §6 验收核销）
 > 回指（不重述）：`docs/design/PET-MULTIMONITOR.md`（几何 / 停泊 / 尺寸纪律，B03）· `docs/design/PET-DRAG.md`（拖拽跟手，B01）·
 > `docs/design/PET-ANIMATION.md`（动画链与工作档，B18 / B19）· `docs/design/SHELL-UX.md` §2.2.6（模块拆分与依赖注入纪律，B06）
-> 状态：**待评审**（实施与验收勾销状态记批次档 §5 / §6，本档不记勾销）
+> 状态：**待复评**（设计评审轮 1 = changes-required，15 条发现已按主 agent 裁决逐条修正并落本档；实施与验收勾销状态记批次档 §5 / §6，本档不记勾销）
 
 ---
 
@@ -21,8 +21,8 @@
 | 3 | `docs/design/PET-DRAG.md` | 拖拽跟手（B01） | **否决**——拖拽只是三个写者之一，且本批对它**零改动**（冻结面）；物理手感与位移仲裁不是「拖拽跟手」的延伸 |
 | 4 | **本档（新建 `docs/design/PET-MOVEMENT.md`）** | 位移写权 + 物理手感 | **选定**——主题独立、写域独立、判据独立（AC 全部落本档）；与三档关系 = 只回指、不重述（D2） |
 
-**落点动作（本设计者的越界例外，承批次档 §1.6 授权）**：`docs/README.md` §二 补一行新档登记（动作已在交付报告中显式列出）。
-地图 §四 变更记录的建议行归主 agent（**本设计者不改地图变更记录**）。
+**落点动作**：本档落点 = 新建 `docs/design/PET-MOVEMENT.md`（上表四候选逐条判定）；该判定由本设计者落笔。
+**授权口径（本轮修正，#8）**：本档**不再自述「承批次档 §1.6 授权」**（§1.6 无该授权句）——越界落笔的**追认权在主 agent**（批次档 §4）；地图面（`docs/README.md` §二 的新档登记行、§三 清单、§四 变更记录）**归主 agent 维护**，本设计者只提交**建议行**、不落笔地图。
 
 ---
 
@@ -248,7 +248,7 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 | W3 物理 | `phys.flying === true`（本模块状态） | **armGate 全通过**（松手路径，见下） | atRest / 5 s 硬上界 / 被拖拽抢先 / 显示器事件 / 开关关闭 / 销毁 / 退出（§2.2.10） |
 | W2 散步 | `getMoveTimer() !== null`（`shell-pet.js:388`） | 既有 `scheduleWander` / `doWander` | 既有段末（`shell-pet.js:334-359`） |
 
-**armGate（起飞门，10 条；任一不过 ⇒ 不起飞且零写入；G10 = 起飞阈值，本轮新增）**：
+**armGate（起飞门，**11** 条；任一不过 ⇒ 不起飞且零写入；G10 = 起飞阈值、G11 = 静默放置，均本轮新增）**：
 
 | # | 条件 | 不过时的 `phys-stop reason` |
 |---|---|---|
@@ -261,7 +261,8 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 | G7 | 轨迹可估（`estimateReleaseVelocity(...) !== null`） | `no-trail` / `stale` / `too-short` / `jitter`（由估计函数给出细分原因；**不含低速**——低速归 G10） |
 | G8 | 边界可取（`petWorkAreaBounds(petCurrentDisplay()) !== null`） | `no-bounds` |
 | G9 | 当前无飞行（`phys.flying === false`） | `already-flying` |
-| **G10** | **起飞阈值**：释放初速 `v ≥ T`（判据 / 量纲 / 标定状态见 §2.2.12；**本轮新增**） | `below-threshold` |
+| **G10** | **起飞阈值**：门量 `v ≥ T`（判据 / 量纲 / 标定状态见 §2.2.12；**本轮新增**） | `below-threshold` |
+| **G11** | **非静默放置**：窗内端点位移 > `QUIET_SPAN_MAX_DIP`（非「挪到位 → 停一下 → 松手」；判据见 §2.2.12） | `quiet-dwell` |
 
 **交接条件（逐条，全部可机检）**：
 
@@ -316,7 +317,7 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 |---|---|---|
 | `PHYS_POLL_MS` | 16 ms | 飞行 tick 周期（= 散步 tick 同频，不引入新节拍） |
 | `PHYS_TRAIL_MS` | 16 ms | 拖动期光标采样周期（仅拖动中运行） |
-| `PHYS_MAX_FLIGHT_MS` | 5000 ms | 飞行硬上界（超时强制停泊，NFR-19） |
+| `PHYS_MAX_FLIGHT_MS` | 5000 ms | 飞行硬上界（超时 ⇒ **强制落地收口**：`y = maxY` + 速度归零 → 停泊序列；**不得停在半空**；NFR-19 / §2.2.6） |
 | `PHYS_RUN_SPEED` | 900 px/s | 飞行期动作档：`|vx| ≥ 该值` ⇒ `run-*`，否则 `walk-*`（不新增档位名，承 NFR-16） |
 | `GATE_WINDOW_MS` | 120 ms | 起飞门窗（**峰值窗与静默窗同窗**）——取自裁定给的 80–120 ms 范围上端；可调、**待实机标定** |
 | `QUIET_SPAN_MAX_DIP` | 5 px | 静默判据：窗内端点位移 ≤ 该值 = 「位移接近 0」⇒ 判放置；5 px 与既有「位移 > 5px 判为拖动」口径**同源**（`pet.js:121`） |
@@ -350,9 +351,12 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 5. **日志**：`phys-arm vel=(vx,vy) pos=(x,y) bounds=(…) trail=<n>`。
 6. **门量与初速是两个量（本轮补正）**：门判据读 §2.2.12 的门量（窗内**峰值速度**）；门通过（`v ≥ T` ∧ 非静默 ∧ 本节第 3 条非 null）后，**飞行初速** = 本节第 3 条的估计值（含软上限与 `throwPower`）——“门量回答扔没扔，初速回答扔多远”，两者均为速度，**均不含加速度判据**。
 
+7. **起飞归一化与 `prevGrounded` 初值（本轮修正）**：建 `s0` 后**先一次性钳入** `[minX,maxX]×[minY,maxY]`——原因 = 冻结面 settle 只保证**中心点**落在某屏 `workArea` 内（US-10），而飞行边界是**窗口矩形**口径 ⇒ 贴下缘 / 任务栏边 / 骑线推离后松手（**常规路径**；US-2 允许拖出屏）时 `s0` 可合法落在区间外。钳入后的位移由**首个 tick 的一次 `setPosition`** 落地（该 tick 本就要写位置 ⇒ **不新增写入时点**），窗口停留在区间外的时长 ≤ 1 个 tick（16 ms）——该一次性位移登记为已知限制（O-10）。
+   **`prevGrounded` 初值** = 钳入后 `s0.y >= maxY`（贴地 ⇒ 真）——避免「起点贴地 ⇒ 首个 tick 触地」被 §2.2.7 判成一次**伪挤压**。
+
 #### 2.2.6 停泊收口契约（离散一次；与 B03 调用时机同源）
 
-**触发**：`atRest === true` ∨ 5 s 硬上界 ∨ 显式停点（抢占 / 显示器事件 / 开关关闭 / 销毁 / 退出）。
+**触发**：`atRest === true` ∨ 5 s 硬上界（`reason=timeout`）∨ 显式停点（抢占 / 显示器事件 / 开关关闭 / 销毁 / 退出）。
 
 **序列（严格顺序；全部在循环停止之后执行）**：
 
@@ -363,17 +367,21 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
    ③ `geometry.petSavePos()`（**离散停泊**落盘，至多一次）；
    ④ `geometry.petGeomSnapshot('physics-rest')`（取证行）。
 3. `pet.setPetState('idle')`（复位飞行期动作档）。
-4. 日志 `phys-rest pos=(x,y) reason=<…> flight=<ms> steps=<n>`。
+4. 日志 `phys-rest pos=(x,y) reason=<…> snap=<0|1> flight=<ms> steps=<n>`。
 
-**不变量（可机检）**：起飞点在起飞时的工作区内（冻结面 settle 保证）⇒ 轨迹不出界 ⇒ 停泊点的 `petSettlePos` 结果恒为 `kind='none'`（**零 `geom-fix reason=physics-rest` 行**）；该行若出现即说明边界 / 几何异常——属**报告项**（不静默）。
+**`timeout` 的强制落地（本轮修正）**：`reason === 'timeout'` ⇒ 在步骤 1（停循环）之后、步骤 2（几何序列）之前**强制落地**——物理状态置 `y = bounds.maxY`、`vx = vy = 0`，并经**一次** `setPosition(x, maxY)` 落到地面（该次 = 本次收口的第一次、至多 1 次位置写入）；随后照常走步骤 2–4（步骤 2 的 settle 读到的是落地后的位置）⇒ **5 s 到点不得停在半空**；日志 `snap=1`（其余 reason 恒 `snap=0`）。
+**窗口不在场的收口（本轮补）**：`reason ∈ {destroyed, quit}`（窗口已销毁 / 进程退出）⇒ 只执行步骤 1（停循环）与步骤 4（日志，最佳努力）——**跳过步骤 2**（几何写；窗口不在场）与步骤 3（动作面复位）⇒ 仍**各留 1 行** `phys-rest` 诊断（承 US-28 的「各留 1 行」）。
+
+**不变量（可机检；本轮修正）**：**飞行期轨迹恒在界内不依赖起飞点**——由 §2.2.4 的钳入（`x` / `y` 逐帧夹回区间，含上条的强制落地）保证 ⇒ **收口点必在区间内** ⇒ 停泊点的 `petSettlePos` 结果恒为 `kind='none'`（**零 `geom-fix reason=physics-rest` 行**）；该行若出现即说明边界 / 几何异常——属**报告项**（不静默）。**起飞点本身可能落在区间外**（US-2 允许拖出屏 + B03 settle 只保**中心点**可见）⇒ 由 §2.2.5 第 7 条的起飞归一化就地钳入（首帧至多一次位移，登记为已知限制 O-10）。
 
 **散步续接**：本模块**不调度散步**——飞行前的 `scheduleWander()` 计时器由冻结面在松手时已排（15–35 s）；若飞行中到期，`doWander` 守卫（新增条件）自行重排（既有自愈）。
 
 #### 2.2.7 Q 弹挤压契约（渲染面，不写位置）
 
-- **触发**：飞行中 `landed === true` ∧ **上一帧未贴地**（`!prevGrounded`，与样本 `pet.ts:990` 同语义）⇒ 一次落地至多一次；深度 = `landingSquash(fallingVy)`，`fallingVy` = **本步积分前**的 `vy`（冲击速度）。
+- **触发**：飞行中 `landed === true` ∧ **上一帧未贴地**（`!prevGrounded`，与样本 `pet.ts:990` 同语义）⇒ 一次落地至多一次；深度 = `landingSquash(fallingVy)`，`fallingVy` = **本步积分前**的 `vy`（冲击速度）。`prevGrounded` 的**初值口径** = 钳入后 `s0.y >= maxY`（§2.2.5 第 7 条）⇒ 「贴地位形起飞」不产生伪挤压（AC4⑤）。
 - **通道**：`petWindow.webContents.send('pet:physics-squash', depth)`（新通道；命名口径见 O-5）。
 - **渲染层**：`pet-preload.js` 暴露 `onPhysicsSquash(cb)`；`pet.js` 收值 ⇒ 在 `#pet-squash` 上按 `SQ_DURATION_MS`（220 ms）播放 keyframes，`scaleY` 由 `squashScale(u, depth)` 逐帧（`requestAnimationFrame`）驱动；结束清 `transform`。
+- **曲线的跨进程单一来源（本轮补）**：`squashScale` 与 `SQ_DURATION_MS` 的**唯一处定义 = `pet-physics-core.js`（核心档）**；渲染层**不复制定义**，按既有双环境装载范式取用——`pet.html` 在 `pet.js` 之前以 `<script src="pet-physics-core.js"></script>` 装载（与 `pet-chain-core.js` 同范式），`pet.js` 从 `window.PetPhysicsCore` 取 `squashScale` / `SQ_DURATION_MS`。证据：`pet.html:110-112`（三条 `<script>` 装载）+ `pet-chain.js:9`（`window.PetChainCore` 取用）+ `pet-chain-core.js:196-198`（双环境导出尾巴）。**机检（AC4④）**：全仓 `squashScale` / `SQ_DURATION_MS` 的**定义**命中数 == 1（其余按名引用）。
 - **结构改动**：`pet.html` 在 `#pet-stage` 与 `#pet` 外插入 `<div id="pet-squash">`（`position:absolute; left:0; top:0; width:250px; height:270px; transform-origin:50% 100%`）——链只按 id 取元素（§1.3.5）⇒ **链零改动**；`#pet` 的 `bottom/left` 相对新包裹盒与旧盒逐位同形。
 - **减少动态效果**：`@media (prefers-reduced-motion: reduce)` 下**不播放**挤压（既有 reduce 块内加一条；与样本「reduce-motion 时跳过」同取舍，U-9）。
 - **不做**：不写位置、不改窗口尺寸、不动链的镜像 `transform`、不给点击 / 喂食加挤压。
@@ -407,8 +415,8 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | 5 | 显示器配置变化（E5，飞行中） | 先停物理（零写入）⇒ 几何事件路径做校正 / 校准 / 落盘 | 注册顺序（`whenReady` 内本模块三条 `screen.on` 紧邻几何三条之前；§2.2.2 交接 ⑥）+ 日志先后 |
 | 6 | 被拖动抢占（飞行中） | tick 首行即停（零写入） | `phys-stop reason=drag-preempt` |
 | 7 | tick 抛错（`try/catch` 包住 tick 体） | 停物理 + 停泊序列 + 诊断行（**状态必须清空**，承 NFR-4） | `phys-error` + `phys-rest reason=error` |
-| 8 | 飞行超过 5 s | 强制停泊（状态清空） | `phys-rest reason=timeout` |
-| 9 | 进程退出 / 窗口关闭 | `before-quit` 显式停；`pet.destroyPetWindow` / `clearPetTimers` 路径显式停；tick 首行守卫 | 静态（三处停点）+ 无飞行态残留 |
+| 8 | 飞行超过 5 s | **强制落地收口**（`y = maxY` + 速度归零 → 停泊序列 + 状态清空；§2.2.6） | `phys-rest reason=timeout snap=1` |
+| 9 | 进程退出 / 窗口关闭 | `before-quit` 显式停；`pet.destroyPetWindow` / `clearPetTimers` 路径显式停；tick 首行守卫；收口形态见 §2.2.6「窗口不在场的收口」 | 静态（三处停点）+ 无飞行态残留 + **诊断行 `phys-rest reason=destroyed` / `reason=quit` 各 1 行**（窗口不在场 ⇒ 只停循环 + 日志，跳过几何写） |
 | 10 | `settings.json` 损坏 | 既有 `loadSettings` 回落默认（物理 = 参数表默认，只影响开关） | 既有行为不变 |
 | 11 | **缓放 / 正常放下（主流分支，非降级）**：① 门量 `v < T`；② **静默放置**（松手前 120 ms 窗内位移 ≈0——“挪到位 → 停一下 → 松手”） | **不起飞**：物理面零写入 ⇒ 窗口位置在 ≤200ms 内不再变化（**US-3 / NFR-2 原样成立**） | ① `phys-stop reason=below-threshold`；② `phys-stop reason=quiet-dwell` |
 
@@ -423,15 +431,15 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | `phys-tick` | 每 16 tick 采样一行 | `n=… pos=(x,y) vel=(vx,vy) bounced=<0\|1> atRest=<0\|1> wrote=<0\|1>` |
 | `phys-land` | 落地帧 | `impact=<fallingVy> depth=<landingSquash 值>` |
 | `phys-stop` | 未起飞 / 提前停 | `reason=<…> pos=(x,y)` |
-| `phys-rest` | 停泊收口 | `pos=(x,y) reason=<atRest\|timeout\|error\|toggle\|drag-preempt\|display-change\|destroyed\|quit> flight=<ms> steps=<n>` |
+| `phys-rest` | 停泊收口 | `pos=(x,y) reason=<atRest\|timeout\|error\|toggle\|drag-preempt\|display-change\|destroyed\|quit> snap=<0\|1> flight=<ms> steps=<n>`（`snap=1` 仅 `timeout` 的强制落地；`reason ∈ {destroyed,quit}` 只留日志、跳过几何写，§2.2.6） |
 | `phys-error` | tick 抛错 | `err=<message>` |
 | `phys-squash` | 触发挤压 | `depth=<值>`（IPC 已发出） |
 
-**`phys-stop` 的 `reason` 词表**（未起飞面，**14** 个；与 armGate G1–G10 对应）：`toggle-off` / `destroyed` / `duplicate` / `drag-active` / `wander-busy` / `bad-reason` / `no-trail` / `stale` / `too-short` / `jitter` / **`below-threshold`** / **`quiet-dwell`** / `no-bounds` / `already-flying`。
+**`phys-stop` 的 `reason` 词表**（未起飞面，**14** 个；与 armGate G1–**G11** 对应——G7 占 4 个、G11 占 1 个）：`toggle-off` / `destroyed` / `duplicate` / `drag-active` / `wander-busy` / `bad-reason` / `no-trail` / `stale` / `too-short` / `jitter` / **`below-threshold`** / **`quiet-dwell`** / `no-bounds` / `already-flying`。
 
 #### 2.2.12 起飞门判据（阈值 `T`——本轮修正轮新增；缓放即停 / 快甩抛出）
 
-**判据（纯函数，落核心档；= armGate 的 G10）**：
+**判据（纯函数，落核心档；= armGate 的 G10（阈值）与 G11（静默放置））**：
 
 ```
 canTakeOff(v)                = v >= TAKEOFF_MIN_SPEED              // v = 门量（120 ms 窗峰值速度）；闭区间：恰等于 T ⇒ 起飞
@@ -456,24 +464,25 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 
 | # | 文件 | 现状行数 | 动作 | 预计增量 | 说明 |
 |---|---|---|---|---|---|
-| 1 | `pet-physics-core.js` | — | **新建** | +260 ± 60（< 500） | 纯函数核心（双环境导出）；零 electron / fs / 定时器 |
+| 1 | `pet-physics-core.js` | — | **新建** | +260 ± 60（< 500） | 纯函数核心（双环境导出）；零 electron / fs / 定时器；**渲染层经 `<script>` 同源装载**（§2.2.7，曲线单一来源） |
 | 2 | `shell-pet-physics.js` | — | **新建** | +330 ± 70（< 500） | 域实现：采样 / 飞行 / 仲裁消费 / 停泊收口 / 日志 / IPC |
 | 3 | `shell-pet.js` | 426 | 改 | +8 / −1 | `doWander` 守卫 +1 条件；init 注入点；销毁路径停物理 |
 | 4 | `main.js` | 217 | 改 | +6 | require + `physics.init(...)`（模块接线区）+ 本模块三条 `screen.on`（**`whenReady` 内、几何三条之前**，E7）+ `before-quit` 停点 |
 | 5 | `shell-ipc.js` | 44 | 改 | +3 | 注册本模块自有的两条监听器（`pet-drag-start` / `pet-drag-end`）——**不改既有绑定行** |
 | 6 | `shell-tray.js` | 175 | 改 | +12 | 设置子菜单 +1 checkbox + setter |
 | 7 | `shell-settings.js` | 60 | 改 | +1 | `DEFAULT_SETTINGS` + `petPhysicsEnabled` |
-| 8 | `pet.html` | 114 | 改 | +14 | `#pet-squash` 包裹层 + keyframes + reduce-motion 分支 |
-| 9 | `pet.js` | 211 | 改 | +12 | 挤压触发（`onPhysicsSquash` → 逐帧 `scaleY`） |
+| 8 | `pet.html` | 114 | 改 | +15 | `#pet-squash` 包裹层 + keyframes + reduce-motion 分支 + `<script src="pet-physics-core.js">`（渲染层取挤压曲线，§2.2.7） |
+| 9 | `pet.js` | 211 | 改 | +13 | 挤压触发（`onPhysicsSquash` → 逐帧 `scaleY`；曲线取自 `window.PetPhysicsCore`，不复制定义） |
 | 10 | `pet-preload.js` | 17 | 改 | +3 | 暴露 `onPhysicsSquash` |
 | 11 | `package.json` | 132 | 改 | +2 | `build.files` 增列两个新源档（**必需**：白名单制，不登记即不打进发行版） |
 | 12 | `.thincoder/b20-pet-physics-stub.mjs` | — | **新建** | +180 ± 40 | 开发期桩测（gitignored 非交付物；装载真实实现） |
 | 13 | `docs/requirements/PET.md` | 359 → **461** | 改（本设计者） | +102 | 本批条目 + 四条修订 / 限定注记 |
 | 14 | `docs/design/PET-MOVEMENT.md` | — | **新建**（本档） | ≈600 行 | 本主题唯一权威句（设计档不受 500 行限制） |
-| 15 | `docs/README.md` | 75 | 改（**本设计者的越界例外**，仅 +1 行登记新档） | +1 | 地图 §二；§四 变更记录的建议行归主 agent |
+| 15 | `docs/README.md` | 75 | 改（**主 agent**） | +1 | 地图 §二 的新档登记行（本设计者只提交建议行；§三 清单 / §四 变更记录同步亦归主 agent） |
 
 **零 diff 面（机检）**：`shell-pet-geometry.js`（437）· `shell-pet-drag.js`（239）· `pet-chain.js`（240）· `pet-chain-core.js`（198）· `assets/**` · `package.json` 的 `dependencies` / `devDependencies` 段。
 **贴线档（≥480 行）**：本批写域内**无**（最大 = `shell-pet.js` 426 → ≈434；两个新档估算 < 500）⇒ **无需拆分计划**。
+**300–500 行档立场（本轮补，#14）**：`shell-pet.js` 426 → ≈434 已在「>300 行 ⇒ 主动拆分复核」档之上，但本批对它**只增 1 行守卫 + 1 处注入点 + 1 处停点**、**未跨 500 行档** ⇒ **不启动拆分**（拆分 = 结构变更，另批；存量大档的拆分复核不属本批范围）。
 
 ### 2.4 关键决策记录（DD-1…DD-14）
 
@@ -507,7 +516,7 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 | 3 | 尺寸写入 = `setBounds` 尺寸专用形态、`petCalibrateSize` 唯一（`:26` / `:382`） | 本批**不新增**任何尺寸写入路径（只调用既有 helper） | 静态：全批无新增 `setBounds` / `setSize` 调用 |
 | 4 | 位置推导与坐标空间（`shell-pet-drag.js:20-21` / R6–R8） | 物理用同一 `setPosition` DIP 空间；不重锚、不换参考系 | 冻结面零 diff + 物理只用 `getPosition` / `setPosition` |
 | 5 | 拖动期间位置不被第三方改写（US-2 / 设计档 §2.6 C7） | 物理 tick 首行先判 `getPetDrag()`，命中即停且**不写位置** | 符号级（顺序）+ 运行时 `phys-stop reason=drag-preempt` |
-| 6 | 可见性（NFR-5：中心点须在某屏 workArea 内） | 飞行边界 = 该屏工作区 ⇒ 轨迹与落点恒可见；停泊序列再核一次（幂等） | 运行时：停泊点 `geom-fix reason=physics-rest` 零行（正常路径） |
+| 6 | 可见性（NFR-5：中心点须在某屏 workArea 内） | 飞行边界 = 该屏工作区 ⇒ **收口点必在区间内**（由 §2.2.4 的钳入保证，**不依赖起飞点**）；起飞点本身可能落在区间外（US-2 允许拖出屏 / B03 settle 只保**中心点**可见）⇒ 由 §2.2.5 第 7 条的起飞归一化就地钳入（首帧至多一次位移 = 已知限制 O-10）；停泊序列再核一次（幂等） | 运行时：停泊点 `geom-fix reason=physics-rest` 零行（正常路径） |
 | 7 | 位置持久化只在离散点（US-13 / NFR-1 子条③） | 飞行期零落盘；停泊点至多一次 `petSavePos` | 日志面（同 #1） |
 | 8 | B03 调用时机表（`docs/design/PET-MULTIMONITOR.md` §2.3.2）逐行不变 | 本批**不改**该表；新增的两行调用时点由本档 §2.2.6 承载 | 该档零 diff（建议行见 O-3） |
 
@@ -541,13 +550,13 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 | O-1 | 后续面 | **跨屏飞行**（逐屏 AABB + 空洞 / 面板探测，承样本 `throwStepRegion`） | 另批（待三屏实机 T9 可用） |
 | O-2 | 纪律句完备性 | `shell-pet-geometry.js:170` 的「离散停泊事件」**只列举落盘时机**、未提尺寸校准面；本设计以「tick 内零落盘 + 零尺寸写入」双向自守（比纪律句更严） | 建议行：几何档下次修订补一句枚举完备性说明 |
 | O-3 | 指针缺口 | `docs/design/PET-MULTIMONITOR.md` §2.3.2 调用时机表**未含** B20 的两行（物理接管期 / 物理停泊点）；该档 §3.3 的 reason 词表未含 `physics-rest` | 建议行：主 agent 收口同步（或授权本设计者在修正轮补两行指针） |
-| O-4 | 地图不同步 | `docs/README.md` §二 `docs/requirements/PET.md` 行的「内容」列自 B18 / B19 起未同步（仍只列 B01 / B03 两段） | 建议行：主 agent 同步（本批新档行已由本设计者登记） |
+| O-4 | 地图不同步 | `docs/README.md` §二 `docs/requirements/PET.md` 行的「内容」列自 B18 / B19 起未同步（仍只列 B01 / B03 两段）；`docs/design/PET-MOVEMENT.md` 行亦落后两轮修正（现为 AC1–AC20 / TC-1…TC-37 / DD-1…DD-16 / 选型 A–I / U-1…U-10 / O-1…O-11） | 建议行：主 agent 同步（**地图面归主 agent**；本设计者只提交建议行，不落笔地图） |
 | O-5 | 命名形态张力 | `docs/CONVENTIONS.md` §二「IPC 通道 = `<域>:<动作>`」与既有 `pet-*` 破折号族（12+ 条，含 B18 新增 `pet-chain-config`）形态不一致 | 本批新通道按**规则句**取名 `pet:physics-squash`；存量迁移属另批（建议行） |
 | O-6 | 流程面 | 本仓**无**「改动面反查（文档影响面）」脚本（工程纪律要求实施轮开工前跑） | 本批以人工受影响文件清单承担；建议行（归 B15 / B16 或另批） |
 | O-7 | 回归面 | B03 dev 桩仍损坏（T29）⇒ 本批回归面仍靠几何零 diff | 承 B18 §1.4-2；T29 属另批 |
 | O-8 | 观感差异 | 本批**不采用**样本的 `sideAllow`（身体贴边）语义 ⇒ 抛掷停止点比样本离屏缘略远（窗口矩形的透明留白） | 与散步口径同源（一致性优先）；是否采用待用户裁 |
 | O-9 | 观感交错 | 飞行期可能被 B19 工作档的「重断言」切走动作档（≤1 s） | 写权不受影响；待 B19 实施后实机看 |
-| O-10 | 有限情形 | 若起飞点因骑线推离落在工作区外（理论可达性低），首个积分步会把窗口钳回区间 = 一次小幅跳 | 设计不额外处理（首步钳入即恢复）；登记为已知限制 |
+| O-10 | 已知限制（**常规路径**，本轮修正） | 起飞点可合法落在飞行区间外——起因 = US-2 允许拖出屏 + B03 的 settle 只保**中心点**可见（贴下缘 / 任务栏边 / 骑线推离后松手均为常规操作）⇒ 起飞归一化（§2.2.5 第 7 条）在建 `s0` 时钳入 ⇒ 窗口有 ≤ 1 个 tick（16 ms）在区间外，并由该 tick 的**一次** `setPosition` 落地（**不新增写入时点**） | 已落档为已知限制；**不产生伪 Q 弹**（`prevGrounded` 初值取钳入后的贴地态）。若将来要求「拖出屏也不产生任何一次性位移」⇒ 属边界语义变更（改为中心点式边界，与 NFR-5 对齐），另批裁定 |
 | O-11 | 样本注释与实现不符 | 样本注释（`samples/dsh-pet/dsh-pet/src/shared/physics.ts:212-213`）称死区判定与初速 / 软上限「一体线性缩放（相对力度）」；实现（`:263-264`）却把固定常量 `DEAD_ZONE_SPEED` 与**已乘 `throwPower`** 的速度比较 ⇒ 死区在原始速度上随 p 反比变化，与注释相反 | 本仓按**实现口径**（§2.2.12）；样本为只读参考（R14）不改；将来改 `throwPower` 默认值时复核该口径 |
 
 ---
