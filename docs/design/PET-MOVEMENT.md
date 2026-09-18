@@ -433,6 +433,7 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 
 | tag | 何时 | 关键字段 |
 |---|---|---|
+| `phys-trail-start` | 拖拽开始（`pet-drag-start`）且开关为开、窗口在场 ⇒ 采样器启动（**在 G1 开关早退之后** ⇒ 关闭态零日志，AC8④ / TC-23 不变） | `seq=<n>`（= 拖动会话序号 `sessionSeq`，与 G3 幂等同源） |
 | `phys-arm` | 起飞 | `vel=(vx,vy) pos=(x,y) bounds=(minX,minY,maxX,maxY) trail=<n>` |
 | `phys-tick` | 每 16 tick 采样一行 | `n=… pos=(x,y) vel=(vx,vy) bounced=<0\|1> atRest=<0\|1> wrote=<0\|1>` |
 | `phys-land` | 落地帧 | `impact=<fallingVy> depth=<landingSquash 值>` |
@@ -443,6 +444,9 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 
 **`phys-stop` 的 `reason` 词表**（未起飞面，**14** 个；与 armGate G1–**G11** 对应——G7 占 4 个、G11 占 1 个）：
 `toggle-off` / `destroyed` / `duplicate` / `drag-active` / `wander-busy` / `bad-reason` / `no-trail` / `stale` / `too-short` / `jitter` / **`below-threshold`** / **`quiet-dwell`** / `no-bounds` / `already-flying`。
+
+- **`bad-reason` 的产出路径（事实补记，修偏轮 2 起）**：`handleTrailEnd` 的归一化不匹配（非字符串 / 空串 / 非 `{pointerup, pointercancel, lostcapture}`）⇒ 先产 `phys-stop reason=bad-reason pos=(x,y)`，再清轨迹、不起飞（`shell-pet-physics.js:99-109`）。**本词表条目与计数均不变（仍 14 个）**——补的是**产出路径**（此前该词在册但无产出行 = 静默清轨迹），不是新词；与 armGate G6 的对应关系不变（§2.2.2 表）。
+- **与 `phys-trail-start` 的分工**：`phys-trail-start` = 采样器启动取证（`pet-drag-start` 面，**关闭态不产行**）；`phys-stop reason=bad-reason` = 松手 `reason` 非法取证（`pet-drag-end` 面）——不同事件源、不同路径，不可互推。
 
 #### 2.2.12 起飞门判据（阈值 `T`——本轮修正轮新增；缓放即停 / 快甩抛出）
 
@@ -665,3 +669,4 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 | 2026-09-18 | **修正轮补正（判据量 = 速度）**：§2.2.12 加「判据量 = 速度 + 静默规则」块 · 新增选型 **I 组**（速度 vs 加速度；峰值 vs 加权 vs 末瞬）· **DD-16** · 常量 +2（`GATE_WINDOW_MS` / `QUIET_SPAN_MAX_DIP`）· reason 词表 +`quiet-dwell`（**14** 个）· **AC 18 → 20 · TC 34 → 37**。依据 = 主 agent 追加裁定 2026-09-18（用户已委托）。 |
 | 2026-09-18 | **设计评审轮 2 修正（changes-required：1🔴 / 2🟡）+ 参数裁定 B**——#16：TC-31 改可判定（起点 / 方向 / 期望走非档内支），顺查并同源改 TC-1（由「走 5 s 上界」改判收敛）；#17 / #18 属需求档面；**参数** `restitution` 0.78 → 0.55 ⇒ 档界 450 → **800 px/s** + 新增 O-12。**计数不变（AC20 / TC37 / DD16 / 9 组 / U10 / open3）**，**观察项 11 → 12**。 |
 | 2026-09-18 | **设计评审轮 1 修正（changes-required；🔴2 / 🟡6 / 🔵7，共 15 条）**——逐条处置见批次档 §2.11；本档同步改：§2.2.5 第 7 条 / §2.2.6（强制落地 + `snap` + 窗口不在场收口）/ §2.2.7（曲线单一来源）/ armGate 11 条（G11）/ §1.1 / §2.1–§3.3 各判据行 / §零 授权口径。**计数不变（AC20 / TC37 / DD16 / 9 组 / U10 / open3 / O11）**。 |
+| 2026-09-18 | **B20 修偏轮 2 偏差记录**：真因 = `handleTrailEnd(reasonRaw)` 单参签名 vs `ipcMain` 派发 `(event, reason)` ⇒ IpcMainEvent 绑进 reasonRaw ⇒ 归一化恒假 ⇒ **静默清轨迹（零日志零异常）**；修复 = 双参签名 + `typeof` 归一 + 两条取证行。**性质 = 实施签名缺陷，非设计缺口**（§2.2.1 数据流原样）⇒ 无设计变更，§2.2.11 补 `phys-trail-start` 行 + `bad-reason` 产出路径（计数不变）。 |
