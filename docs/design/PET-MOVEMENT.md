@@ -1,6 +1,6 @@
 # 设计档 PET-MOVEMENT — 桌宠位移仲裁与物理手感（B20）
 
-> 主题：**窗口位移的写权（谁在何时拥有位置写权）+ 物理手感（甩抛 / 反弹 / 摩擦 / 静止 / Q 弹形变）**
+> 主题：**窗口位移的写权（谁在何时拥有位置写权）+ 物理手感（起飞阈值「缓放即停 / 快甩抛出」/ 甩抛 / 反弹 / 摩擦 / 静止 / Q 弹形变）**
 > 落点：`docs/design/PET-MOVEMENT.md`（本主题的唯一权威句；落点判定见 §零）
 > 需求档：`docs/requirements/PET.md` §三 US-24…US-28 / §四 NFR-18…NFR-22（回指见 §1.1）
 > 批次档：`docs/batches/B20-pet-physics.md`（§1 立案 / §2 本批任务书 / §5 实施记录 / §6 验收核销）
@@ -32,7 +32,7 @@
 
 | 需求条目 | 本档验收标准 | 一句话口径 |
 |---|---|---|
-| US-24 甩抛与飞行 | AC1、AC2、AC3 | 松手初速 → 抛物线 → 边界反弹 → 摩擦衰减 → 静止 |
+| US-24 甩抛与飞行 | AC1、AC2、AC3、AC15、AC16、AC17、AC18、AC19、AC20 | 门量（120 ms 窗峰值速度）≥ `T` ⇒ 起飞；`v < T` 或静默放置 ⇒ 不起飞 |
 | US-25 撞击形变反馈（Q 弹） | AC4 | 落地冲击 → 压扁回弹（力度随冲击速度） |
 | US-26 位移单写者仲裁 | AC5、AC6、AC7 | 拖拽 > 物理 > 散步；交接与互斥逐条 |
 | US-27 物理开关与默认值 | AC8 | 托盘 checkbox + `settings.json` 顶层布尔 |
@@ -85,7 +85,8 @@
 | `src/shared/physics.ts:51-58` `DEFAULT_PHYSICS` / `assets/config.jsonc:80-97` physics 段 | 参数表 §2.2.3 | 只取前五项；`petCollision` 出批 |
 | `physics.ts:17-19` `SPRING_K` / `SPRING_C`（弹簧跟手） | **不落地** | 拖拽仍用 8 ms 绝对定位（U-5 ① / 冻结面） |
 | `physics.ts:186-191` `trimTrail` | `pet-physics-core.js` `trimTrail` | 同语义（200 ms 窗口） |
-| `physics.ts:216-266` `estimateReleaseVelocity` | 同名纯函数 | 形状与常量同；时间源 = `performance.now()`；轨迹 = 主进程自采**光标**轨迹（§2.2.5） |
+| `physics.ts:216-266` `estimateReleaseVelocity` | 同名纯函数 | 形状与常量同；时间源 = `performance.now()`；轨迹 = 主进程自采**光标**轨迹（§2.2.5）；**差异 ① = 内嵌死区过滤（`physics.ts:264`）上移为显式起飞门**（§2.2.12）；**差异 ② = 估计量只决定飞行初速，不进起飞门判据** |
+| `physics.ts:38-40` `ACCEL_REF` / `ACCEL_GAIN_MAX`（末段加速增益） | 常量表（**只作用于初速大小**） | 差异：**不进起飞门判据**（DD-16 / §2.2.12；主 agent 追加裁定 = 主判据只读速度） |
 | `physics.ts:273-312` `throwStep`（**单屏 AABB**） | `throwStep`（选定形态） | 增 `landed` 标志（区分触地 / 碰壁 / 撞顶，供 Q 弹触发） |
 | `physics.ts:338-404` `throwStepRegion`（逐屏 AABB + 空洞 / 面板探测） | **不落地**（O-1） | 跨屏飞行出批 |
 | `physics.ts:132-183` `throwBounds` / `throwBoundsIn` / `throwSpace` / `screenOfBox` | **不落地** | 边界改由 `geometry.petWorkAreaBounds(display)` 提供（既有单一来源，NFR-8） |
@@ -172,6 +173,25 @@
 | 2 | 参数 = 随包 JSON（`assets/pet-physics.json`）+ 解析 / 校验 / 回落 | 需 `build.files` 登记 + 三件套 = 新增失败面；收益（用户可调）不在本批需求内 | — | **否决** |
 | 3 | 参数 = `settings.json` 用户可调 | 污染用户档（其语义 = 用户偏好 + 桌宠位置）+ 每项需校验 | — | **否决** |
 
+#### H 组 · 起飞阈值口径（本轮修正轮新增）
+
+| # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **显式起飞门 + 单一常量 `T`**（阈值比较移出估计函数、成为 armGate 的 G10） | 阈值可见可测：✅ · 「轨迹不可估」与「低于阈值」在诊断行可区分（`stale` vs `below-threshold`）：✅ · 单一常量一处定义（AC17）：✅ · 冻结面改动：0 | 估计函数不再对低速轨迹返回 `null`（AC3 的 null 分支 5 → 4） | **选定** |
+| 2 | 保留估计函数内嵌死区过滤（阈值不外移，无独立门） | 阈值可见性：❌（与「轨迹不可估」共用同一条 `null` 通道）· 诊断行无法区分「缓放」与「轨迹丢失」：❌ · 与本轮裁定的口径（释放速度与阈值比较）字面为真但埋没 | — | **否决**——与本轮裁定的**口径显式性**相抵（用户要判别的正是这一支） |
+| 3 | 双阈值（保留死区 500 + 另加更高起飞门 `T`） | 判据：两个阈值 ⇒ 两处定义 + 需写死两者先后与关系口径 · 收益：无（用户语义上只有一个分界） | — | **否决**——过度实现；且 AC17「单一常量一处定义」不成立 |
+
+#### I 组 · 起飞判据量（本轮补正新增；速度 vs 加速度）
+
+| # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **速度**：门量 = 松手前 120 ms 采样窗内的**峰值分段速度** `v` **+ 静默规则**（窗内位移 ≈0 ⇒ 放置） | 一阶量（= 动量 `m·v` 的度量）：✅ · 抗 8 ms 采样抖动（峰值取自多点 + `SEG_MIN_DT_MS` 合并）：✅ · 与人类「放手前先减速」的动作学相容（只用峰值、不用末瞬加速度）：✅ · 零额外数据面（复用既有拖动采样）：✅ | 门量（是否扔）与**飞行初速**（扔多远，= 样本估计量）是**两个量**，须在契约里写明顺序与关系 | **选定** |
+| 2 | 速度 · **端点均值 ×0.5 + 峰值 ×0.5**（= 样本 `estimateReleaseVelocity` 的口径） | 判据可复现：✅ · 抗抖：中 · **与本轮动作相容性**：❌——「快甩后收手」被端点均值拉低 ⇒ 与静默规则**叠加**后会把甩误判为放置 | — | **否决**——放置已由静默规则单独处置，两套机制不必叠加 |
+| 3 | 速度 · **末瞬单点**（最后一段速度） | 抗抖：❌——单点量化噪声直接进门 ⇒ 假阳性 / 假阴性 | — | **否决** |
+| 4 | **加速度**（末瞬或峰值）作主判据 | 物理量口径：❌（甩抛本体是动量 `m·v`，加速度是二阶量）· 噪声：❌（8 ms 采样下二阶差分放大抖动 ⇒ 误判「甩」）· 动作学：❌（放手前通常先减速 ⇒ 末瞬加速度常为负 ⇒ 判反） | — | **否决**——三条独立依据（主 agent 追加裁定 2026-09-18） |
+
+> **零额外成本口径**：8 ms 拖动 tick（`shell-pet-drag.js:23`）已在采光标轨迹 ⇒ 速度由**既有采样窗**直接估出，不新增数据面（承 D 组选定方案）。
+
 ### 2.2 架构与契约
 
 #### 2.2.1 分层与职责边界
@@ -228,7 +248,7 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 | W3 物理 | `phys.flying === true`（本模块状态） | **armGate 全通过**（松手路径，见下） | atRest / 5 s 硬上界 / 被拖拽抢先 / 显示器事件 / 开关关闭 / 销毁 / 退出（§2.2.10） |
 | W2 散步 | `getMoveTimer() !== null`（`shell-pet.js:388`） | 既有 `scheduleWander` / `doWander` | 既有段末（`shell-pet.js:334-359`） |
 
-**armGate（起飞门，9 条；任一不过 ⇒ 不起飞且零写入）**：
+**armGate（起飞门，10 条；任一不过 ⇒ 不起飞且零写入；G10 = 起飞阈值，本轮新增）**：
 
 | # | 条件 | 不过时的 `phys-stop reason` |
 |---|---|---|
@@ -238,15 +258,16 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 | G4 | 当前无拖动（`getPetDrag() === null`） | `drag-active` |
 | G5 | 无散步段在途（`getMoveTimer() === null`，即未被「贴边挣脱」分支接管） | `wander-busy` |
 | G6 | `reason` 合法（归一化后 ∈ {pointerup, pointercancel, lostcapture}） | `bad-reason` |
-| G7 | 轨迹可估（`estimateReleaseVelocity(...) !== null`） | `no-trail` / `stale` / `too-short` / `dead-zone` / `jitter`（由估计函数给出细分原因） |
+| G7 | 轨迹可估（`estimateReleaseVelocity(...) !== null`） | `no-trail` / `stale` / `too-short` / `jitter`（由估计函数给出细分原因；**不含低速**——低速归 G10） |
 | G8 | 边界可取（`petWorkAreaBounds(petCurrentDisplay()) !== null`） | `no-bounds` |
 | G9 | 当前无飞行（`phys.flying === false`） | `already-flying` |
+| **G10** | **起飞阈值**：释放初速 `v ≥ T`（判据 / 量纲 / 标定状态见 §2.2.12；**本轮新增**） | `below-threshold` |
 
 **交接条件（逐条，全部可机检）**：
 
 | # | 交接 | 触发 | 行为 | 判据 |
 |---|---|---|---|---|
-| ① | drag → physics | 正常松手 | 冻结面收口完成**之后**评估 armGate；全通过 ⇒ 起飞 | 日志：`phys-arm` 行的 `pos` == 同一时刻 `geom tag=drag-end` 行的 `pos`；arm 前窗口位置未被本模块改写 |
+| ① | drag → physics | 正常松手**且 `v ≥ T`** | 冻结面收口完成**之后**评估 armGate；全通过 ⇒ 起飞；**`v < T` ⇒ 不交接**（物理不介入、零写入 = 今天的行为，§2.2.12） | 日志：`phys-arm` 行的 `pos` == 同一时刻 `geom tag=drag-end` 行的 `pos`；arm 前窗口位置未被本模块改写 |
 | ② | physics → drag（抢占） | `getPetDrag()` 变非 null | 物理 tick **首行**判到即自停（**不写位置**） | 符号级：`getPetDrag()` 判定在任何 `setPosition` **之前**；运行时：`phys-stop reason=drag-preempt` 之后无 `phys-tick … wrote=1` |
 | ③ | physics → null（停泊） | `atRest === true` ∨ 5 s 硬上界 | 停循环 → 停泊序列（离散一次）→ 状态清空 | 日志：`phys-rest` 之后 `pos-save` ≤1 行、尺寸型 `geom-fix` ≤1 行 |
 | ④ | physics ⊣ wander | 飞行在途 | 散步不得启动：`doWander` 守卫加 `|| physics.isFlying()`（守卫失败即 `scheduleWander()` 重排 = 既有自愈） | 符号级：`shell-pet.js` 的守卫含该条件；运行时：飞行期无 `geom tag=seg-start` 行 |
@@ -270,19 +291,19 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 | `restitution` | —（0~1） | 0.78 | 样本 `:92` | 碰壁 / 触地恢复系数 |
 | `groundFriction` | /s | 2.5 | 样本 `:93` | 接地水平速度衰减：`vx *= max(0, 1 − f·dt)` |
 | `ceilingBounce` | 布尔 | true | 样本 `:94` | true = 撞顶反弹；false = 顶部无边界（越界后由重力拉回） |
-| `throwPower` | ×（>0） | 1.0 | 样本 `:95` | 初速与软上限的**整体**增益（本批无弹簧项，故只作用于甩抛） |
+| `throwPower` | ×（>0） | 1.0 | 样本 `:95` | 初速与软上限的**整体**增益（本批无弹簧项，故只作用于甩抛）；**不进门判据**（§2.2.12） |
 
 **常量（出处 = 样本 `physics.ts`，逐值照搬）**：
 
 | 常量 | 值 | 用途 |
 |---|---|---|
 | `MAX_THROW_SPEED` | 3600 px/s | 软上限 `cap·(1 − e^(−s/cap))`（×`throwPower`） |
-| `DEAD_ZONE_SPEED` | 500 px/s | 低于此 ⇒ 原地放下（不抛） |
+| `TAKEOFF_MIN_SPEED`（= 起飞门阈值 `T`；样本名 `DEAD_ZONE_SPEED`，值逐字照搬） | 500 px/s | 释放初速 `v < T` ⇒ 不起飞（原地放下）——**本仓唯一阈值常量、仓内仅一处定义**（§2.2.12 / AC17） |
 | `TRAIL_KEEP_MS` / `RELEASE_WINDOW_MS` | 200 / 150 ms | 轨迹保留 / 初速估算窗口 |
 | `RELEASE_STALE_MS` | 150 ms | 末样本超过它 ⇒ 温柔放下（不抛） |
 | `MIN_SPAN_MS` / `SEG_MIN_DT_MS` | 20 / 8 ms | 窗口太短不可估 / 分段最小 dt |
 | `PEAK_WEIGHT` | 0.5 | 端点均值与峰值加权 |
-| `ACCEL_REF` / `ACCEL_GAIN_MAX` | 8000 px/s² / 0.6 | 末段加速增益（最多 +60%） |
+| `ACCEL_REF` / `ACCEL_GAIN_MAX` | 8000 px/s² / 0.6 | 末段加速增益（最多 +60%）——**只作用于初速大小，不进起飞门判据**（DD-16 / §2.2.12） |
 | `MAX_STEP_DT` | 0.05 s | 单步 dt 上界（防巨帧跳变） |
 | `REST_VY` / `REST_VX` | 40 / 15 px/s | 静止判据 |
 | `SQ_SQUASH` / `SQ_MAX_SQUASH` | 0.55 / 0.55 | 挤压下压幅度（基准值 / 落地最大下压） |
@@ -297,6 +318,8 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 | `PHYS_TRAIL_MS` | 16 ms | 拖动期光标采样周期（仅拖动中运行） |
 | `PHYS_MAX_FLIGHT_MS` | 5000 ms | 飞行硬上界（超时强制停泊，NFR-19） |
 | `PHYS_RUN_SPEED` | 900 px/s | 飞行期动作档：`|vx| ≥ 该值` ⇒ `run-*`，否则 `walk-*`（不新增档位名，承 NFR-16） |
+| `GATE_WINDOW_MS` | 120 ms | 起飞门窗（**峰值窗与静默窗同窗**）——取自裁定给的 80–120 ms 范围上端；可调、**待实机标定** |
+| `QUIET_SPAN_MAX_DIP` | 5 px | 静默判据：窗内端点位移 ≤ 该值 = 「位移接近 0」⇒ 判放置；5 px 与既有「位移 > 5px 判为拖动」口径**同源**（`pet.js:121`） |
 
 **U-2 口径**：默认照搬样本（推荐 ①）；参数集中一处 ⇒ 裁定为「本仓调」时只改本表数值，结构不动。
 
@@ -322,9 +345,10 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 1. **采样**：`ipcMain.on('pet-drag-start')` ⇒ 起 16 ms 采样器：读 `screen.getCursorScreenPoint()`；**仅当与上一点不同**时追加 `{ t, x, y }`（`t` = `performance.now()`）；保留窗口 200 ms（`trimTrail`）。只位置变化才记点 ⇒ 「松手前停顿」自然表现为轨迹过期（TC-12）。
 2. **`pet-drag-end` 监听器**（注册在 `shell-ipc.js`，**不依赖监听顺序**）：归一化 `reason`（非法 ⇒ 清轨迹、不起飞）；合法 ⇒ 记 `pendingRelease = { now, trail, sessionSeq }`，并 `setImmediate(() => evaluateArm())`。
    `setImmediate` 保证评估发生在**同一事件的全部监听器（含冻结面收口）执行之后** ⇒ 与注册顺序无关，且 escape 分支与 settle 结果均可见（DD-4）。
-3. **估计**：`estimateReleaseVelocity(trail, now, PHYSICS)` ⇒ `{vx, vy} | null`；返回非 null 时该值**已含**软上限与 `throwPower`。
+3. **估计**：`estimateReleaseVelocity(trail, now, PHYSICS)` ⇒ `{vx, vy} | null`；返回非 null 时该值**已含**软上限与 `throwPower`。null 分支 = 空轨迹 / 末样本过期 / 窗口太短 / 纯抖动（**不含低速**——低速轨迹返回非 null 的小初速，由起飞门 §2.2.12 拒绝）。
 4. **起飞初始状态**：`s0 = { x, y } = getPetWindow().getPosition()`（= 冻结面 settle 之后的终值）；`v = 估计值`。
 5. **日志**：`phys-arm vel=(vx,vy) pos=(x,y) bounds=(…) trail=<n>`。
+6. **门量与初速是两个量（本轮补正）**：门判据读 §2.2.12 的门量（窗内**峰值速度**）；门通过（`v ≥ T` ∧ 非静默 ∧ 本节第 3 条非 null）后，**飞行初速** = 本节第 3 条的估计值（含软上限与 `throwPower`）——“门量回答扔没扔，初速回答扔多远”，两者均为速度，**均不含加速度判据**。
 
 #### 2.2.6 停泊收口契约（离散一次；与 B03 调用时机同源）
 
@@ -377,7 +401,7 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | # | 情形 | 行为 | 取证 |
 |---|---|---|---|
 | 1 | 开关关闭（默认） | 采样器不起、无飞行、零 `phys-*` 日志、零新增定时器 | 静态 + 日志零行（TC-23） |
-| 2 | 轨迹不可估（空 / 末样本过期 / 窗口太短 / 低于死区 / 纯抖动） | **不起飞**（= 今天的行为），清轨迹 | `phys-stop reason=<no-trail\|stale\|too-short\|dead-zone\|jitter>` |
+| 2 | 轨迹不可估（空 / 末样本过期 / 窗口太短 / 纯抖动） | **不起飞**（= 今天的行为），清轨迹 | `phys-stop reason=<no-trail\|stale\|too-short\|jitter>` |
 | 3 | 显示面不可取（`petWorkAreaBounds` 为 null；实际不可达） | 不起飞 | `phys-stop reason=no-bounds` |
 | 4 | 窗口不存在 / 已销毁 | 不起飞；飞行中 ⇒ 停（不落盘） | `phys-stop reason=destroyed` |
 | 5 | 显示器配置变化（E5，飞行中） | 先停物理（零写入）⇒ 几何事件路径做校正 / 校准 / 落盘 | 注册顺序（`whenReady` 内本模块三条 `screen.on` 紧邻几何三条之前；§2.2.2 交接 ⑥）+ 日志先后 |
@@ -386,6 +410,7 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | 8 | 飞行超过 5 s | 强制停泊（状态清空） | `phys-rest reason=timeout` |
 | 9 | 进程退出 / 窗口关闭 | `before-quit` 显式停；`pet.destroyPetWindow` / `clearPetTimers` 路径显式停；tick 首行守卫 | 静态（三处停点）+ 无飞行态残留 |
 | 10 | `settings.json` 损坏 | 既有 `loadSettings` 回落默认（物理 = 参数表默认，只影响开关） | 既有行为不变 |
+| 11 | **缓放 / 正常放下（主流分支，非降级）**：① 门量 `v < T`；② **静默放置**（松手前 120 ms 窗内位移 ≈0——“挪到位 → 停一下 → 松手”） | **不起飞**：物理面零写入 ⇒ 窗口位置在 ≤200ms 内不再变化（**US-3 / NFR-2 原样成立**） | ① `phys-stop reason=below-threshold`；② `phys-stop reason=quiet-dwell` |
 
 #### 2.2.11 日志与诊断行（仅 `BIGFISH_PET_DEBUG=1`）
 
@@ -401,6 +426,31 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | `phys-rest` | 停泊收口 | `pos=(x,y) reason=<atRest\|timeout\|error\|toggle\|drag-preempt\|display-change\|destroyed\|quit> flight=<ms> steps=<n>` |
 | `phys-error` | tick 抛错 | `err=<message>` |
 | `phys-squash` | 触发挤压 | `depth=<值>`（IPC 已发出） |
+
+**`phys-stop` 的 `reason` 词表**（未起飞面，**14** 个；与 armGate G1–G10 对应）：`toggle-off` / `destroyed` / `duplicate` / `drag-active` / `wander-busy` / `bad-reason` / `no-trail` / `stale` / `too-short` / `jitter` / **`below-threshold`** / **`quiet-dwell`** / `no-bounds` / `already-flying`。
+
+#### 2.2.12 起飞门判据（阈值 `T`——本轮修正轮新增；缓放即停 / 快甩抛出）
+
+**判据（纯函数，落核心档；= armGate 的 G10）**：
+
+```
+canTakeOff(v)                = v >= TAKEOFF_MIN_SPEED              // v = 门量（120 ms 窗峰值速度）；闭区间：恰等于 T ⇒ 起飞
+isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // true ⇒ 判放置（不起飞，reason=quiet-dwell）
+```
+
+- **判据量 = 速度（不是加速度）**（本轮补正；= I 组选定 / DD-16）：门量 `v` = 松手前 `GATE_WINDOW_MS`（120 ms）采样窗内的**峰值分段速度**（分段合并口径 = `SEG_MIN_DT_MS`）——三条依据：① 甩抛的本体是动量（`m·v`，一阶量）；② 8 ms 采样下二阶差分把量化抖动放大 ⇒ 误判「甩」（假阳性）；③ 放手前用户通常**先减速** ⇒ 末瞬加速度常为负，以加速度判据会**判反**。⇒ **加速度不得单独翻转门判据**（样本的 `ACCEL_GAIN_MAX` 只作用于初速大小，见 §2.2.3 / I 组候选 4）。
+- **静默放置规则**（本轮补正）：若同一 120 ms 窗内的**端点位移 ≤ `QUIET_SPAN_MAX_DIP`（5 px）** ⇒ **一律判放置**（不起飞，`reason=quiet-dwell`）——“挪到位 → 停一下 → 松手”这一常见动作单看速度会被误判为甩。
+- **窗内取值口径**：取**峰值**（不用末瞬单点，也不用端点均值 ×0.5 + 峰值 ×0.5 的加权）——候选 2 / 3 已在 I 组逐条否决。
+- **门量的定义域**：`v` = 窗内峰值分段速度的**幅值**（标量，px/s）；**不是** `estimateReleaseVelocity` 的幅值（那是飞行初速，见下条）。
+- **`T` 的量纲与默认值**：`T = TAKEOFF_MIN_SPEED = 500`（px/s）——**本仓唯一阈值常量、仓内仅一处定义**（机检判据 = AC17）；值逐字照搬样本 `DEAD_ZONE_SPEED`（`samples/dsh-pet/dsh-pet/src/shared/physics.ts:32`），承 U-2 ①「照搬样本」。
+- **默认值来源与标定状态**：本仓**无实机标定数据**（三屏实机 T9 未验）⇒ 该值按「**可调单一常量 + 待实机标定**」成文；标定路径 = 拖动期光标轨迹（日志）复算 `estimateReleaseVelocity`，取「正常放下」与「甩动」两簇速度的分界；**到期条件** = 用户实机感受一次（缓放不飞 / 中速不飞 / 快甩飞）后的裁定轮（U-10）。标定只改本常量一处，结构不动。
+- **与样本的差异（本仓有意偏离，登记）**：样本把该阈值**内嵌**在估计函数内（`physics.ts:264`：低速 ⇒ `return null` ⇒ 与「轨迹不可估」共用同一条 null 通道）；本仓把它**上移**为显式起飞门（G10）⇒ ① 阈值只有一处定义；② 诊断行可区分「轨迹不可估」（`stale` 等）与「低于阈值」（`below-threshold`）。副作用：估计函数对低速轨迹**不再返回 null**（改由门拒绝）⇒ AC3 的 null 分支由五类收为四类。
+- **门量与飞行初速的关系**：门通过后，飞行初速 = 既有估计量（§2.2.5 第 3 条，含软上限与 `throwPower`）——门量回答「扔没扔」，初速回答「扔多远」。
+- **`throwPower` 口径**（本轮补正后）：门判据在**未增益的原始速度**上比较（`p` **不进门**）⇒ `throwPower` 只放大**飞行初速**（软上限同乘），不改「扔不扔」的门槛。与样本的差异：样本把固定常量 `DEAD_ZONE_SPEED` 与**已乘 `p`** 的速度比较（`physics.ts:263-264`）⇒ 死区在原始速度上随 `p` 反比变化；其注释（`:212-213`）又称三者一体线性缩放、与实现不符——本仓按「门不乘 `p`」的**唯一口径**，差异登记为 O-11。
+- **两支行为（逐字）**：
+  - `v < T` ⇒ **不起飞**：走既有松手收口路径，物理面**零写入** ⇒ 窗口位置在 ≤200ms 内不再变化（**US-3 / NFR-2 逐字照旧**），诊断行 `phys-stop reason=below-threshold`；
+  - `v ≥ T` ⇒ **起飞**：初速按 §2.2.5（软上限 `3600 × throwPower`），进入 §2.2.4 步进。
+- **区间写死**：**闭区间**——`v = T` ⇒ 起飞；`v = T − 1 px/s` ⇒ 不起飞（AC18 / TC-33 / TC-34）。
 
 ### 2.3 受影响文件全清单（行数 = 换行符口径，as-of 2026-09-18）
 
@@ -443,6 +493,8 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | DD-12 | O10 = 本批只建仲裁层、链仍不接管（`weights.move` 保持 0） | B18 §1.9 三条理由 + 本批已新增一个写者（风险叠加）+ 可逆（数据面一行） | 本批即接管（§2.2.9） |
 | DD-13 | 日志 = 新档 `pet-physics.log`（debug 开时） | 与 `pet-drag.log` / `pet-geometry.log` 家族同形；关闭零开销 | 并入 `pet-geometry.log`（混淆两族判据） |
 | DD-14 | 生命周期三重停点（tick 首行守卫 + `before-quit` + 销毁路径） | 承 NFR-4「异常路径也清空」；不依赖单一路径 | 只靠 tick 自守（退出时可能残留定时器） |
+| DD-15 | 起飞阈值口径 = **显式起飞门（G10）+ 单一常量 `T`**（默认 500 px/s，待实机标定）；判据在**门量**上比较（**闭区间**；门量的定义见 DD-16 / §2.2.12） | 用户裁定要判别的正是「缓放 / 快甩」这一支 ⇒ 阈值必须**可见可测**（诊断行可区分）；单一常量保证机检（AC17）；值照搬样本避免凭空取值 | 内嵌死区过滤（原设计）/ 双阈值（§2.1 H 组逐条否决） |
+| DD-16 | **判据量 = 速度（不是加速度）**：门量 = 松手前 `GATE_WINDOW_MS`（120 ms）窗内的**峰值分段速度** + **静默放置规则**（窗内位移 ≤ `QUIET_SPAN_MAX_DIP` ⇒ 放置）；**加速度不得单独翻转门判据** | ① 动量 `m·v` 是一阶量；② 8 ms 采样下二阶差分放大抖动 ⇒ 误判「甩」；③ 放手前常先减速 ⇒ 以加速度判据会**判反**；④ 零额外数据面 | 加速度作主判据 / 末瞬单点 / 加权均值（§2.1 I 组候选 2–4） |
 
 ### 2.5 与既有纪律 / 既有实现的冲突点核对
 
@@ -469,9 +521,10 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | U-4 | 散步去留（§1.5） | ① 去掉 `doWander` 位移 ② 保留 | **② 保留**——依据 = ① 移除既有可见行为（US-4 / US-9 面回退）；物理定位 =「松手后接管」，与散步**无时段重叠**（互斥由仲裁层保证） | 按 ② 成文（散步只加 1 行守卫） |
 | U-5 | 拖动跟手是否改弹簧（§1.5） | ① 不改 ② 改阻尼弹簧 | **① 不改**——依据 = ② 必须改 `shell-pet-drag.js` 内部 ⇒ **相抵硬门禁（几何冻结）**，且重开 B03 的 R6–R8 结论面 | 按 ① 成文；② 属不可选（相抵硬约束） |
 | U-6 | O10 是否本批接管位移（§1.5） | ① 只建仲裁层、链仍不接管 ② 本批即接管 | **①**——依据 = B18 §1.9 三条理由 + 本批已新增一个写者（风险叠加）+ 接管可逆（`weights.move` 一行） | 按 ① 成文（§2.2.9 含接管落点） |
-| **U-7** | **US-3 / NFR-2 的语义追认**（**本设计新增**；源 = 设计期对账发现批次档 §1.2「做」与 B01 期条文相抵） | ① 追认（按 §1.2 立案修订条文）② 不追认（则「松手后接管」不成立 ⇒ 本批不成立） | **① 追认**——依据 = 批次档 §1.2「做」+ §1.4-3「物理只在**松手后**接管」已按此立案（用户 2026-09-17「都做」）；修订注记已落需求档四处（US-3 / US-12 / NFR-1 / NFR-2），且**物理关闭态逐字照旧**（爆炸半径最小） | 按 ① 成文；四处注记标「待用户追认」 |
+| **U-7** | **「缓放即停 / 快甩抛出」阈值口径的追认**（**本轮重写**；依据 = 用户 2026-09-18 原话「很慢的话就急停，很快的话就扔出去」） | ① 追认（按阈值口径收窄注记）② 不追认（则恢复「物理开启即接管」的旧口径） | **① 追认**——已按「物理开启**且释放速度 ≥ T** 时由物理接管；`v < T` 时逐字照旧」收窄三处注记（US-3 / NFR-2 / US-26）；**调整幅度最小化**（「正常放下」这一主流用法语义完全不变） | 按 ① 成文；各注记标「待用户追认」 |
 | **U-8** | **飞行边界口径**（本设计新增） | ① 当前屏工作区（不跨屏）② 逐屏 AABB + 空洞探测（承样本） | **①**——依据 = 与 US-9「散步不跨屏」同源（口径一致）+ ② 新增几何写模式撞 B03 冻结面且**无三屏实机**（不可验证风险） | 按 ① 成文；② 登记 O-1（后续面） |
 | **U-9** | **reduced-motion 下是否关闭挤压**（本设计新增） | ① 关闭 ② 保留 | **① 关闭**——依据 = 承 US-19 让步精神 + 样本同款取舍（`pet.ts:1052` 注释「reduce-motion 时跳过」） | 按 ① 成文（CSS 一条） |
+| **U-10** | **阈值 `T` 的默认取值与标定**（**本轮新增**；源 = 用户 2026-09-18 裁定） | ① 照搬样本值 500 px/s + 声明「待实机标定」+ 到期条件 ② 本仓另定值（须实机数据） | **①**——依据 = 无实机感受条件（三屏实机 T9 未验）⇒ 只给可调单一常量；标定路径与**到期条件**（用户实机感受一次后的裁定轮）成文于 §2.2.12 | 按 ① 成文；裁定只改常量一处，结构不动 |
 
 **open（UI / 交互决策未定，落档不自裁）**：
 
@@ -495,6 +548,7 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | O-8 | 观感差异 | 本批**不采用**样本的 `sideAllow`（身体贴边）语义 ⇒ 抛掷停止点比样本离屏缘略远（窗口矩形的透明留白） | 与散步口径同源（一致性优先）；是否采用待用户裁 |
 | O-9 | 观感交错 | 飞行期可能被 B19 工作档的「重断言」切走动作档（≤1 s） | 写权不受影响；待 B19 实施后实机看 |
 | O-10 | 有限情形 | 若起飞点因骑线推离落在工作区外（理论可达性低），首个积分步会把窗口钳回区间 = 一次小幅跳 | 设计不额外处理（首步钳入即恢复）；登记为已知限制 |
+| O-11 | 样本注释与实现不符 | 样本注释（`samples/dsh-pet/dsh-pet/src/shared/physics.ts:212-213`）称死区判定与初速 / 软上限「一体线性缩放（相对力度）」；实现（`:263-264`）却把固定常量 `DEAD_ZONE_SPEED` 与**已乘 `throwPower`** 的速度比较 ⇒ 死区在原始速度上随 p 反比变化，与注释相反 | 本仓按**实现口径**（§2.2.12）；样本为只读参考（R14）不改；将来改 `throwPower` 默认值时复核该口径 |
 
 ---
 
@@ -506,10 +560,10 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 |---|---|---|---|
 | AC1 | US-24 | 给定初速与边界：① 轨迹恒在 `[minX,maxX]×[minY,maxY]`；② 首次撞墙后 `|vx'| = 0.78|vx| ± 0.02`；③ 触地后 `vx *= 1 − 2.5·dt`；④ 序列在 ≤4 s 内出现 `atRest = true` | 桩测（纯函数逐条断言） |
 | AC2 | US-24 | `ceilingBounce = true` ⇒ `y` 在 `minY` 被夹且 `vy` 转正 ×0.78；`false` ⇒ `y < minY` 时**不夹不弹**（越界保持，仅重力回落） | 桩测 |
-| AC3 | US-24 | 空轨迹 / 末样本 age >150 ms / 窗口 span <20 ms / 峰值 <500 px/s / 端点位移 ≈0 ⇒ `null`；平滑甩动 ⇒ 方向符号正确、大小落在真值 ±60% 带内；任意输入 ⇒ `|v| ≤ 3600×throwPower` | 桩测（扫描） |
+| AC3 | US-24 | 空轨迹 / 末样本 age >150 ms / 窗口 span <20 ms / 端点位移 ≈0 ⇒ `null`（**四类**；低速不再判 null——§2.2.12）；平滑甩动 ⇒ 方向符号正确、大小落在真值 ±60% 带内；任意输入 ⇒ `|v| ≤ 3600×throwPower` | 桩测（扫描） |
 | AC4 | US-25 | `landingSquash`：`|vy| ≤ 300` ⇒ 0.8、`≥ 1500` ⇒ 0.55、区间内**单调不增**；`squashScale`：`u=0` ⇒ 1、`u=1` ⇒ 1（±0.12 过冲上界）、`u∈[0,0.45]` 单调递减；渲染面：`#pet-squash` 与 reduce-motion 分支在场（**目视项如实标注**） | 桩测 + 静态核对（+ 人工目视） |
 | AC5 | US-26 | ① `decideOwnership` 全 8 组合 ⇒ 恒取优先级最高者；② 物理 tick 体内 `getPetDrag()` 判定出现在任何 `setPosition` **之前**；③ 运行时：`drag-preempt` 之后无 `phys-tick … wrote=1` | 桩测 + 静态机检 + 日志面 |
-| AC6 | US-26 | armGate 9 条（G1–G9）逐条置假 ⇒ 逐条对应 `phys-stop reason` 且**零写入**；全通过 ⇒ `phys-arm` 行在场且 `pos` == `geom tag=drag-end` 行的 `pos` | 桩测（门函数）+ 日志面 |
+| AC6 | US-26 | armGate **10** 条（G1–**G10**）逐条置假 ⇒ 逐条对应 `phys-stop reason` 且**零写入**；全通过 ⇒ `phys-arm` 行在场且 `pos` == `geom tag=drag-end` 行的 `pos` | 桩测（门函数）+ 日志面 |
 | AC7 | US-26 | ① 符号级：物理 tick 体内 `petSavePos` / `petCalibrateSize` / `getSize` 零命中；② 符号级：`clearInterval` 先于停泊序列；③ 运行时：停泊点 `geom-fix reason=physics-rest` 零行、`pos-save` ≤1 行、尺寸型 `geom-fix` ≤1 行 | 静态机检 + 日志面 |
 | AC8 | US-27 | ① 托盘「设置」子菜单含该 checkbox 且 `checked === settings.get().petPhysicsEnabled`；② 切换后 `settings.json` 顶层键落盘（读回核对）；③ 默认值 == U-1 裁定值；④ 关闭 ⇒ `phys-*` 零行、无飞行 | 静态核对 + 实机（读回 `settings.json`） |
 | AC9 | US-28 | 降级 10 行（§2.2.10）逐行的**行为**（不起飞 / 就地停泊 / 零写入）与**日志** reason 一致；关闭态与今天逐位一致（几何 + 拖动面零 diff） | 桩测（门 / 停泊路径）+ 静态 + 日志面 |
@@ -518,8 +572,14 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | AC12 | NFR-20 | 核心档 require 面 = 零 `electron` / 零 `node:fs`；双环境导出在场；桩测末行 `pass/total PASS` 且 `total ≥ 40` | `node .thincoder/b20-pet-physics-stub.mjs`（亲跑） |
 | AC13 | NFR-21 | 四档（几何 ×2 / 链 ×2）与 `assets/**` 的 `git diff --stat` 为空；`package.json` 依赖段零 diff、`build.files` 增列 2 行；新档行宽 ≤300 / 行数 <500 / 文件头标准形 | 命令 + 静态核对（命令原文入批次档 §5） |
 | AC14 | NFR-22 | `pool.json` 零 diff（`weights.move = 0`）；`pet-chain*.js` 零 diff；`docs/design/PET-MULTIMONITOR.md` 零 diff；B19 相关面零 diff | 静态机检 |
+| AC15 | US-24、US-26（+ US-3 / NFR-2 的修订注记） | **门量** `v`（= 120 ms 窗内峰值分段速度）< `T` ⇒ ① `phys-stop reason=below-threshold` 在场；② 其后再无 `phys-tick … wrote=1` 行（物理面零写入）；③ 拖动循环的 `tick` 行在 `drag-end` 之后绝迹；④ 位置自 `drag-end` 后至多 1 次变动（= 冻结面 settle，与今天同形）⇒ **US-3 / NFR-2 逐字照旧** | 桩测（门）+ 日志面 |
+| AC16 | US-24 | `v ≥ T` ⇒ `phys-arm` 在场，随后按 §2.2.4 步进：撞墙 `\|vx'\|` = 0.78`\|vx\|` ±0.02、触地摩擦衰减、≤4 s `atRest`、轨迹恒界内 | 桩测 + 日志面 |
+| AC17 | US-24 | ① 阈值常量的**定义处**恰 **1** 处（其余按名引用、不重复字面值；机检 = 定义命中数 == 1）；② 其命名 / 注释标明量纲 px/s；③ 默认值 == §2.2.3 表值；④ §2.2.12 的「待实机标定 + 标定路径 + 到期条件」在场 | 静态机检 |
+| AC18 | US-24 | 边界两支同时断言：门量 `v = T` ⇒ 起飞（**闭区间**）；`v = T − 1 px/s` ⇒ 不起飞（`below-threshold`） | 桩测 |
+| AC19 | US-24 | **静默放置**：松手前 120 ms 窗内**端点位移 ≤ 5 px** ⇒ 不起飞（`phys-stop reason=quiet-dwell`）+ 物理面零写入 + ≤200ms 静止；与「位移 > 5 px 且 `v < T`」两支**可区分**（后者 = `below-threshold`） | 桩测（门）+ 日志面 |
+| AC20 | US-24 | **判据量 = 速度（判别力断言）**：同一门量 `v`、末段加速度 **+ / −** 两例 ⇒ 门判据结果**相同**；门函数入参 = 标量速度（体内零加速度项）；`ACCEL_REF` / `ACCEL_GAIN_MAX` 的常量行标「不进判据」 | 桩测 + 静态机检 |
 
-### 3.2 用例表（TC-1…TC-29）
+### 3.2 用例表（TC-1…TC-34）
 
 | TC | 类型 | 输入 | 期望输出 | AC |
 |---|---|---|---|---|
@@ -532,16 +592,16 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | TC-7 | 边界 | `gravity = 0`（样本声明为合法值）、水平轻抛 | 不落地的极限情形由 **5 s 硬上界**收口（`timeout`），状态清空 | AC11、AC9 |
 | TC-8 | 边界 | `dt = 0.5 s`（卡顿巨帧） | `dt` 夹到 0.05 ⇒ 单步位移有界、无跳变 | AC1 |
 | TC-9 | 边界 | 极端输入 100000 px/s | 软上限 ⇒ `|v| ≤ 3600 × throwPower` | AC3 |
-| TC-10 | 边界 | `throwPower = 2` | 软上限 7200；死区判定按同一比例（乘 p 后判定） | AC3 |
+| TC-10 | 边界 | `throwPower = 2` | 软上限 7200；**门判据不乘 p**（原始峰值速度判）⇒ 门槛不随 p 变化，`p` 只放大飞行初速 | AC3、AC17 |
 | TC-11 | 异常 | 空轨迹 | `estimateReleaseVelocity = null` ⇒ 不起飞（`reason=no-trail`） | AC3、AC9 |
 | TC-12 | 异常 | 末样本 age = 200 ms（松手前停顿） | `null` ⇒ 温柔放下 | AC3、AC9 |
 | TC-13 | 异常 | 采样窗口 span = 10 ms | `null`（窗口太短） | AC3 |
-| TC-14 | 异常 | 峰值 300 px/s（轻推） | `null`（死区） | AC3 |
+| TC-14 | 异常 | 峰值 300 px/s（轻推） | 估计**非 null**（小初速）⇒ 起飞门拒绝（`below-threshold`） | AC3、AC15 |
 | TC-15 | 异常 | 端点位移 ≈0（纯抖动） | `null` | AC3 |
 | TC-16 | 正常 | 平滑甩动 1200 px/s（合成轨迹） | 估计方向正确、大小在 ±60% 带内 | AC3 |
 | TC-17 | 正常 | `decideOwnership` 全 8 组合 | 恒取优先级最高者（drag ≻ physics ≻ wander） | AC5 |
 | TC-18 | 边界 | 物理 tick 在 `dragActive = true` 下进入 | 立即停（不写位置），日志 `drag-preempt` | AC5 |
-| TC-19 | 边界 | armGate 9 条逐条置假 | 逐条对应 `phys-stop reason`、零写入、窗口位置不变 | AC6、AC9 |
+| TC-19 | 边界 | armGate **10** 条逐条置假 | 逐条对应 `phys-stop reason`、零写入、窗口位置不变 | AC6、AC9 |
 | TC-20 | 正常 | 正常松手（无校正、无逃跑、可估初速） | `phys-arm` 行在场，`pos` == 松手收口后位置 | AC6 |
 | TC-21 | 异常 | 松手命中贴边挣脱分支（`moveTimer !== null`） | 不起飞（`reason=wander-busy`）；既有挣脱行为不变 | AC6、AC9 |
 | TC-22 | 正常 | 飞行至 `atRest` | 停循环 → 停泊序列各 ≤1 次；tick 内零落盘零尺寸；`reason=atRest` | AC7、AC10 |
@@ -552,10 +612,18 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | TC-27 | 边界 | 飞行超过 5 s | 强制停泊（`reason=timeout`）+ 状态清空 | AC11、AC9 |
 | TC-28 | 异常 | 飞行中起拖 | ≤1 tick 内停物理、零写入、拖动手感不变 | AC5、AC9 |
 | TC-29 | 异常 | 飞行中显示器事件 | 物理先停（零写入）；随后几何路径做 settle / 校准 / 落盘 | AC7、AC9 |
+| TC-30 | 异常 | 缓放：连续慢拖后松手（估计 `v = 300 px/s`） | 不起飞（`phys-stop reason=below-threshold`）；物理面零写入；位置自 `drag-end` 后 ≤1 次变动；拖动循环行绝迹 | AC15 |
+| TC-31 | 正常 | 快甩：估计 `v = 1200 px/s` | `phys-arm` ⇒ 抛物线 ⇒ 反弹 ⇒ 摩擦衰减 ⇒ ≤4 s `atRest` | AC16 |
+| TC-32 | 边界 | 扫描阈值常量的定义处 | 仓内**定义恰 1 处**；量纲注释在场；值 == §2.2.3 表值 | AC17 |
+| TC-33 | 边界 | `v = T`（恰在阈上） | **起飞**（闭区间） | AC18 |
+| TC-34 | 边界 | `v = T − 1 px/s` | **不起飞**（`below-threshold`） | AC18 |
+| TC-35 | 异常 | **静默放置**：先快拖 400 px/s → 停 130 ms → 松手（末 120 ms 窗位移 ≤5 px） | 不起飞（`phys-stop reason=quiet-dwell`）；物理面零写入；位置自 `drag-end` 后 ≤1 次变动 | AC19 |
+| TC-36 | 边界 | 末 120 ms 窗位移 = 6 px 且门量 `v = 300 px/s` | 不起飞（`below-threshold`）——与 TC-35 的两支**可区分** | AC19、AC15 |
+| TC-37 | 边界 | 同一门量 `v = 800 px/s`；末段加速度 **+ / −** 两例（合成轨迹） | 门判据结果**相同**（= 速度口径；加速度不参与） | AC20 |
 
 ### 3.3 验证手段、仪表与限制
 
-**手段**：① 桩测（`node .thincoder/b20-pet-physics-stub.mjs` ⇒ 末行 `pass/total PASS`）——装载真实核心，覆盖 AC1–AC7 / AC9–AC12；
+**手段**：① 桩测（`node .thincoder/b20-pet-physics-stub.mjs` ⇒ 末行 `pass/total PASS`）——装载真实核心，覆盖 AC1–AC7 / AC9–AC12 / **AC15–AC20**；
 ② 静态机检（四档 `git diff --stat` 零 diff · `package.json` 依赖段零 diff · 行宽行数 · 符号级顺序与零命中核对）；
 ③ 日志面（`BIGFISH_PET_DEBUG=1` ⇒ `userData/pet-physics.log` + `pet-geometry.log` + `pet-drag.log`；行格式见 §2.2.11）；
 ④ CPU 实测（`process.getCPUUsage()`，口径同 NFR-1）。
@@ -574,4 +642,6 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 | 日期 | 变更点 |
 |---|---|
 | 2026-09-18 | 建档（B20）：落点判定（新建本档，四候选逐条否决）· 需求回指（US-24…US-28 / NFR-18…NFR-22）· 勘察实测（三写者 / 几何纪律原句 / 样本对照表 / 测试面 / B18-B19 交互面）。 |
-| 2026-09-18 | 同上（续）：选型对比 A–G 七组 · 契约（仲裁状态机 + armGate / 参数表 / 步进 / 初速 / 停泊 / 挤压 / 开关 / 交互 / 降级 / 日志）· 受影响文件 15 项 · DD-1…DD-14 · 冲突点逐条证明 8 条 · U-1…U-9 与 open-1…open-3 · O-1…O-10 · AC1–AC14 · TC-1…TC-29。依据 = `docs/batches/B20-pet-physics.md` §1（立案）。 |
+| 2026-09-18 | 同上（续）：选型对比 A–G 七组 · 契约（仲裁状态机 + armGate / 参数表 / 步进 / 初速 / 停泊 / 挤压 / 开关 / 交互 / 降级 / 日志）· 受影响文件 15 项 · DD-1…DD-14 · 冲突点逐条证明 8 条 · U-1…U-9 与 open-1…open-3 · O-1…O-10 · AC1–AC14 · TC-1…TC-29（**本行计数 = as-of；现行见下行起**）。依据 = `docs/batches/B20-pet-physics.md` §1（立案）。 |
+| 2026-09-18 | **修正轮（起飞阈值口径）**：新增 §2.2.12 起飞门判据（`v` / `T` / 闭区间 / 待实机标定）· armGate 9 → **10** 条（G10，`below-threshold`）· 阈值收敛为单一常量 `TAKEOFF_MIN_SPEED` · 新增选型 H 组 / DD-15 / U-10 / O-11；**AC 14 → 18 · TC 29 → 34**。 |
+| 2026-09-18 | **修正轮补正（判据量 = 速度）**：§2.2.12 加「判据量 = 速度 + 静默规则」块 · 新增选型 **I 组**（速度 vs 加速度；峰值 vs 加权 vs 末瞬）· **DD-16** · 常量 +2（`GATE_WINDOW_MS` / `QUIET_SPAN_MAX_DIP`）· reason 词表 +`quiet-dwell`（**14** 个）· **AC 18 → 20 · TC 34 → 37**。依据 = 主 agent 追加裁定 2026-09-18（用户已委托）。 |
