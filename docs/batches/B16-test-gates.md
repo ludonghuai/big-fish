@@ -294,6 +294,79 @@ VERDICT: pass
 
 ---
 
+### §5 实施记录（eng-coder，2026-09-18）
+
+**交付形态**：新建 13 档 + 修改 4 档（计划内 3 档 + 修偏 1 档 `shell-notify.js`）+ 1 处基线外撞面（见「上报」）。实施序 = 任务书 §2.2-3 七步全走（gates/** → 当日实测 baseline → test-run + slow 改标 → 集成三层 → package.json scripts → gates.yml → 本地取证）。
+
+**新建 13 档**（行数实测）：
+- `scripts/gates/lib.js`（177 行）扫描面发现（跳过清单唯一权威处，含 `.test-dsh-home` 前缀）+ 豁免面 + require 解析 + 基线载入。
+- `scripts/gates/checks.js`（240 行）六条判据实现；参数化 root/baseline（自证夹具注入临时根）。
+- `scripts/gates/selftest.js`（260 行）TC-B16-01…14 结构面自证（os.tmpdir() mkdtemp 夹具 + try/finally 清理）。
+- `scripts/gates/run.js`（119 行）入口：自证 → 六判据 → `GATE lint PASS checks=6 selftest=14/14`；退出码 0/1/2 fail-closed。
+- `scripts/gates/baseline.json`（38 行）当日实测冻结：width 15 档/93 行（含 B20 批次档 4 行）· fanout 6 档 · cycles 0 · assemblyExempt 2 档 + expires 逐条写死。
+- `scripts/test-run.js`（115 行）单元层运行器：档发现 + BIGFISH_TEST_LAYER 注入（命令面无层 flag）+ TAP duration 解析 + SLOW-UNREGISTERED 硬红。
+- `scripts/test-integration.js`（78 行）集成层运行器：逐场景 spawn + --only + 摘要行（SCENARIO 行运行器统一打印，S3 子态行场景打印）。
+- `tests/layer.js`（26 行）slow()/isFastLayer()。
+- `tests/integration/harness.js`（170 行）隔离 userData/DSH_HOME + settings 种子 + 桩启停 + 里程碑等待 + 杀树 + `BIGFISH_TEST_NO_NOTIFY` 注入（修偏后）。
+- `tests/integration/s1-app-start.scenario.js`（68 行）/ `s2-pet-main-path.scenario.js`（90 行）/ `s3-update-gate.scenario.js`（96 行）。
+- `.github/workflows/gates.yml`（28 行）windows-latest + push/PR/dispatch + 三步只调 npm script（无裸命令）。
+
+**修改 4 档**：
+- `package.json` +4 scripts（lint/test/test:full/test:integration，字面值照任务书）；依赖块零 diff。
+- `tests/b12-plugin-guards.test.js` +2 行（TC-82 机械改标 slow()，正文零改动；491→492 行，任务书预计 493 = 计数口径差（末行换行），实际 diff +2 行）。
+- `tests/update-stub.mjs` +24 行：`?latest=<version>` 只读参数（registryMetaFor；缺省逐字返回 REGISTRY_META = 零行为变更）。
+- `shell-notify.js` +3 行（**修偏轮，见下**）：BIGFISH_TEST_NO_NOTIFY 开关 + notify() 首行短路。
+
+**修偏轮 1（实机发现 → 测试卫生，2026-09-18）**：用户桌面弹真实通知「发现 Harness 新版本 v0.1.9」——S3b 桩 latest=0.1.9 让真启动 app 走 showHarnessUpdateBubble → notifier.notify → new Notification().show()（`shell-notify.js:49-58` notify = 通知唯一出口）✗。
+- **改前**：场景无通知抑制 ⇒ 真通知弹出（且真实注册表无 0.1.9，误导用户以为有真更新）。
+- **改法**：`shell-notify.js` 增测试开关 `BIGFISH_TEST_NO_NOTIFY=1`（启动时读一次，notify() 首行短路；默认关 = 生产零影响）；`harness.js scenarioEnv` 注入该 env（S1/S3 真启动场景全带）。notifier 无注入面（shell-update.js:12 顶层 require）⇒ 注入须改 main.js（B20 修偏在飞，禁碰）⇒ 按主 agent 明示手段 ② 落。
+- **判据（改后实测）**：① `npm run test:integration` 三场景全 PASS（S3b PASS + 断言面 = 日志行，不依赖通知 ⇒ AC-B16-4 不受影响）；
+  ② 真实 `%APPDATA%\Bigfish\updater.log` mtime 停在 2026-09-18T07:40:38Z（用户自己手动检查的时点），修后整轮重跑 08 时段零新增行
+  ⇒ userData 隔离成立（隔离性再核通过：改前真实 updater.log 今天 07 时段 15 行全为 reason=manual/latest=0.1.5-rc.2 = 用户手动操作，
+  无任何 reason=startup/0.1.9 行）；③ 45 用例回归绿；④ `node --check shell-notify.js` 过。
+
+**本地三条门终态（as-of 2026-09-18，含内部审计修正后）**：
+- `GATE lint FAIL checks=6 selftest=14/14`——**红仅来自基线外撞面**（见上报；3 档在飞批次新档超宽，本批自身 0 新增违规）。
+  六条 CHECK：syntax 62 档 0 失败 / width 红 3 档（均为在飞批次档）/ lines PASS（near=3：market.js 500 · updater.js 497 · b12 492）/
+  dag 0 环 / fanout frozen=6 / **assembly PASS (13/13)** + exempt=2（审计 F2 修正：摘要串改回设计档 AC-B16-8 钉死串形，免检另计一行）。
+  本批 11 个新 .js 全部首行 'use strict' + JSDoc 含设计档全路径指针 + 行宽 0 违规 + 行数全部 ≤500（门禁扫自己过）。
+- `GATE test:full PASS pass=45 fail=0 skipped=0 ms=1476`；`GATE test PASS pass=44 fail=0 skipped=1 ms=651`（TC-82 skip）。
+- `GATE test:integration PASS scenarios=3 pass=3 fail=0`（S1/S2/S3a/S3b 全 PASS）。
+
+**内部审计与自修正（交付前，同日）**：内部 explore 偏离审计发现 2 项，均已当场修复：
+- **F1**：本档 §5 初稿两行超宽（L323/L330，367/556 字符）——门禁扫自己撞上（审计时 lint 实为 4 档红而 §5 上报只计 3 档）⇒ 已折行，
+  §5 段超宽归零（实测复扫 0 行）；「上报 3 档」现在准确。
+- **F2**：run.js 摘要串 `(15/15)` ≠ 设计档 AC-B16-8 钉死的 `(13/13)`（免检计入致串形漂移，§6 核销按设计串 grep 会落空）⇒ 已改
+  `(N/N)` 动态取 init 绑定数（当前实测 13）+ 免检另计一行 `CHECK assembly exempt=2 …`，与设计串同形且不陈旧。
+
+**⚠️ 上报（基线外撞面，须主 agent 裁定）**：lint 门 width 判红 3 档 = 在飞批次在本批基线冻结后落盘的新档超宽行——
+`docs/batches/B26-pet-feel.md`（13 行：L32/L193/L197-L205/L207/L208）· `docs/design/PET-ANIMATION.md`（3 行：L841/L966/L1048）·
+`docs/design/PET-MOVEMENT.md`（6 行：L199/L565/L622/L623/L665/L756）。
+git log 佐证 = B26 立案 52d4c46（15:10）+ B26 设计落档 bfa5bb1（15:18）+ B21 需求档 7f41764 + B20 收口 3ef561d（14:56）——
+均在本批基线实测（14:42 前后）之后、非本批产出。基线 hardRule（A.2.2.6 判定规则 1：不得冻结新增违规）⇒ 不入 baseline.json；
+判红是「新增即拦」的正确行为 ⇒ 遵「不静默放行」纪律上报，处置选项：① 由归属批次清偿（B26/B21 落超宽行归 T13 族）
+② 主 agent 裁定重取当日实测基线（须按判定规则 3 登记）③ 其它。本批不自行选 ①②③。
+
+**实机项状态（§2.7）**：R1 CI 真绿 = 未证（须一次真实 push/PR，主 agent 核销）；R2 集成层 CI runner 可跑性 = 未证（本地三场景全绿；CI 面首跑后判）。R3 基线 = 已按当日实测建档；基线后新落超宽见上「上报」。R4 market.js 贴线 = 未触碰 ✓。
+
+**自证夹具（A.2.2.2）**：mkdtemp(os.tmpdir()/b16-gate-*) + 判据函数参数化 root/baseline + try/finally rmSync——夹具根不在仓库根下 ⇒ 不在扫描面；开发中曾建 `.thincoder-s2-probe.js`（仓库根探针）已删净（git status 零残留）✓。
+
+**内部代码评审轮（交付前，advisor 同步短轮，同日）**：评审超时（600 s 预算耗尽于 11 轮工具调用）但产出已验证发现；提炼后 4 项当场修复、3 项处置如下：
+- **修 ①（D③ 陈腐免检检测缺失）**：设计 A.2.2.6 判定规则 2 明文「免检档已获 init ⇒ 红」未实现——原实现里免检档获 init 后走 calls===1 ⇒ ok++ 静默放行。
+  已修（checks.js checkAssembly）：免检条目两态陈腐检测（已不在绑定面 / 已获 init 调用 ⇒ `VIOLATION assembly stale-exempt`）。
+- **修 ②（场景日志卫生）**：S2 从不清理（成功也不清）+ 三场景不在启动时清日志 ⇒ 失败重试可被上一轮陈旧行满足（假 PASS 面，append 日志全文 match）。
+  已修：harness.scenarioEnv 启动时清空观测日志（bigfish.log / updater.log / pet-geometry.log）+ S2 成功后 cleanupScenario（对齐设计「成功后清理」）。
+- **修 ③（test-run fail-open）**：TAP 摘要解析不出用例数时原实现可打出 `GATE … PASS pass=0`（报告器格式漂移 ⇒ 假绿）。已修：`tap-summary-unparseable` ⇒ 退出 2（fail-closed）。
+- **修 ④（init 计数按行不按次 + 注释失实）**：同行双调用漏计（`test()` 布尔计行）；注释谎称「带 g 标志」。已修：逐行 `match(g)` 按出现次数计。
+- **修 ⑤（S2 无内部上限）**：设计 A.2.2.4 S2 上限 60 s 无强制（仅运行器 90 s 外层）。已修：whenReady 内 60 s 超时定时器判红。
+- **修 ⑥（S3b 负向断言 TOCTOU）**：install-phase 缺席断言紧随正向行 ⇒ 异步自动安装可逃窗。已修：负向断言前 3 s 沉降窗。
+- **修 ⑦（electron require 无兜底）**：test-integration require('electron') 裸崩则无 GATE 行。已修：try/catch ⇒ `FAIL reason=electron-not-resolvable` 退出 2。
+- **不修（如实报）**：a) `# SKIP` 正则——复核原实现即带空格（`/# SKIP/`），advisor 转述有误，非缺陷；
+  b) killTree POSIX 面回落单杀（未 detached ⇒ 组杀恒 ESRCH）——CI=windows-latest、主战场 Windows，POSIX 面为 best-effort
+  （设计明文「Windows taskkill /T /F；POSIX 进程组」实现形态一致）；c) run.js 摘要行硬编 14（selftest TC 数）——TC 数变才需同步，
+  属低危常量；d) CI 冷 runner 可跑性（dsh-bundle 安装面）= §2.7 R2 实机项，首跑后判，不在本地证。
+- **评审后终态复跑**：三场景全 PASS（S1/S2/S3a/S3b + GATE test:integration PASS scenarios=3 pass=3 fail=0）——S2 曾因修偏过程中的编辑失误（let→const 赋值冲突）短暂 FAIL 一次，当即修复（const firstLog / const log 两处独立声明）并复跑绿。
+
 ## §6 验收核销（主 agent）
 
 <!-- 由主 agent 填 -->

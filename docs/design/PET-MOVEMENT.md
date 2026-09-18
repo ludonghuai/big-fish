@@ -196,7 +196,7 @@
 
 | # | 候选方案 | 判据逐项评估 | 取舍（选定代价 / 权衡） | 结论 |
 |---|---|---|---|---|
-| 1 | **锚点常数**：`FEET_INSET_DIP = 26`（= 窗高 270 − `PET_FEET_Y` 244）⇒ 地面 = `maxY + 26` | 与渲染层**同源**（视频身体盒下沿 / 命中区下沿 / `#pet{bottom:26px}` 三处同线）：✅ · 单一常量可机检：✅ · 零新增依赖 / 零渲染层改动：✅ · 安全侧（声明身体盒 = alpha 父集 ⇒ 不越沉）：✅ | 代价 = 残留 ≤ ~4 DIP（声明盒与实测 alpha 的差，见 O-13）；用户实机仍见缝隙时调一处常量 | **选定**（DD-17） |
+| 1 | **锚点常数**：`FEET_INSET_DIP = 26 + 4 = 30`（锚点 = 窗高 270 − `PET_FEET_Y` 244；余量 = 实测 alpha 残差取整）⇒ 地面 = `maxY + 30` | 与渲染层**同源**（身体盒 / 命中区 / `#pet{bottom:26px}` 同线）✅ 单一常量可机检 ✅ 踩实优先：视频与 PNG 动画帧真踩实（残留 ≤ 0.5 DIP）✅ | 代价 = 待机 PNG 越沉 ≈4 DIP（O-13）；两分量各一处常量、可逆 | **选定**（DD-17；修正轮 1 代裁） |
 | 2 | **池帧内容盒实测**（`mediaBox().bodyBottom` / `pool.body`） | 与候选 1 **等值**（该函数由构造把身体盒下沿钉在 `feetY`，与池值无关）⇒ 信息量不增 ❌ · 多一条「需池装载结果」的依赖 ❌ | — | **否决**——等价但更重 |
 | 3 | **起飞时一次性校准**（渲染层实测内缩量并经新 IPC 上报） | 需新增 IPC + `pet-preload.js` + 渲染层测量（触冻结面 `pet-chain.js` / `pet.js`）❌ · 可得量仍是 244（身体盒口径）——真实 alpha 需逐帧解码 ⇒ 开销不可接受 ❌ · 引入「飞行中边界可变」的耦合 ❌ | — | **否决**（增益 ≤4 DIP、成本与风险均显著更大） |
 | 4 | **改 `#pet` 的 `bottom`**（让 PNG 通道的可见脚底 = 窗口下沿） | 碰渲染层 ❌ · **两通道分歧**（视频通道由链按 `PET_FEET_Y` 定位，改 CSS 只动 PNG ⇒ 两通道脚底不再同线）❌ · 待机帧（160×160 满幅）与动画帧（240×220 / 下边距 4 px）内缩量不同 ⇒ 需逐帧校准 ❌ | — | **否决**——相抵「不动渲染层」 |
@@ -331,8 +331,8 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 | `GATE_WINDOW_MS` | 120 ms | 起飞门窗（**峰值窗与静默窗同窗**）——取自裁定给的 80–120 ms 范围上端；可调、**待实机标定** |
 | `QUIET_SPAN_MAX_DIP` | 5 px | 静默判据：窗内端点位移 ≤ 该值 = 「位移接近 0」⇒ 判放置；5 px 与既有「位移 > 5px 判为拖动」口径**同源**（`pet.js:121`） |
 | `FEET_ANCHOR_INSET_DIP` | **26**（DIP） | **B26**：渲染层可见身体锚点的内缩量 = 窗高 270 − `PET_FEET_Y`(244)（`pet-chain-core.js`）+ `#pet { bottom: 26px }`（`pet.html`）——两者同源（CSS px = DIP，承 §2.2.6）；机检等式见 §3.1 AC21 |
-| `FEET_ALPHA_MARGIN_DIP` | **0**（DIP；本批值） | **B26**：alpha 残差补偿量（实测参考值 = 视频 ≈4.2 / PNG ≈3.6 DIP，见 O-13）；本批取 **0** = 只对齐锚点、不越沉；调值 = 一处常量 |
-| `FEET_INSET_DIP` | = 上两者之和 = **26**（DIP） | **B26**：地面增量的**唯一消费值**（`groundBounds` 与散步 y 归位上界同取它） |
+| `FEET_ALPHA_MARGIN_DIP` | **4**（DIP；本批值 = **修正轮 1 主 agent 代裁**，原 0） | **B26**：alpha 残差补偿量（实测：视频 ≈4.2 / PNG 动画帧 ≈3.6 / 待机 PNG = 0，见 O-13）；取两通道残差的**较大者**取整 ⇒ 视频与 PNG 动画帧**踩实**（|残留| ≤0.5 DIP），代价 = 待机 PNG 越沉 ≈4 DIP。**回正路径 = 本表一处常量改 0**（结构与判据不动） |
+| `FEET_INSET_DIP` | = 上两者之和 = **30**（DIP） | **B26**：地面增量的**唯一消费值**（`groundBounds` 与散步 y 归位上界同取它；落地等式见 §2.2.13 / AC21③） |
 
 **U-2 口径（本轮修正）**：**已裁定 = ② 本仓调**（用户 2026-09-18 原话「先做成 B 吧，不行再调整手感」）——`restitution` 由样本 0.78 调为 **0.55**（其余四项照搬样本）；参数集中一处 ⇒ 后续单项调值只改本表数值、结构不动（差异登记 = O-12；静止时长判据的同源重算 = 批次档 §2.12）。
 
@@ -388,7 +388,7 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 
 **不变量（可机检；本轮修正）**：
 - **飞行期轨迹恒在界内，且不依赖起飞点**——由 §2.2.4 的钳入（`x` / `y` 逐帧夹回区间，含上条的强制落地）保证 ⇒ **收口点必在区间内**；区间 = `[minX, maxX] × [minY, maxY + FEET_INSET_DIP]`（**B26 面**的地面口径，§2.2.13）；
-- 由上行 ⇒ 停泊点的 `petSettlePos` 结果恒为 `kind='none'`（**零 `geom-fix reason=physics-rest` 行**）；该行若出现即说明边界 / 几何异常——属**报告项**（不静默）；B26 面的地面位置（标称矩形越出工作区下沿 26 DIP）**不破坏本条**：`petSettlePos` 的可见性判据是**中心点**（`petIsVisible`）⇒ 地面位置照常判可见、零改写（见 §2.2.13 / O-14）；
+- 由上行 ⇒ 停泊点的 `petSettlePos` 结果恒为 `kind='none'`（**零 `geom-fix reason=physics-rest` 行**）；该行若出现即说明边界 / 几何异常——属**报告项**（不静默）；B26 面的地面位置（标称矩形越出工作区下沿 30 DIP）**不破坏本条**：`petSettlePos` 的可见性判据是**中心点**（`petIsVisible`）⇒ 地面位置照常判可见、零改写（见 §2.2.13 / O-14）；
 - **起飞点本身可能落在区间外**（US-2 允许拖出屏 + B03 settle 只保**中心点**可见）⇒ 由 §2.2.5 第 7 条的起飞归一化就地钳入（首帧至多一次位移，登记为已知限制 O-10）。
 
 **散步续接**：本模块**不调度散步**——飞行前的 `scheduleWander()` 计时器由冻结面在松手时已排（15–35 s）；若飞行中到期，`doWander` 守卫（新增条件）自行重排（既有自愈）。
@@ -486,21 +486,35 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 
 #### 2.2.13 B26 面：落地口径（可见脚底）—— F2 / US-24
 
-**口径（本面唯一权威句）**：物理地面 = **可见身体底沿** = 窗口矩形下沿 **上** `FEET_INSET_DIP`（DIP）；原「窗口矩形下沿」口径（§2.2.4 / DD-6）自本面起只作 `maxY` 的中间量，**不再是地面**。
+**口径（本面唯一权威句）**：物理地面 = **可见身体底沿** = 窗口矩形下沿**下** `FEET_INSET_DIP`（DIP）；原「窗口矩形下沿」口径（§2.2.4 / DD-6）自本面起只作 `maxY` 的中间量，**不再是地面**。
 
 **常量与契约**
 
-- 常量（`pet-physics-core.js`；逐值见 §2.2.3 本仓新增表）：`FEET_ANCHOR_INSET_DIP = 26` · `FEET_ALPHA_MARGIN_DIP = 0`（本批）· `FEET_INSET_DIP` = 两者之和 = **26**；
+- 常量（`pet-physics-core.js`；逐值见 §2.2.3 本仓新增表）：`FEET_ANCHOR_INSET_DIP = 26`（渲染层锚点内缩）· `FEET_ALPHA_MARGIN_DIP = 4`（实测 alpha 残差补偿，**修正轮 1 主 agent 代裁**；回正路径 = 改 0）· `FEET_INSET_DIP` = 两者之和 = **30**（地面增量的唯一消费值）；
 - 纯函数：`groundBounds(bounds)` ⇒ `{ ...bounds, maxY: bounds.maxY + FEET_INSET_DIP }`（`minX` / `maxX` / `minY` 逐字不变）；
-- **消费点两处、同一取值**（地面单一口径）：① 飞行 bounds（`shell-pet-physics.js` 的 `evaluateArm`）；② **散步段起点**的 y 归位上界（`shell-pet.js` 的 `doWander`）——它是①的必要配套：否则落地后的 y 会被散步拉回未补偿区间（26 DIP 上跳）；
+  - **空值契约（修正轮 1 #4 补）**：`groundBounds(null) ⇒ null`（与 G8 `no-bounds` 同源）——`petWorkAreaBounds` 的短路口径 = 「返回 null ≠ 位置为零，调用方必须跳过写入」。
+    飞行路径的 bounds 由 `win && !win.isDestroyed() ? … : null` 派生（`shell-pet-physics.js:119`）⇒ 照旧落 G8；散步侧先判空（`shell-pet.js:307`）。**桩测断言面 = AC21①**（`groundBounds(null) === null`）。
+- **消费点两处、同一取值**（地面单一口径）：① 飞行 bounds（`shell-pet-physics.js` 的 `evaluateArm`）；② **散步段起点**的 y 归位上界（`shell-pet.js` 的 `doWander`）——它是①的必要配套：否则落地后的 y 会被散步拉回未补偿区间（30 DIP 上跳）；
 - **不变面**：`throwStep` 的边界语义（`b.maxY` 只是取值变了）· `armGate` 的 11 条（G8 照旧查 `petWorkAreaBounds !== null`）· 停泊序列（§2.2.6）· 几何层 / 渲染层 / `main.js` 零 diff（不新增注入面与依赖边）；
-- **与渲染层的同源声明**：`FEET_ANCHOR_INSET_DIP` 对齐的可见身体锚点 = `PET_FEET_Y = 270 − 26`（`pet-chain-core.js`；视频媒体盒与命中区都由它定位）+ `#pet { bottom: 26px }`（`pet.html`；PNG 通道）——三者同线；机检等式 = `FEET_ANCHOR_INSET_DIP === 270 − PetChainCore.PET_FEET_Y`（桩测、跨档核对，AC21①）。
+- **与渲染层的同源声明 + 落地等式（修正轮 1 #12 补来源与限制）**：`FEET_ANCHOR_INSET_DIP` 对齐的可见身体锚点 = `PET_FEET_Y = 270 − 26`（`pet-chain-core.js:16`；视频媒体盒与命中区都由它定位）+ `#pet { bottom: 26px }`（`pet.html:34`；PNG 通道）——三者同线。
+  - **机检等式（跨档核对）**：`FEET_ANCHOR_INSET_DIP === 270 − PetChainCore.PET_FEET_Y` ∧ `FEET_INSET_DIP === FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP`（AC21① / 注 A）。
+  - **`270` 的来源与限制（如实登记）**：唯一权威处 = `shell-pet-geometry.js:29` 的 `PET_SIZE_DIP.h`，但该档 `require('electron')`（`:7`）⇒ **node 不可装载**（桩测不能 require 它）。
+    与建窗同源的**可装载**实数源 = `pet.html:13-14` 的 `#pet-wrap { height: 270px }`（同档 `:34` 的 `#pet { bottom: 26px }`）⇒ 桩测从 HTML 取 270 / 26，与 `PetChainCore.PET_FEET_Y`（244）三方交叉核对。
+    残留弱点（明示）：`PET_SIZE_DIP.h` 与 `pet.html` 同时改而 `PET_FEET_Y` 未改时等式仍可通过（弱镜像面**收窄**，非消除）。
+  - **落地等式（随 `FEET_ALPHA_MARGIN_DIP` = 4 同步，修正轮 1；续做轮订正等价表述符号）**：落地后 `y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（±1 DIP；本批 = 工作区底边 **+4**）；等价表述 = 「可见脚底（`y + PET_FEET_Y −` alpha 残差）== 工作区底边」（踩实，|残留| ≤ 0.5 DIP，O-13）。
 
-**为什么取锚点口径（摘要；逐条否决见 §2.1 · J 组 / DD-17）**：① 渲染层的可见身体锚点已是**同源单一值** ⇒ 物理地面必须与它对齐（否则两套口径漂移）；② 取**声明身体盒**（= alpha 包围盒的安全父集）下沿 ⇒ 最坏是**残留悬空**（≤ ~4 DIP，O-13）而**不会越沉**（脚不踩进任务栏）；③ 单一常量、一处可逆（用户实机后一步回正）。
+**为什么取锚点 + 残差补偿（摘要；逐条否决见 §2.1 · J 组 / DD-17）**：① 渲染层的可见身体锚点已是**同源单一值** ⇒ 物理地面必须与它对齐（否则两套口径漂移）；② 在锚点上再补实测 alpha 残差的较大者（4）⇒ 可见脚底**真踩实**（视频 / PNG 动画帧 |残留| ≤ 0.5 DIP），舍去的代价 = 待机 PNG 帧越沉 ≈4 DIP（O-13，明示）；③ 两个分量各自一处常量、可逆（余量回正 0 = 只对齐锚点）。
 
-**明示例外（登记 O-14）**：停在地面时**标称矩形越出工作区下沿 26 DIP**（该段是脚底以下的透明区）——`petIsVisible`（**中心点**口径）与命中区（身体盒）照常成立；B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ 工作区」至此有**一处具名例外**。
+**明示例外（登记 O-14；修正轮 1 补 `bounds` 面）**：停在地面时**标称矩形越出工作区下沿 30 DIP**（该段是脚底以下的透明区）——`petIsVisible`（**中心点**口径）与命中区（身体盒）照常成立。
+B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ 工作区」至此有**一处具名例外**，且同一越界**也落在 `bounds` 面**（`petRectInside` 的两个消费方 = `petStraddleFix` / 拖动跨屏标记）。
+条件分支见 O-14（`workArea` 底边 == `bounds` 底边 + 混合 `scaleFactor` 重叠 ⇒ 骑线推离上推窗口）；**实机复核项 = 批次档 `docs/batches/B26-pet-feel.md` §2.7-2**。
 
 **口径生效点（四处，全取同一 `bounds` ⇒ 落地高度一致）**：反弹触地（`throwStep` 的 `y ≥ b.maxY`）· 5 s 超时强落（`stopFlight('timeout')` 的 `y = bounds.maxY`）· 静止收口（`atRest` 的贴地判据）· 起飞归一化钳入（§2.2.5 第 7 条）。
+
+**连带：NFR-19 的扫描集与两档判据（修正轮 1 #8 补）**：地面下移 `FEET_INSET_DIP`（30 DIP）⇒ 同一起点 / 初速的**首触竖直速度上移** ≈ `sqrt(v² + 2·1400·30)`（档界 800 → ≈ **851 px/s**，≈ +6%）⇒ 少数**边界例跨档**。
+
+- **处置**：① 档界值与 ≤4 s / ≤5 s 判据**数值不改**；② 扫描集（8 方向 × 4 速 × 4 起点 = 128 例）**必须在实施后按新地面重跑并重新登记**（登记行落批次档 §5；口径 = NFR-19 / AC11）。
+- **余量核算**：档内最坏实测 3.33 s（`e = 0.55`）⇒ 距 4 s 有 **0.67 s** 余量，足以吸收本次 +6% 的冲击速度变化 ⇒ **预期无新增逾期例**（**重跑为准**，不得以预期代替重跑）。
 
 ### 2.3 受影响文件全清单（行数 = 换行符口径，as-of 2026-09-18）
 
@@ -548,7 +562,7 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 | DD-14 | 生命周期三重停点（tick 首行守卫 + `before-quit` + 销毁路径） | 承 NFR-4「异常路径也清空」；不依赖单一路径 | 只靠 tick 自守（退出时可能残留定时器） |
 | DD-15 | 起飞阈值口径 = **显式起飞门（G10）+ 单一常量 `T`**（默认 500 px/s，待实机标定）；判据在**门量**上比较（**闭区间**；门量的定义见 DD-16 / §2.2.12） | 用户裁定要判别的正是「缓放 / 快甩」这一支 ⇒ 阈值必须**可见可测**（诊断行可区分）；单一常量保证机检（AC17）；值照搬样本避免凭空取值 | 内嵌死区过滤（原设计）/ 双阈值（§2.1 H 组逐条否决） |
 | DD-16 | **判据量 = 速度（不是加速度）**：门量 = 松手前 `GATE_WINDOW_MS`（120 ms）窗内的**峰值分段速度** + **静默放置规则**（窗内位移 ≤ `QUIET_SPAN_MAX_DIP` ⇒ 放置）；**加速度不得单独翻转门判据** | ① 动量 `m·v` 是一阶量；② 8 ms 采样下二阶差分放大抖动 ⇒ 误判「甩」；③ 放手前常先减速 ⇒ 以加速度判据会**判反**；④ 零额外数据面 | 加速度作主判据 / 末瞬单点 / 加权均值（§2.1 I 组候选 2–4） |
-| **DD-17** | **地面口径 = 可见身体底沿**（**B26**；`FEET_INSET_DIP = FEET_ANCHOR_INSET_DIP(26) + FEET_ALPHA_MARGIN_DIP(0)`，散步 y 归位同口径） | ① 与渲染层锚点**同源**（媒体盒 / 命中区 / `#pet{bottom:26px}`）；② 取声明身体盒（alpha 安全父集）下沿 ⇒ 最坏残留 ≤ ~4 DIP 而**不越沉**；③ 单一常量、可逆 | 按实测 alpha 下沿补偿 · 起飞时一次性校准 · 改 `#pet{bottom}`——§2.1 **J 组**否决 |
+| **DD-17** | **地面口径 = 可见身体底沿**（B26；`FEET_INSET_DIP = 26 + 4 = 30`，散步 y 归位同口径） | ① 与渲染层锚点**同源**（媒体盒 / 命中区 / `#pet{bottom}`）；② 补实测 alpha 残差较大者（4）⇒ 视频 / PNG 动画帧**真踩实**，代价 = 待机 PNG 越沉 ≈4 DIP（O-13）；③ 两分量各一处常量、可逆 | 逐通道 alpha 补偿（新 IPC / 渲染层测量）· 起飞时一次性校准 · 改 `#pet{bottom}`——J 组否决 |
 
 ### 2.5 与既有纪律 / 既有实现的冲突点核对
 
@@ -604,14 +618,21 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 | O-10 | 已知限制（**常规路径**，本轮修正） | 起飞点可合法落在飞行区间外（US-2 允许拖出屏 + B03 settle 只保**中心点**可见）⇒ §2.2.5 第 7 条在建 `s0` 时钳入；窗口有 ≤ 1 tick（16 ms）在区间外，位移由该 tick 的一次 `setPosition` 落地（**不新增写入时点**） | 已落档为已知限制；**不产生伪 Q 弹**。要求「拖出屏零位移」= 边界语义变更（中心点式边界），另批裁定 |
 | O-11 | 样本注释与实现不符 | 样本注释（`samples/dsh-pet/dsh-pet/src/shared/physics.ts:212-213`）称死区判定与初速 / 软上限「一体线性缩放（相对力度）」；实现（`:263-264`）却把固定常量 `DEAD_ZONE_SPEED` 与**已乘 `throwPower`** 的速度比较 ⇒ 死区在原始速度上随 p 反比变化，与注释相反 | 本仓按**实现口径**（§2.2.12）；样本为只读参考（R14）不改；将来改 `throwPower` 默认值时复核该口径 |
 | O-12 | 与样本的参数差异（**裁定面**） | 本仓 `restitution` **0.55**（登记作 ≈ 0.55）vs 样本 `assets/config.jsonc:92` 的 **0.78**（其余四项照搬） | **理由** = 手感裁定 B（玩偶感：首触后可感弹跳 1–2 下——实测弹跳高度 115 / 33 / 10 / 2 px；典型抛掷 3.0–3.8 s 停）；**可逆性 = 单常量、一处**（§2.2.3）；**待实机标定**（到期条件 = 用户实机感受一次后的裁定轮）；样本为只读参考（R14）不改 |
-| **O-13** | **B26 残差（观感面，发现即报告）** | 地面口径 = **声明身体盒**下沿（锚点 26 DIP）；实测的**真实可见底沿**比它再高一段（视频 ≈4.2 DIP / PNG 动画帧 ≈3.6 DIP、待机 PNG = 0）⇒ 补偿后观感残留 ≤ ~4 DIP 悬空 | **处置 = 登记 + 保留调值路径**：常量 `FEET_ALPHA_MARGIN_DIP` 一处；**细目与再测路径 = 本表后 O-13 段**；是否补偿由用户实机观感裁定 |
-| **O-14** | **B03 口径的具名例外（跨档指针）** | 本批地面口径使**停在地面时的标称矩形越出工作区下沿 26 DIP**（脚底以下为透明区）——与 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ 工作区」口径产生**一处具名例外**（该档零改动：本例外只发生在物理地面路径，且其判据 `petIsVisible` 是**中心点**口径 ⇒ 不触发回落） | 建议行（**地图与 B03 文档面归主 agent**）：B03 档下次修订时补一句「物理地面路径的 `+FEET_INSET_DIP` 例外」 |
+| **O-13** | **B26 残差与通道差（观感面；修正轮 1 改写）** | 地面 = **声明身体盒**下沿 + 残差补偿（`FEET_ALPHA_MARGIN_DIP` = **4**）⇒ 视频（≈4.2）与 PNG 动画帧（≈3.6）**真踩实**（|残留| ≤ 0.5 DIP）；**唯一反向通道 = 待机 PNG（残差 0）⇒ 越沉 ≈4 DIP** | **登记 + 保留调值路径**：常量一处（**回正 0** = 只对齐锚点、全通道不越沉）；细目 = 本表后 O-13 段；是否接受 4 DIP 越沉由用户实机观感裁定（批次档 §2.10 U 项） |
+| **O-14** | **B03 口径的具名例外（跨档指针；补 `bounds` 面）** | 停在地面 ⇒ 标称矩形越出工作区下沿 `FEET_INSET_DIP` = 30 DIP（透明区）⇒ 与 `PET-MULTIMONITOR.md` §2.3.1 / §2.3.6「标称矩形 ⊆ 工作区」有**一处具名例外**；同一越界也落在 `bounds` 面（细目 = 本表后 O-14 段） | **建议行**（B03 文档面归主 agent）：B03 下次修订补「`+FEET_INSET_DIP` 例外」；实机复核 = 批次档 §2.7-2 |
+| **O-15** | **初始 / 找回落点与物理地面不同线**（登记 + 显式取舍） | `petDefaultPos()` = `bounds.maxY − 24`（`shell-pet-geometry.js:134`）供存档回落（`:160-164`）与找回（`shell-pet.js:146-153`）；救援钳入用未补偿上界（`:126`）⇒ 落点脚底比工作区底边高 ≈50 DIP | **本批不动**（改 = 动 B03 落点口径）；实机目视 = 批次档 §2.10.4 |
 
-**O-13 细目（实测源与再测路径；B26）**
+**O-13 细目（实测源、补偿量与再测路径；B26 / 修正轮 1 更新）**
 
-- **视频通道**：B18 §5.2 探针实测首帧 alpha 包围盒 = 画布 `y[63,329]`，而声明盒 `y1 = 335` ⇒ 差 6 画布 px × `scale` 0.70175 ≈ **4.2 DIP**（参考帧 = 池首段 `待机呼吸休闲` 首帧；各段 alpha 下沿未逐段实测）。
-- **PNG 通道**：动画帧（240×220）实测透明下边距 **4 px** ⇒ `height:200px` 时 ≈ **3.6 DIP**；待机帧 `assets/pet/idle.png`（160×160）= 满幅 ⇒ 0。
-- **调值 / 再测路径**：`FEET_ALPHA_MARGIN_DIP` 一处（0 → 4 则按实测补偿；须同步 §2.2.3 表值与 §3.1 AC21① 的等式解释）；再测 = `npx electron probe-pet-media.js`（打 alpha 包围盒）/ PNG alpha 解码（逐段）。
+- **视频通道**：B18 §5.2 探针实测首帧 alpha 包围盒 = 画布 `y[63,329]`，而声明盒 `y1 = 335` ⇒ 差 6 画布 px × `scale` 0.70175 ≈ **4.2 DIP**（参考帧 = 池首段 `待机呼吸休闲` 首帧；各段 alpha 下沿未逐段实测）⇒ 本批取补偿量 **4**（取整、略欠）⇒ 落地残留 ≈ **0.2 DIP 悬空**（踩实）。
+- **PNG 通道**：动画帧（240×220）实测透明下边距 **4 px** ⇒ `height:200px` 时 ≈ **3.6 DIP** ⇒ 落地残留 ≈ **0.4 DIP 越沉**；待机帧 `assets/pet/idle.png`（160×160）= 满幅（残差 0）⇒ 落地**越沉 ≈4 DIP**（唯一反向通道，见上表 O-13）。
+- **调值 / 再测路径**：`FEET_ALPHA_MARGIN_DIP` 一处（4 → **0** 为**回正** = 只对齐锚点、全通道不越沉；4 → 其他值 = 细调）；改值须同步 §2.2.3 表值、§2.2.13 常量块与 §3.1 AC21① / 注 A 的等式解释。
+  再测 = `npx electron probe-pet-media.js`（打 alpha 包围盒）/ PNG alpha 解码（逐段）。
+
+**O-14 细目（`bounds` 面与条件分支；B26 / 修正轮 1）**
+
+- `petRectInside(pos, display.bounds)`（`shell-pet-geometry.js:250-254`）的两个消费方 = `petStraddleFix()`（`:286`）与拖动跨屏标记（`shell-pet-drag.js:133`）。
+- **条件分支**：当该屏 `workArea` 底边 **==** `bounds` 底边（任务栏置顶 / 自动隐藏）且窗口又与另一块 `scaleFactor` **不同**的屏重叠时，`petStraddleFix` 会同次把窗口**上推**（`kind='straddle'` ⇒ `geom-fix`）⇒ 正好抵消 F2，且使 AC22③/④ 在该配置下不成立（实机复核 = 批次档 §2.7-2）。
 
 ---
 
@@ -641,13 +662,20 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 | AC18 | US-24 | 边界两支同时断言：门量 `v = T` ⇒ 起飞（**闭区间**）；`v = T − 1 px/s` ⇒ 不起飞（`below-threshold`） | 桩测 |
 | AC19 | US-24 | **静默放置**：松手前 120 ms 窗内**端点位移 ≤ 5 px** ⇒ 不起飞（`phys-stop reason=quiet-dwell`）+ 物理面零写入 + ≤200ms 静止；与「位移 > 5 px 且 `v < T`」两支**可区分**（后者 = `below-threshold`） | 桩测（门）+ 日志面 |
 | AC20 | US-24 | **判据量 = 速度（判别力断言）**：同一门量 `v`、末段加速度 **+ / −** 两例 ⇒ 门判据结果**相同**；门函数入参 = 标量速度（体内零加速度项）；`ACCEL_REF` / `ACCEL_GAIN_MAX` 的常量行标「不进判据」 | 桩测 + 静态机检 |
-| **AC21** | US-24（B26） | **地面 = 可见身体底沿**：① 桩测——`groundBounds` 增量 == `FEET_INSET_DIP` == `FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP`；② 符号级——飞行 bounds 与散步 y 归位上界**同取** `groundBounds`（两处命中、零第三处内联）；③ 运行时——落地后 `y + PET_FEET_Y == wa.y + wa.height`（±1 DIP）；**细目 = 本节表后注 A** | 桩测 + 静态机检 + 日志面 |
-| **AC22** | US-24（B26） | **口径不产生位置回拉 / 上跳**：① 落地后原地再起飞，首帧 `phys-tick` 的 `y` **不减小**；② 落地后散步段起点 `geom tag=seg-start` 的 `y` == 落地 `y`；③ 落地后 `petSettlePos` 判 `kind='none'`（**零 `geom-fix` 行**）；**细目 = 本节表后注 A** | 静态机检 + 日志面 |
+| **AC21** | US-24（B26） | **地面 = 可见身体底沿**：① 桩测——增量 == `FEET_INSET_DIP`（30）∧ `groundBounds(null) === null` ∧ `FEET_ANCHOR_INSET_DIP === 270 − PetChainCore.PET_FEET_Y`；② 符号级——飞行与散步 y 归位**同取** `groundBounds`（两处）；③ `y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（±1）；细目 = 注 A | 桩测+静态机检+日志 |
+| **AC22** | US-24（B26） | **口径不产生位置回拉 / 上跳**：① 落地后原地再起飞（**限 `vy ≥ 0`**），首帧 `phys-tick` 的 `y` **不减小**；② 落地后散步段起点 `geom tag=seg-start` 的 `y` == 落地 `y`；③ 落地后 `petSettlePos` 判 `kind='none'`（**零 `geom-fix` 行**，条件例外见 O-14）；**细目 = 注 A** | 静态机检 + 日志面 |
 
-**注 A —— AC21 / AC22 判据细目（B26）**
+**B26 连带（修正轮 1 #8）**：AC11 的扫描集须按新地面（`FEET_INSET_DIP` = 30 DIP）**重跑并重新登记**；影响估算与余量 = §2.2.13 末段。
 
-- **AC21①（常量等式，跨档核对）**：`FEET_INSET_DIP === FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP` ∧ `FEET_ANCHOR_INSET_DIP === 270 − PetChainCore.PET_FEET_Y`（桩测装载两档真实实现；本批 `FEET_ALPHA_MARGIN_DIP === 0`）。
-- **AC21③（日志面）**：`phys-rest pos=(x,y)` 与同一时刻 `geom` 行的 `wa` 配对取值 ⇒ `y + PET_FEET_Y == wa.y + wa.height`（±1 DIP）。
+**注 A —— AC21 / AC22 判据细目（B26；修正轮 1 更新）**
+
+- **AC21①（常量等式，跨档核对）**：桩测装载**可装载**的真实实现——`FEET_INSET_DIP === FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP`（本批 = 26 + 4 = **30**）∧ `FEET_ANCHOR_INSET_DIP === 270 − PetChainCore.PET_FEET_Y`（244；`pet-chain-core.js:16` / `:193`）∧ **`groundBounds(null) === null`**（空值契约）。
+  - **`270` 的来源与限制（修正轮 1 #12 如实登记）**：唯一权威处 = `shell-pet-geometry.js:29` 的 `PET_SIZE_DIP.h`，但该档 `require('electron')`（`:7`）⇒ **node 不可装载** ⇒ 桩测**不得** require 它。
+    可装载的同源实数源 = `pet.html:13-14`（`#pet-wrap { height: 270px }`）与 `:34`（`#pet { bottom: 26px }`）⇒ 桩测从 HTML 取这两数，与 `PetChainCore.PET_FEET_Y`（244）三方交叉核对。
+    残留弱点（明示）：若 `PET_SIZE_DIP.h` 与 `pet.html` 同时改而 `PET_FEET_Y` 未改，等式仍可通过（弱镜像面**收窄**，非消除）。
+- **AC21③（日志面）**：`phys-rest pos=(x,y)` 与同一时刻 `geom` 行的 `wa` 配对取值 ⇒ `y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（±1 DIP；本批 = 底边 **+4**）。
+- **AC22①（输入写死，修正轮 1 #5）**：用例必须写死「**平抛 / 斜下抛（`vy ≥ 0`）**」——向上抛（`vy < 0`）时首帧 `y` 合法减小（`shell-pet-physics.js:195-215` / `pet-physics-core.js:232-242`），原表述会出**假失败**；与抛向无关的等价判据 = 「首帧 `y` **不小于** `groundBounds(wa).maxY`」。
+- **AC22③ 的条件例外（O-14）**：`workArea` 底边 == `bounds` 底边 ∧ 混合 `scaleFactor` 重叠的配置下，骑线推离会上推窗口（`kind='straddle'` + `geom-fix` 在场）；实机复核项 = 批次档 §2.7-2。
 - **AC22④（冻结面）**：`shell-pet-geometry.js` / `shell-pet-drag.js` / `pet-chain.js` / `pet-chain-core.js` / `assets/**` 与 `main.js` / `package.json` 逐档 `git diff --stat` 为空。
 
 ### 3.2 用例表（TC-1…TC-40）
@@ -691,9 +719,9 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 | TC-35 | 异常 | **静默放置**：先快拖 400 px/s → 停 130 ms → 松手（末 120 ms 窗位移 ≤5 px） | 不起飞（`phys-stop reason=quiet-dwell`）；物理面零写入；位置自 `drag-end` 后 ≤1 次变动 | AC19 |
 | TC-36 | 边界 | 末 120 ms 窗位移 = 6 px 且门量 `v = 300 px/s` | 不起飞（`below-threshold`）——与 TC-35 的两支**可区分** | AC19、AC15 |
 | TC-37 | 边界 | 同一门量 `v = 800 px/s`；末段加速度 **+ / −** 两例（合成轨迹） | 门判据结果**相同**（= 速度口径；加速度不参与） | AC20 |
-| **TC-38** | 正常 | 快甩落地（门量 `v ≥ T` ∧ 非静默；物理开启） | 收口在地面：`y + PET_FEET_Y == wa.y + wa.height`（脚底踩工作区底边）；`phys-rest reason=atRest` · `snap=0`；轨迹恒在 `[minX,maxX] × [minY, maxY+26]` | AC16、AC21 |
-| **TC-39** | 边界 | 落地（`y` = 地面）后：① 原地再起飞；② 触发一次散步段 | ① 首帧 `phys-tick` 的 `y` 不减（钳入用同一地面，零上跳）；② `geom tag=seg-start` 的 `y` == 落地 `y`（段起点归位同口径，零跳变） | AC21、AC22 |
-| **TC-40** | 异常 | 落地后显示器事件（`display-metrics-changed`）/ 松手校正路径 | `petSettlePos` 判 `kind='none'` ⇒ **零 `geom-fix` 行**（补偿后的位置不被拉回 26 DIP）；无异常、无错误日志 | AC22 |
+| **TC-38** | 正常 | 快甩落地（门量 `v ≥ T` ∧ 非静默；物理开启） | 收口在地面：`y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（= 可见脚底踩工作区底边；本批 +4，±1 DIP）；`phys-rest reason=atRest` · `snap=0`；轨迹恒在 `[minX,maxX] × [minY, maxY+30]` | AC16、AC21 |
+| **TC-39** | 边界 | 落地（`y` = 地面）后：① 原地再起飞（**输入写死：平抛 / 斜下抛 ⇒ `vy ≥ 0`**，同门量 `v ≥ T`）；② 触发一次散步段 | ① 首帧 `phys-tick` 的 `y` 不减（钳入用同一地面，零上跳；等价判据 = `y ≥ groundBounds(wa).maxY`）；② `geom tag=seg-start` 的 `y` == 落地 `y`（段起点归位同口径，零跳变） | AC21、AC22 |
+| **TC-40** | 异常 | 落地后显示器事件 / 松手校正路径（**默认配置**：`workArea` 底边 ≠ `bounds` 底边） | `petSettlePos` 判 `kind='none'` ⇒ **零 `geom-fix` 行**（位置不被拉回 30 DIP）；无异常。**条件例外（O-14）**：任务栏置顶 / 自动隐藏 ∧ 混合 `scaleFactor` 重叠 ⇒ 骑线推离可能上推窗口（该配置下预期不成立；复核 = 批次档 §2.7-2） | AC22 |
 
 ### 3.3 验证手段、仪表与限制
 
@@ -725,3 +753,4 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 | 2026-09-18 | **B20 修偏轮 2 偏差记录**：真因 = `handleTrailEnd(reasonRaw)` 单参签名 vs `ipcMain` 派发 `(event, reason)` ⇒ IpcMainEvent 绑进 reasonRaw ⇒ 归一化恒假 ⇒ **静默清轨迹（零日志零异常）**；修复 = 双参签名 + `typeof` 归一 + 两条取证行。**性质 = 实施签名缺陷，非设计缺口**（§2.2.1 数据流原样）⇒ 无设计变更，§2.2.11 补 `phys-trail-start` 行 + `bad-reason` 产出路径（计数不变）。 |
 | 2026-09-18 | **B26 面落档（F2 / US-24：落地口径 = 可见脚底）**：新增 §2.2.13（口径 + 常量与契约 + 明示例外 + 生效点）· §2.1 增 **J 组** · §2.2.3 增三常量 · §2.2.4 / §2.2.6 订正 · §2.4 增 **DD-17** + DD-6 补正 · §2.5.2 U-8 补正 · §3.1 增 **AC21–22** + 注 A · §3.2 增 **TC-38–40** · §2.3 补 B26 文件表指针 · 档头状态行同步（一致性订正）。 |
 | 2026-09-18 | 承上行（观察项与计数，D3）：**§2.5.3 新增 O-13 / O-14**；**计数：AC 20 → 22 · TC 37 → 40 · DD 16 → 17 · 选型 9 → 10 组 · O 12 → 14**（口径 = 末位编号）。 |
+| 2026-09-18 | **B26 修正轮 1（F2 面 6 条：🟡#4–#8、🔵#12；源 = §3 轮次 1 + 代裁）**：① 余量 0 → 4 ⇒ `FEET_INSET_DIP` = 30；② `groundBounds(null) ⇒ null`（#4）；③ AC22① `vy ≥ 0` + TC-39 写死（#5）；④ O-15（#6）；⑤ O-14 补 `bounds` 面（#7）；⑥ NFR-19 重跑（#8）；⑦ 注 A 补 `270` 来源（#12）。计数：O 14 → 15（其余不变）。 |
