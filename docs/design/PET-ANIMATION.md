@@ -28,8 +28,8 @@
 | US-21 工作状态只作「底色」（B19） | §2.8.4 / §3.4 AC19、AC21 | 工作档 = 背底档 + 1 s 重断言；散步起步加一道门；既有触发点与定时器逐字不改 |
 | US-22 工作状态气泡（B19） | §2.6.6 / §2.8.5 / §3.4 AC16、AC20 | 本仓自写文案常量表 + 节流（同档一次 / ≥30 s）+ 走既有 `petSay` |
 | US-23 开关面与默认值（B19） | §2.6.5 / §2.8.6 / §3.4 AC20 | `settings.json` 顶层键 + 托盘「设置」checkbox；默认关（**U-1 = 采用推荐值**；待用户批准时一并确认） |
-| NFR-14 状态识别时延与开销（B19） | §2.8.8 / §3.4 AC18、AC20 | 切档 ≤ 6 s；mtime 未变不解析；禁同步递归遍历 |
-| NFR-15 只读隔离与隐私（B19） | §2.8.1 / §2.8.7 / §3.4 AC19、AC20 | 只读状态字段；不 require `shell-notify.js`；不读 / 不落 / 不发会话内容 |
+| NFR-14 状态识别时延与开销（B19） | §2.8.8 / §3.4 AC18、AC20、AC23 | 切档 ≤ 6 s；mtime 未变不解析；禁同步递归遍历；开销面取证 = AC23（判据细目 = §3.4 注 B） |
+| NFR-15 只读隔离与隐私（B19） | §2.8.1 / §2.8.7 / §3.4 AC19、AC20 | 只读状态字段；不 require `shell-notify.js`；**不使用 / 不落盘 / 不发送**会话内容（整档 `JSON.parse` 的读取事实如实登记，字段白名单见 §2.8.1） |
 | NFR-16 零回退与规范（B19） | §2.9 / §2.11 / §3.4 AC19、AC21、AC22 | 零改动面逐档零 diff；两个新档登记 `build.files`；行宽行数机检 |
 | NFR-17 可测与形态守卫（B19） | §2.8.1 / §2.8.2 / §3.4 AC16 | 纯函数集中可装载；`ver` 守卫 + 字段在场守卫；形态不符 ⇒ 停用 + 诊断行 |
 
@@ -123,7 +123,9 @@
 **注 W1 —— 行字段全形（本机活样本实测，as-of 2026-09-17）**
 
 - `rows.turnBoundary.val` = `{ openTurnStartSeq, lastStepStartSeq, lastStepBoundary: { kind, seq }, lastTurn }`；`openTurnStartSeq` 非 null ⇔ 回合在途。
-- `rows.sessionStats.val` = `{ turns, steps, llmMs, toolMs, ttftMs, ttftSteps, decodeMs, decodeTokens, lastTurn, openStep, pendingCalls }`（本批只用 `lastTurn` / `openStep` / `pendingCalls`）。
+- `rows.sessionStats.val` = `{ turns, steps, llmMs, toolMs, ttftMs, ttftSteps, decodeMs, decodeTokens, lastTurn, openStep, pendingCalls }`（本批只用 `openStep` / `pendingCalls`）。
+- **`lastTurn` 取 `turnBoundary.val.lastTurn`**：它与 `openTurnStartSeq` **同行 ⇒ 同一原子快照内自洽**；置位点 = `turn/start`（`dsh-agent-loop/lib/index.js:1320-1323`），`turn/end` 只清 `openTurnStartSeq`、**不动** `lastTurn`（同档 `:1325-1328`）。
+  - 另注：`sessionStats.val.lastTurn` 的置位点是 `step/end`（回合**中**，`dsh-session-stats/lib/index.js:149`）⇒ 本批**不用**它（收尾判据见 §2.8.2 规则 5）。
 
 **注 W2 —— `openStep` / `pendingCalls` 的置位与清空点（逐条，证据 = 单元实现）**
 
@@ -539,8 +541,10 @@
 │  ④ 开关 / 降级 / 日志            │   │   startSlot(s) → pool.events[s]  │
 │      ↓ 注入面（组合根 main.js）  │   │   → 双缓冲切换 / 档内轮换          │
 │  pet.setPetState / pet.petSay    │──▶│                                  │
-│  pet.wakePet / pet.logAnim       │   │  档位经既有 `pet-state` 通道下行    │
-│  settings.get / backend.dshHome  │   │                                  │
+│  pet.getPetState / pet.wakePet   │   │  档位经既有 `pet-state` 通道下行    │
+│  pet.logAnim / pet.getPetWindow  │   │                                  │
+│  drag.getPetDrag / settings.get  │   │                                  │
+│  backend.dshHome                 │   │                                  │
 │ pet-work-core.js（B19 新建，纯）   │   └──────────────────────────────────┘
 │  记录选取 / 形态守卫 / 档位派生    │
 │  / 陈旧守卫 / 气泡节流（零 I/O）  │
@@ -551,6 +555,17 @@
 - **`pet-work-core.js`（纯）**：零 fs / 零 IPC / 零 electron require，双环境导出尾巴（承 DD-14）⇒ 可被桩测直接装载真实实现；
 - **`shell-pet-work.js`（I/O）**：只依赖 `node:fs` / `node:path` + 注入面；不 require `shell-notify.js` / `shell-affinity.js`（不变量面）；
 - **依赖方向**：`shell-pet.js` **不** require `shell-pet-work.js`（反注入）——背底档经 `setBaseStateProvider(fn)` 由工作模块注入，与组合根 `init(deps)` 惯例同源（`docs/CONVENTIONS.md` §四）；
+- **注入面（组合根 `main.js` 接线；修正轮 1 #5 补全，共 9 项）**：`pet.setPetState` · **`pet.getPetState`** · `pet.petSay` · `pet.wakePet` · `pet.logAnim` · `pet.getPetWindow` · `drag.getPetDrag` · `settings.get` · `backend.dshHome`（`dshHome`）。
+  - `pet.getPetState` = §2.8.4 的「渲染层实际档位」读取面；它**已是既有导出**（`shell-pet.js:387` / `:404`）⇒ 本批**零新增导出**，只需在组合根接入注入面。
+- **开关的传播面（修正轮 1 #6；逐条）**：
+  - ① **写权** = 托盘（与 `notifyOnComplete` 同形：改 `settings.get().petWorkStatus` 再 `settings.saveSettings()`，`shell-tray.js:105-109`）；
+  - ② **传播** = checkbox 的 click 调注入面 `setPetWorkStatus(checked)`——接线在组合根：`main.js:84` 的 `tray.init({ setQuitting, APP_NAME })` 增一项 `setPetWorkStatus: work.setEnabled`；
+  - ③ **启动态** = `work.init(deps)` 内部按 `deps.settings.get().petWorkStatus` 决定是否启用（启动与运行期同一判据 ⇒ 无双源）；
+  - ④ **单向** = 工作模块不写 settings、不回调托盘；`shell-tray.js` **不** require `shell-pet-work.js`（同既有 `init(deps)` 惯例，`main.js:73-84`）；
+- **与 B09 取不同形态的理由（修正轮 1 #6）**：B09 的 watcher 与 5 s 定时器**常驻**、开关只在回调内判（`shell-notify.js:246-247` 的 `if (!settings.get().notifyOnComplete) return;` + `:262-264` 的清零分支）。
+  - 本批**不沿用**：① tick = 1 s 且**每 tick 有 I/O**（目录枚举 + `stat`）⇒ 空转非零成本，与 NFR-14 的 < 1 % 判据相抵；② US-23 与 NFR-14 的字面要求是「关 ⇒ **读面不启动**（零日志、零监听）」——常驻形态不满足该字面。
+  - **代价** = 需一条显式启停路径（`setEnabled`），由组合根的注入面承担（上一条 ②），依赖方向零新增；
+  - **附：`pet.getPetState` 的实况（#5 核验）**：该访问器**已在** `shell-pet.js:387`（`return petState`）并已在 `:404` 导出 ⇒ 本批零新增导出，`shell-pet.js` 的改动点与行数预算**不变**（§2.9 同记）。
 - **生命周期**：工作模块的 tick 自带「无桌宠窗口则空转」判据（读 `pet.getPetWindow()`），不依赖建窗 / 销毁钩子——专注模式切换（销毁 / 重建窗口）无需增接线。
 
 ### 2.8 B19 契约
@@ -559,6 +574,10 @@
 
 - **目录**：`<dshHome>/storages/session_projcache/sessions/`（段常量与 B09 同字面：`['storages','session_projcache','sessions']`；本模块**自带**常量）；
 - **候选集**：目录内 `*.json`（不递归、无 `**`；`.json.bak.<stamp>` 天然排除）；逐档 `stat` 取 mtime；**mtime 与本模块缓存的上一值相同 ⇒ 跳过解析**（复用上次解析结果）；
+- **I/O 形态（修正轮 1 #13）**：tick 内全程 **`fs.promises`**（`readdir` / `stat` / `readFile`）——**零同步 I/O**（承 B09 先例：`shell-notify.js:113` 的「全程 fs.promises（调用处无同步 I/O）」+ 其实现逐处 `await fs.promises.*`）。
+  - **单次 tick 的 `stat` 次数上界 = 目录内 `*.json` 记录档数**（不递归、不遍历会话日志树）；mtime 未变者**不** `readFile`、**不** `JSON.parse`；
+- **字段白名单（隐私面；修正轮 1 #9）**：消费面 = `rows.turnBoundary.val` 的 `openTurnStartSeq` / `lastTurn` · `rows.sessionStats.val` 的 `openStep` / `pendingCalls` · 记录文件名——**零字段取自内容行**（`turnOutline` 的 `prompt` / `response` 等一律不取、不落盘、不发送）。
+  - **如实登记**：整档 `JSON.parse` 必然把内容字段读入进程内存（= 读取事实，非使用）；NFR-15 口径 = 「**不使用 / 不落盘 / 不发送**内容字段」，机检判据 = AC19 字段白名单核对；
 - **选取排序（确定性，逐级）**：① 回合在途者优先；② `turnBoundary.val.lastTurn` 大者；③ 记录 mtime 新者；④ 文件名升序 ⇒ 取第一。全无候选 ⇒ `unavailable`；
 - **形态守卫**：`rows.turnBoundary.ver === 2` ∧ `val` 为对象 ∧ `openTurnStartSeq` 为 null 或整数；`rows.sessionStats.ver === 1` ∧ `val` 为对象 ∧ `openStep` **字段在场** ∧ `pendingCalls` 为对象 ⇒ 否则 `unavailable`（降级处理见 §2.8.7）；
 - **陈旧守卫**：`now − mtime(选中记录) > WORK_STALE_MS`（**60000**）∧ 回合在途 ⇒ 按「无在途回合」处理（避免后端被强杀后宠永远停在忙碌档）+ 诊断行（每记录至多一条）。
@@ -571,11 +590,18 @@
 | 2 | 回合在途 ∧ `pendingCalls` 键数 > 0 | `work-working` |
 | 3 | 回合在途 ∧ `pendingCalls` 空 ∧ `openStep !== null` | `work-thinking` |
 | 4 | 回合在途 ∧ `pendingCalls` 空 ∧ `openStep === null` | **保持上一档**（中间态：step 边界瞬间，不抖动） |
-| 5 | 无在途回合 ∧ 上一观测为在途（同记录，且间隔 ≤ `WORK_DONE_WINDOW_MS`） | `work-done`（持续 `WORK_DONE_HOLD_MS` = **3000**） |
-| 6 | 其余（长期空闲 / 陈旧记录） | **清档**（回 idle） |
+| 5 | 无在途回合 ∧ 记录新鲜（`now − mtime ≤ WORK_STALE_MS`）∧ `turnBoundary.val.lastTurn > doneBaseline` | `work-done`（持续 `WORK_DONE_HOLD_MS` = **3000**；触发即置 `doneBaseline = lastTurn`） |
+| 6 | 其余（长期空闲 / 陈旧记录 / 收尾保持期满） | **清档**（回 idle） |
 
 - **次序声明**：判定自上而下短路；规则 2 先于 3——工具在跑时 `openStep` 通常已清空，但并行调用窗口内二者可同时在场 ⇒ **工具优先**（「在干活」比「在思考」更准）；
-- **常量（`pet-work-core.js`，可被桩测逐值断言）**：`WORK_TICK_MS = 1000` · `WORK_STALE_MS = 60000` · `WORK_DONE_HOLD_MS = 3000` · `WORK_DONE_WINDOW_MS = 60000` · `WORK_BUBBLE_MIN_GAP_MS = 30000`；
+- **常量（`pet-work-core.js`，可被桩测逐值断言）**：`WORK_TICK_MS = 1000` · `WORK_STALE_MS = 60000` · `WORK_DONE_HOLD_MS = 3000` · `WORK_BUBBLE_MIN_GAP_MS = 30000`（`WORK_DONE_WINDOW_MS` 随规则 5 改写**删除**——不再有消费者，死常量不留）；
+- **规则 5 的信号与基线（修正轮 1 #4；持久信号取代进程内记忆）**：`lastTurn` 取 **`turnBoundary.val.lastTurn`**（与 `openTurnStartSeq` **同行 ⇒ 同一原子快照内自洽**；置位 / 清空点见 §1.3.5 注 W1）；`doneBaseline` = 工作模块内部基线（初值 `null`）：
+  - **建立**：`doneBaseline === null` 时，首个「无在途回合 ∧ 记录新鲜」的观测 ⇒ `doneBaseline = lastTurn`，**不**触发收尾档（避免开机对历史回合补演一次）；
+  - **更新**：每次触发收尾档即置 `doneBaseline = lastTurn`；基线只在「无在途回合」的观测上建立 / 更新（在途期不动）；
+  - **重置**：选取记录切换（§2.8.1 四段排序选中另一档）或开关关闭再打开 ⇒ `doneBaseline = null`（按上一条重建）；
+  - **为什么用持久信号**：写盘按 5 s / 200 事件节流（§1.3.5）⇒ **短回合**（< 5 s 且 < 200 事件）不产生任何中间落盘——旧写法（依赖进程内「上一观测为在途」）在该情形下**连收尾档都不出现**（整个回合零档位）；改用 `lastTurn` 后，回合结束的落盘点（`turn/end` 强制 flush）带来的 `lastTurn` 增量**必然可观测** ⇒ 收尾档对短回合同样生效；
+  - **残余缺口（如实登记）**：短回合的**生成 / 工具**两档仍不可观测（读面无任何中间落盘）——见 §3.6 限制 1；
+- **收尾保持期（3 s）与陈旧面的分工**：① 保持期 = 触发后 `WORK_DONE_HOLD_MS`（3000）内不落规则 6——期内回合重新在途 ⇒ 立即退出保持、转规则 2 / 3；期满 ⇒ 规则 6 清档；② 陈旧守卫（§2.8.1：回合在途 ∧ mtime 超 60 s ⇒ 按无在途回合处理）与规则 5 的「记录新鲜」条件合读 ⇒ **陈旧记录不进收尾档**、直接落规则 6 清档（= TC-31 的期望；旧写法下「陈旧也演一次收尾」的相抵面随本次改写一并消除）；
 - **不可区分项（明示，不隐瞒）**：「等待批准」在本读面下**就是** `work-working`（依据 §1.3.5 第 6 行）；「回合结束」不区分 completed / error / max-tokens——收尾档仅表「这一轮收摊了」，**不表成败**。
 
 #### 2.8.3 池段与档位词表（仅新增三个档位名 + 三个池键）
@@ -599,18 +625,41 @@
 
 | 事件 | 行为（逐条） |
 |---|---|
-| 进工作档 | 先 `pet.wakePet()`（清入睡定时器并重排）→ 再 `setPetState(<档>)` |
+| 进工作档（**下发条命中时**） | 先 `pet.wakePet()`（清入睡定时器并重排）→ 再 `setPetState(<档>)`；**共同门未放行（拖动 / 散步·跑步 / 交互档在途）⇒ 本 tick 两者都不执行**（让位，见下方「共同门」） |
 | 出工作档（回 idle） | `setPetState('idle')` → `pet.wakePet()`（重排入睡计时；避免入睡定时器在工作档期间已耗掉） |
 | 交互档覆盖 | 既有触发点与定时器**逐字不改**（点击 1.6 s / 喂食 2 s / 小动作 2.4 s 回 idle）——回到 idle 后由**重断言**（下行）在 ≤1 s 内恢复工作档 |
 | 拖动 | 拖动起点只复位 `walk-*` / `run-*`（`shell-pet-drag.js:146-150`），**不动工作档**；拖动期间不启动重断言（拖动优先） |
 | 散步 / 入睡的让位 | `scheduleWander` 的起步判据加一道门：`petState === 'idle' && petBaseState() === 'idle'` 才起步（`shell-pet.js:260-266`，**+1 条件**）；入睡不需要新门（既有 `if (petState === 'idle') setPetState('sleep')` 已覆盖） |
-| 段切换 | 沿用 B18 §2.2.4 规则 2 / 3：**同档忽略**、事件段**播完才回链**——工作档结束不硬切正在播的段；多候选档在 `ended` 时档内轮换（`nextInSlot`） |
+| 段切换 | 沿用 B18 §2.2.4 规则 2 / 3（**同档忽略**、事件段**播完才回链**）；「不硬切」与「收尾档保持 3 s」的分工 = 下方**注 C** |
 | PNG 通道 | `pet.js` 的未知档位分支 ⇒ 渲染待机帧（§2.8.7 第 3 行）——**不改** 11 档语义与帧口径 |
 
-**重断言（背底档保持器；判据句）**：工作模块的读面 tick（1 s）内，若 **① 当前有效档位 ≠ 记忆档位**，或 **② `pet.getPetState()` 既不是记忆档位、也不是 `walk-*` / `run-*` / `happy` / `eat` / `read` / `starry` / `scared`**，且 **③ 拖动未在途**（`drag.getPetDrag() === null`）——则重发一次 `setPetState(<档>)` 并记 `work reassert` 行。
+**重断言（背底档保持器；判据句——修正轮 1 #3 改写：术语定义 + 共同门 + 两条互斥条款）**
 
+**术语（本档内的唯一权威定义）**：
+
+- **记忆档位 `lastGear`** = 工作模块内部保存的「最近一次**实际下发**的档位」（值域 = 三档 + `null` = 清档；初值 `null`）——它是本模块的**下发记录**，**不是**对渲染层的观测；
+- **当前派生档位 `gear`** = 本 tick `deriveGear(signals, prev)` 的输出（§2.8.2 规则表；值域同上）；
+- **渲染层实际档位 `state`** = `pet.getPetState()` 的当前值。
+
+**共同门（对「下发」生效；修正轮 1 #3 ② 的收口）**
+
+- `drag.getPetDrag() !== null`（拖动在途）**∨** `state ∈ {walk-left, walk-right, run-left, run-right}`（散步 / 跑步在途）**∨** `state ∈ {happy, eat, read, starry, scared}`（交互档在途）⇒ 本 tick **让位**：不下发、不写日志行、**不**更新 `lastGear`（下一 tick 重评）；让位结束后的首个 tick 恢复下发。
+- **排除面既对「保持」、也对「进入」生效**——两条条款共用这一道门（= 优先级表「拖动 > 散步 > 交互档 > 工作档」的直译）。
+
+条款（每 tick 自上而下；两条互斥）：
+
+1. **下发条**：`gear ≠ lastGear` ∧ 共同门放行 ⇒ `setPetState(gear ?? 'idle')` + 写 `work gear` 行（`from = lastGear ?? '-'`、`to = gear ?? 'idle'`）+ `lastGear = gear`；
+2. **重断言条**：`gear ≠ null` ∧ `gear === lastGear` ∧ 共同门放行 ⇒ 重发一次 `setPetState(gear)` + 写 `work reassert` 行（**不**改 `lastGear`）。
+
+- **让位期的时延口径（如实登记）**：让位在途时下发推后至让位结束后的首个 tick（让位时长上界 = 散步单段 ≤ 段长 / 交互档 ≤ 2.4 s 定时器）⇒ §3.4 AC18 的 ≤ 6 s 时延上界**以无让位场景取证**（正常空闲下开会话）；这是「工作档 = 底色」优先级的既定代价，不是遗漏；
 - 代价与理由：链的「同档忽略」规则（B18 §2.2.4 规则 2）使重发**幂等**（不重启当前段）；本机制使**不需**逐处修改既有定时器回落点（含 `shell-affinity.js` 与 B03 已校准的散步段），**也不碰冻结面**；
 - **背底档提供者**：`shell-pet.js` 新增 `setBaseStateProvider(fn)` + `petBaseState()`（返回 `fn() ?? 'idle'`），仅用于散步起步门；不改变任何既有状态语义。
+
+**注 C —— 段切换：「不硬切」与「收尾档保持 3 s」的分工（修正轮 1 #12 消歧）**
+
+- **多候选工作档**（`work-thinking` / `work-working`，`loop=false`）：档位回 `idle` 时**不硬切**——链的 idle 守卫（`pet-chain.js:99`）只保护**非 loop** 的事件段 ⇒ 这些档**段播完才回链**；
+- **单候选收尾档**（`work-done`；单候选 ⇒ `loop=true`，`pet-chain.js:133-134`）：**不受该守卫保护** ⇒ `WORK_DONE_HOLD_MS`（3 s）到点即切（素材长于 3 s ⇒ 切在 3 s 处；短于 3 s ⇒ 循环续播至 3 s 止）；观感取舍登记 = §2.11 观察项 O19；
+- **两条合读不矛盾**：「不硬切」保的是**多候选事件段的播完**，「保持 3 s」是**收尾档的档位保持时长**（档位面）——约束对象不同。
 
 #### 2.8.5 气泡面
 
@@ -632,10 +681,19 @@
 
 | # | 触发 | 行为 | 机检 |
 |---|---|---|---|
-| 1 | 读面 `unavailable`（目录不存在 / 无可解析记录 / `ver` 守卫不过 / 字段缺） | **停用工作档**（清档回 idle）；既有行为完全照旧；诊断行 `work diag reason=<v>`（每监视器生命周期至多一条，承 B09 封口写法） | 日志 + 画面与今天一致 |
+| 1 | 读面 `unavailable`（目录不存在 / 无可解析记录 / `ver` 守卫不过 / 字段缺） | **该 tick 不产生工作档**（清档回 idle）；**逐轮可恢复**——tick 与 `fs.watch` 不停，下一 tick 重评（目录 / 记录出现后自动恢复，无需用户重开开关）；诊断行 `work diag reason=<v>`（每监视器生命周期至多一条，承 B09 封口写法） | 日志 + 画面与今天一致 |
 | 2 | 选中记录陈旧（回合在途 ∧ mtime 超 60 s） | 按「无在途回合」处理（清档）+ 诊断行（每记录至多一条） | 日志 |
 | 3 | PNG 通道（池不可用 / 级② / 级③ 回落） | 工作档**照发**；渲染层对未知档位渲染**待机帧**（`pet.js` 的 `setState` 空档分支）——不空白、不报错 | `anim pool ok=0` + 画面与今天一致 |
 | 4 | 读面异常（单档 `stat` / `readFile` / `JSON.parse` 抛错） | `try/catch` 吞掉并跳过该档（不影响其他记录与既有功能），下一 tick 重试 | 无未捕获异常 |
+
+> **「停用」的封存语义（修正轮 1 #8）**：`unavailable` = **逐轮可恢复**（**非锁存**）——
+> ① **档位面**：每个 `unavailable` 的 tick 一律清档（不进任何工作档），下一 tick 重新求值 ⇒ 「进程先起、会话目录后出现 / 目录为空 / 单档解析失败」这类时序**自动恢复**；
+> ② **诊断面**：`work diag` 每监视器生命周期至多一条——**封的是日志行，不是功能**（不重复刷行 ≠ 不再检测）；
+> ③ **真正的锁存面只有一处 = 开关关闭**（US-23：关 ⇒ 停读面，须用户重开）——两者语义分列，不混用。
+>
+> **对 NFR-17「整体停用（等价于开关关闭）」的读法（本设计取「效果等价」）**：该条的硬要求 = **fail-closed**（形态不符 / 读面不可用 ⇒ 不误报）与**可见性**（一条诊断行），本设计逐条满足（形态守卫 ⇒ `unavailable` ⇒ **绝不映射为任意工作档**，判据 = §3.6 手段 1 的桩测 ③）。
+> 「等价于开关关闭」按**用户可见效果**读（桌宠行为与开关关着时逐位一致），**不**读作「停跑 tick」——否则「目录后出现」这一常见时序会让功能永久静默直至用户手动重开。
+> **口径张力已登记 = §2.11 观察项 O18**（若主 agent / 用户改取「状态等价」读法，须同源改需求档 NFR-17 并补自恢复判据；本设计不自作该语义变更）。
 
 > **选定取舍（DD-26）**：**不**把工作档的启用耦合到「池是否可用」（被否决的备选：池 ok=0 ⇒ 整体不启工作档）——那条路要新增一条跨模块依赖（工作模块读池装载结果），而第 3 行的待机帧回退已满足「不空白 / 不报错」。
 
@@ -665,14 +723,19 @@
 | `pet.js` | 211 | `setState(s)`：`notifySlot(s)` 先行；`FRAMES[s]` 无对应帧 ⇒ `renderPng('idle')`（工作档待机帧回退；现有 11 档逐位不变） | +4 ~ +7 | ≤ 218 |
 | `shell-settings.js` | 60 | `DEFAULT_SETTINGS` 新增 `petWorkStatus`（默认值 = U-1 推荐值 `false`） | +1 | 61 |
 | `shell-tray.js` | 175 | 「设置」子菜单新增 checkbox + `setPetWorkStatus`（开/关联动）函数 | +8 ~ +12 | ≤ 187 |
-| `main.js` | 217 | 组合根接线：require + `init(deps)`（`dshHome` / `settings.get` / `pet.setPetState` / `pet.petSay` / `pet.wakePet` / `pet.logAnim` / `pet.getPetWindow` / `drag.getPetDrag`）+ 启动调用 | +6 ~ +12 | ≤ 229 |
+| `main.js` | 217 | 组合根接线：require + `init(deps)`（9 项，见 §2.7 注入面）+ 启动调用 + `tray.init` 增 `setPetWorkStatus` 一项（`main.js:84` 同行） | +6 ~ +12 | ≤ 229 |
 | `package.json` | 132 | `build.files` 增列 `pet-work-core.js` / `shell-pet-work.js`（`dependencies` 段零 diff） | +2 | 134 |
 | `assets/pet-anim/pool.json` | 71 | `events` 新增三键（§2.8.3）；引用段 91 → 94 | +12 ~ +18 | ≤ 89（数据档） |
 | `.thincoder/b19-pet-work-stub.mjs` | **新建** | 开发期桩测（**不入包**；`.thincoder/` 不在 `build.files` 内）：装载 `pet-work-core.js` 真实实现 + 复用 `pet-chain-core.parsePool` 核池数据 | +250 ~ +350 | — |
 
-**零改动面（代码档；机检 = 零 diff；AC19 / AC22 的取证对象）**：`pet-chain.js` · `pet-chain-core.js` · `pet-preload.js` · `shell-pet-geometry.js` · `shell-pet-drag.js` · `shell-notify.js` · `shell-affinity.js`。
+**零改动面（代码档 7；机检 = 零 diff；AC19 / AC22 的取证对象）**：`pet-chain.js` · `pet-chain-core.js` · `pet-preload.js` · `shell-pet-geometry.js` · `shell-pet-drag.js` · `shell-notify.js` · `shell-affinity.js`。
 
-**零改动面（资源与文档档；同机检）**：`assets/pet-anim/webm/**` · `THIRD-PARTY-NOTICES.md` · `README.md` · `版本说明.txt` · `docs/CONVENTIONS.md` · `AGENTS.md`。
+**零改动面（资源档 4；同机检）**：`assets/pet-anim/webm/**` · `THIRD-PARTY-NOTICES.md` · `README.md` · `版本说明.txt`。
+
+**文档档 2（不属机检面；列出仅为澄清「文档层不涉」）**：`docs/CONVENTIONS.md` · `AGENTS.md`——本批不写这两档（写权矩阵见 `AGENTS.md` §一），故**不入** AC19 / AC22 的零 diff 清单。
+
+- **计数口径（修正轮 1 #11 统一）**：**零改动面 = 11 档**（机检面 = 代码 7 + 资源 4，与批次档 §2.3 / §2.6 同口径）；上一条的 2 档文档**不计入**（13 = 含文档面的读法，本档不再使用该口径）。
+- **`pet.getPetState` 的实况（修正轮 1 #5 核验）**：该访问器**已在** `shell-pet.js:387`（`function getPetState() { return petState; }`）并已在 `:404` 导出 ⇒ 本批**零新增导出**，只需在组合根接进注入面（§2.7 与本节 `main.js` 行）；`shell-pet.js` 的改动点与行数预算**不变**。
 
 - **贴线档拆分计划**：全部改动档预算末值 ≤ 500 ✓（最大 = `shell-pet.js` 440 · `shell-pet-work.js` 200 · `pet-work-core.js` 140）；**两个新档均为独立职责档**（I/O 与纯函数分离 = 为了桩测可装载，非为了行数）；
 - **单档 ≤ 500 行**：本批无任何档触阈。
@@ -723,6 +786,10 @@
 - **O15 行数口径差（一致性面，已报告）**：批次档 §1.3 记 `pet.js` 212 / `shell-pet.js` 427，本档实测（换行符口径，不把尾换行计为一行）= **211 / 426**——每档差 **1 行**，成因 = 尾换行是否计一行。本档数值为本档口径（与 §2.3 同），**不自行改写 §1.3**（主 agent 段）。
 - **O16 同族读面重复（建议行，供主 agent 登记台账）**：B09 判定门（`shell-notify.js:104-158`）与本批读面**同读一族落盘物**（`session_projcache/sessions/*.json`），谓词口径重复（目录段 / mtime 最大记录 / `ver` 守卫）。本批按 DD-21 **解耦不合并**（合并会碰 B09 判定门）；未来若要收敛，建议新立技术待办（抽取共享只读模块，两处同时改）。
 - **O17 仍未引用的素材（不阻断，仅登记）**：`余额-*` 6 段 / `碎碎念-*` 3 段 / `被鼠标拖拽悬空反馈` 1 段 = **D2 面与 B 面**的素材，本批不动（引用 91 → 94 / 未引用 15 → 12）；`工作状态-雀跃庆祝` / `工作状态-垂头叹气冒汗` 两段**保留待 B22**（O11；本批已在仓未引用 ⇒ 素材侧不返工）。
+- **O18 NFR-17「整体停用（等价于开关关闭）」的读法张力（修正轮 1 #8 发现；须主 agent / 用户知悉）**：本设计把 `unavailable` 定为**逐轮可恢复**（§2.8.7），并把「等价于开关关闭」按**用户可见效果**读（桌宠行为与开关关着时逐位一致）。
+  - 需求档 NFR-17 的括注若按「**状态等价**」读（= 锁存、停跑读面），则须同步改该行字面并补「目录 / 记录出现后自恢复」判据；本设计**不取**该读法（理由：`unavailable` 含「目录尚未出现 / 目录为空」这类**开机常见时序**，锁存会让功能永久静默直至用户手动重开）。
+  - **待主 agent / 用户裁口径**（属需求层判定，本档不自作语义变更）。
+- **O19 收尾档的可见时长受 3 s 保持期限制（修正轮 1 #12 发现；观感取舍，建议批准时复核）**：`work-done` 为单候选 ⇒ `loop=true` ⇒ `WORK_DONE_HOLD_MS`（3 s）到点即切；若 `工作状态-清点归档` 素材时长 > 3 s ⇒ 观感为**中途切断**（非播完）。两处可调：① 提高 `WORK_DONE_HOLD_MS`（须与既有「任务完成」提醒的节奏同看）；② 把该档改为多候选（`loop=false` 即转为「播完才回链」）。本批按 3 s 成文（承 DD-19 / TC-22），取值复核归用户批准面。
 
 ---
 
@@ -810,11 +877,20 @@
 |---|---|---|---|
 | AC16 | US-20 / US-22 / NFR-17 | **派生纯函数桩测**（`node .thincoder/b19-pet-work-stub.mjs`，装载真实实现）；断言面细目 = §3.6 手段 1；末行 `pass/total PASS` | 机检 |
 | AC17 | US-20 / NFR-16 | **池数据核**：`pool.json` 新增三键后 `parsePool`（真实实现 + fs 探针）仍 `ok=1`（V1–V6 全过）；三键引用名逐条存在于 `assets/pet-anim/webm/`；引用段数 **91 → 94** / 未引用 **15 → 12**（登记项，逐段核对） | 机检（`parsePool` + 名录比对） |
-| AC18 | US-20 / NFR-14 | **端到端联调（真机 + 日志）**：开一轮真实会话（含 ≥1 次工具调用）⇒ `work gear` 行按「`work-thinking` → `work-working` → `work-done`」出现（各 ≥1）；对应 `anim switch` 行在场（值为池内工作段名）；时延 = 记录 mtime → `work gear` 的 `t` ≤ **6 s**；`work reassert` 行在场（若有被覆盖则必有） | 机检（日志对齐；取 3 轮会话） |
-| AC19 | US-21 / NFR-15 / NFR-16 | **零回退**：`git diff --stat` 对「零改动面」逐档零 diff（面清单 = §2.9 表后）；`package.json` 依赖段零 diff；静态核对零 require 指向 `shell-notify.js` / `samples/**`；实机现场复核（拖动 / 点击 / 喂食 / 散步 / 入睡） | 机检（静态）+ 人工 |
+| AC18 | US-20 / NFR-14 | **端到端联调（真机 + 日志）**：开一轮真实会话（含 ≥1 次工具调用）⇒ `work gear` 行按「`work-thinking` → `work-working` → `work-done`」出现（各 ≥1）；对应 `anim switch` 行在场（值为池内工作段名）；时延 = 记录 mtime → `work gear` 的 `t` ≤ **6 s**（口径 = 无让位场景，见 §2.8.4）；`work reassert` 行在场（若有被覆盖则必有） | 机检（日志对齐；取 3 轮会话） |
+| AC19 | US-21 / NFR-15 / NFR-16 | **零回退 + 隐私白名单（#9 / #11）**：`git diff --stat` 对**零改动面 11 档**（代码 7 + 资源 4；2 档文档不入机检面，见 §2.9）逐档零 diff；`package.json` 依赖段零 diff；静态核对零 require 指向 `shell-notify.js` / `samples/**`；**读面字段白名单核对 = 零字段取自内容行**；实机现场复核（拖动 / 点击 / 喂食 / 散步 / 入睡） | 机检（静态）+ 人工 |
 | AC20 | US-22 / US-23 / NFR-14 | **开关、气泡与降级（日志面）**：① 默认关 ⇒ 零 `work scan` / `work gear` 行（读面不启动）；② 托盘打开 ⇒ 行出现且档位生效；③ 关闭 ⇒ 立即清档回 idle；④ 节流：同一档位连续停留 + 两条气泡间隔 < 30 s ⇒ 只 1 条 `work bubble`；⑤ 读面不可用（目录改名 / 坏 JSON / `ver` 换代）⇒ `work diag` **恰一条** + 无异常堆栈 | 机检（日志） |
 | AC21 | US-21 | **PNG 通道零回退**：移走 / 坏池 ⇒ `anim pool ok=0`，画面与今天一致（PNG 通道逐位一致）；在 PNG 通道下工作档生效时渲染**待机帧**且**不出现空白帧**（探针抽帧 + 目视） | 半机检（`probe-pet-media.js` 探针）+ **人工判定**（观感项） |
-| AC22 | NFR-16 | **规范机检**：两个新档行宽 ≤300 / 行数 ≤500；`shell-pet.js` 末值 ≤ 500；`package.json` 的 `build.files` 含两个新档名（打包后在场）；三处署名（NFR-12）零改动；`POOL_KEYS` / V1–V6 谓词 / `pet-chain.js` 逐字零 diff | 机检（静态） |
+| AC22 | NFR-16 | **规范机检**：两个新档行宽 ≤300 / 行数 ≤500；**两个新档含文件头标准形**（`docs/CONVENTIONS.md` §一：第 1 行逐字 `'use strict';` + 紧随 JSDoc 块 + 块内**含路径**的设计档指针）；`shell-pet.js` 末值 ≤ 500；`package.json` 的 `build.files` 含两个新档名（打包后在场）；三处署名（NFR-12）零改动；`POOL_KEYS` / V1–V6 谓词 / `pet-chain.js` 逐字零 diff | 机检（静态） |
+| AC23 | NFR-14 | **开销面取证（修正轮 1 #1；承需求档 NFR-14 的开销判据）**：`work scan` 的 `cache=miss` 条数与 mtime 变化次数同阶 + `process.getCPUUsage()` 前后各 10 s 均值增量 < **1 %**；判据细目 = 本节表后**注 B** | 机检（日志 + 静态核对 + CPU 采样） |
+
+**注 B —— AC23 判据细目（开销面；修正轮 1 #1 补，源 = 需求档 NFR-14 的开销判据）**
+
+- **① 无冗余解析（日志自证，机器可判）**：`work scan` 行的 `pick`（选中记录）与 `mtime` 值相同的**连续行区间**内，`cache=miss` **恰 1 条**（该 mtime 首次出现的那条），其余全部 `cache=hit`；
+- **② miss 与 mtime 变化同阶**：采样窗口（≥ **300 s**）内 `cache=miss` 条数 ≤ 「窗口内选中记录 mtime 变化次数 **+ 1**」（首轮扫描必 miss 一次）；
+- **③ CPU**：`process.getCPUUsage()` 取**读面开启前后各 10 s 的均值**，增量 < **1 %**（口径同需求档 NFR-14 的「增量开销 < 1 %」）；
+- **④ 零同步 I/O（符号级静态核对）**：tick 函数体内零 `readdirSync` / `statSync` / `readFileSync` 命中（同源 = §2.8.1 的 `fs.promises` 口径）；
+- **口径注（不得误判）**：①② 只对**开**态成立（关 ⇒ 读面不启动、零 `work scan` 行，见 AC20 ①）；`work scan` 的既有字段（`n` / `pick` / `mtime` / `cache`）已足以机检 ①②，**无需新增日志字段**。
 
 ### 3.5 B19 用例表
 
@@ -832,6 +908,7 @@
 | TC-30 | 错误 | 形态换代（`turnBoundary.ver = 3` 或 `sessionStats` 无 `pendingCalls`） | 停用 + `work diag` 一条（**不误报**为任意工作档）；行为 = 今天 | NFR-17 / AC20 |
 | TC-31 | 错误 | 陈旧记录（回合在途 ∧ mtime 超 60 s，模拟后端被强杀） | 清档回 idle + 诊断行（每记录至多一条）；不永久停在忙碌档 | NFR-15 / AC20 |
 | TC-32 | 边界 | 多会话共存（一条在途 + 一条已结束；再测两条均在途） | 取在途者；两条均在途 ⇒ 取 `lastTurn` 大者；结果与输入文件顺序无关（同一输入多次扫描同结果） | US-20 / AC16 |
+| TC-33 | 边界 | 散步 / 跑步在途（`walk-*` / `run-*`）时工作档派生进入（回合开始或工具调用落盘） | **让位**（§2.8.4 共同门）：本 tick 不下发——散步段内无工作段名的 `anim switch` 行、无 `work reassert` 行、`work gear` 行不刷（`lastGear` 不更新）；散步段末（既有 `doWander` 置 `idle`）后的**首个 tick（≤ 1 s）**下发工作档 ⇒ 工作段名的 `anim switch` 行与 `work gear` 行在场 | US-20、US-21 / AC18 |
 
 ### 3.6 B19 验证手段与限制
 
@@ -847,6 +924,8 @@
 **限制（如实声明，防被误读为已覆盖）**
 
 1. **档位覆盖不完整（已裁定收窄；补齐另批）**：等待批准 / 回合成功 / 回合失败三档**未实现**（读面不存在，§1.3.5 / O11–O13）——**用户 2026-09-18 已裁定本批 = 可观测三档**，补齐 = 后置批 B22；验收时**不得**以「三档全绿」读作「六档已覆盖」；
+   - **短回合（< 5 s 且 < 200 事件）的「生成 / 工具」两档不可观测**（修正轮 1 #4 的残余缺口）：该时长内记录无任何中间落盘（写盘节流 5 s / 200 事件）⇒ 只有**收尾档**可观测（由 `turn/end` 强制 flush 的 `lastTurn` 增量驱动，§2.8.2 规则 5）。「短回合看不出思考 / 忙碌」是读面事实，非缺陷；
+   - **让位在途可能吞掉收尾档**（修正轮 1 #3 的既定代价）：`work-done` 的 3 s 保持期与共同门（拖动 / 散步 / 交互档在途）重叠且让位时长 > 3 s 时，该次收尾档**不出现**（不补演）；验收时不得读作档位序列缺失（AC18 以无让位场景取证）。
 2. **状态识别时延（6 s）为设计期给定值**（= 写节流 5 s + tick 1 s），无实测依据；首轮实测后可回调（回调归需求层）；
 3. **只读面依赖 Harness 内部形态**：以 `ver` 守卫 + 降级封口防御（形态一变即停用，不猜测）；风险登记 O11 / O16；
 4. **多会话选取为启发式**（§2.8.1 四段排序）：多条在途会话下只能保证「确定性」，不能保证「用户心里的那一条」；本机常态 = 单会话；
@@ -866,4 +945,5 @@
 | 2026-09-17 | 修正轮 5（裁定状态回填 · 单主题）：§2.5 观察项 O10（as-of `:419`）标**已裁定（2026-09-17）· 归档**（本批不接管位移；合并落点 = 未来「位移与物理手感」批，依据 = `docs/batches/B18-pet-animation-chain.md` §1.9），并把「B03 节奏变更须单独裁定」改述为**未来接管时的附带约束**；DD-7 备选列由「用户可裁」改为「**已裁定不采用**，2026-09-17」。AC 15 · TC 20 · DD 决策与取舍理由 · 选型结论 · 受影响文件表零改动。 |
 | 2026-09-17 | 修正轮 6（**实施后收口**；源 = 实施报告 AC3 判据缺陷 + 4 条 Deferred，主 agent 逐条裁定）：AC3 改行为面活性判据（细目 = §3.1 注 A · TC-2 同源）· AC7 透明区改「alpha ≤ 8」· §2.2.3 `sleep` 行去「单候选」+ TC-8 同源 · §1.1 / §2.2.5 / §2.2.7 载荷形状统一 · §2.2.4 `nextInSlot` 保留。编号与 AC / TC / 条目计数不变；代码零改动。 |
 | 2026-09-17 | **B19 建档**（桌宠工作状态联动 = 外部项目移植 D1 面）：新增 §1.3.5（只读数据面能力审计）· §2.6 六处选型对比 · §2.7 分层 · §2.8 契约 · §2.9 受影响文件 · §2.10 DD-17…DD-26 · §2.11 冲突核对 C34–C44 + 观察项 O11–O17 · §3.4 AC16–AC22 · §3.5 TC-21…TC-32。待裁定 = U-1…U-6（U-6 为本批新发现）。B18 内容逐字未改。 |
+| 2026-09-18 | **修正轮 1（评审轮 1 · 13 条 + 2 备注；源 = §3）**：§1.1 回指 · §1.3.5 注 W1 · §2.7 注入面 + 开关传播面 · §2.8.1 I/O 与白名单 · §2.8.2 规则 5 · §2.8.4 注 C + 重断言改写 · §2.8.7 封存语义 · §2.9 零改动面 11 口径 · §3.4 **AC23** + 注 B · §3.5 **TC-33** · §2.11 O18–O19。**计数：AC 23 · TC 33 · DD 26 · C 44 · O 19**；选型 / U-6 / 三档集合零改动。 |
 | 2026-09-18 | **定稿轮（U-6 裁定回填 · 状态收口；源 = 用户 2026-09-18 裁定「U-6 = ① 可观测三档」+「六档补齐 = 事件桥批 B22」）**：§2.6 注 / §2.6.1 结论列 / §2.6.2 标题与 A+C 行（A 的否决理由 1 → **2 条**）/ §2.8.3 / DD-18 / O11–O13 · O17 / §3.6 限制 1、6 / §1.1 / §2.9 / DD-24（U-1…U-6 状态词收口）。**无新语义**：AC 22 · TC 32 · DD 26 · C 44 · O 17 计数不变。 |
