@@ -1,12 +1,12 @@
-# 设计档 PET-MOVEMENT — 桌宠位移仲裁与物理手感（B20）
+# 设计档 PET-MOVEMENT — 桌宠位移仲裁与物理手感（B20）+ 落地 / 边界口径扩展（B26 / B27）
 
 > 主题：**窗口位移的写权（谁在何时拥有位置写权）+ 物理手感（起飞阈值「缓放即停 / 快甩抛出」/ 甩抛 / 反弹 / 摩擦 / 静止 / Q 弹形变）**
 > 落点：`docs/design/PET-MOVEMENT.md`（本主题的唯一权威句；落点判定见 §零）
-> 需求档：`docs/requirements/PET.md` §三 US-24…US-28 / §四 NFR-18…NFR-22（回指见 §1.1）
-> 批次档：`docs/batches/B20-pet-physics.md`（§1 立案 / §2 本批任务书 / §5 实施记录 / §6 验收核销）
+> 需求档：`docs/requirements/PET.md` §三 US-24…US-28 / **US-34（B27）** / §四 NFR-18…NFR-22 / **NFR-25（B27）**（回指见 §1.1）
+> 批次档：`docs/batches/B20-pet-physics.md`（§1 立案 / §2 本批任务书 / §5 实施记录 / §6 验收核销）· `docs/batches/B26-pet-feel.md`（F2 面）· `docs/batches/B27-pet-feel-2.md`（R21 面；§1 立案 / §2 本批任务书）
 > 回指（不重述）：`docs/design/PET-MULTIMONITOR.md`（几何 / 停泊 / 尺寸纪律，B03）· `docs/design/PET-DRAG.md`（拖拽跟手，B01）·
 > `docs/design/PET-ANIMATION.md`（动画链与工作档，B18 / B19）· `docs/design/SHELL-UX.md` §2.2.6（模块拆分与依赖注入纪律，B06）
-> 状态：**已批准 · 已实施**（设计评审轮 3 = pass → 用户 2026-09-18 批准；实施与验收状态记批次档 `docs/batches/B20-pet-physics.md` §5 / §6——§6.1 结论 = 通过 ✓；本档不记勾销）。**B26 面**（落地口径 = 可见脚底 · F2 / US-24）已落 §2.2.13，待设计评审与用户批准后实施。
+> 状态：**已批准 · 已实施**（设计评审轮 3 = pass → 用户 2026-09-18 批准；实施与验收状态记批次档 `docs/batches/B20-pet-physics.md` §5 / §6——§6.1 结论 = 通过 ✓；本档不记勾销）。**B26 面**（落地口径 = 可见脚底 · F2 / US-24）已落 §2.2.13，**已批准 · 已实施**（批次档 `docs/batches/B26-pet-feel.md` §6 核销）。**B27 面**（边界口径四面化 · R21 / US-34）已落 §2.2.14，待设计评审与用户批准后实施。
 
 ---
 
@@ -32,7 +32,7 @@
 
 | 需求条目 | 本档验收标准 | 一句话口径 |
 |---|---|---|
-| US-24 甩抛与飞行 | AC1、AC2、AC3、AC15、AC16、AC17、AC18、AC19、AC20、**AC21**、**AC22** | 门量（120 ms 窗峰值速度）≥ `T` ⇒ 起飞；`v < T` 或静默放置 ⇒ 不起飞；**B26**：地面 = 可见脚底口径（§2.2.13） |
+| US-24 甩抛与飞行 | AC1、AC2、AC3、AC15、AC16、AC17、AC18、AC19、AC20、**AC21**、**AC22** | 门量（120 ms 窗峰值速度）≥ `T` ⇒ 起飞；`v < T` 或静默放置 ⇒ 不起飞；**B26**：地面 = 可见脚底口径（§2.2.13）；**B27 修订注记**：飞行边界上 / 左 / 右三面改按可见身体（四面 insets，§2.2.14） |
 | US-25 撞击形变反馈（Q 弹） | AC4 | 落地冲击 → 压扁回弹（力度随冲击速度） |
 | US-26 位移单写者仲裁 | AC5、AC6、AC7、AC15 | 拖拽 > 物理 > 散步；交接与互斥逐条（交接② 以「`v ≥ T`」为条件 ⇒ 回指 AC15） |
 | US-27 物理开关与默认值 | AC8 | 托盘 checkbox + `settings.json` 顶层布尔 |
@@ -42,6 +42,8 @@
 | NFR-20 可测性 | AC12 | 纯函数 + 双环境导出 + 桩测装载真实实现 |
 | NFR-21 零回退与规范 | AC13 | 几何 / 链 / 素材零 diff；行宽行数文件头 |
 | NFR-22 与既有机制的交互 | AC14 | O10 不接管；B19 / B03 口径零改动 |
+| US-34 抛掷 / 散步活动范围按「可见身体」口径（B27） | **AC23** | 四面 insets 单点常量（上 44 / 左 41 / 右 41 / 下 30 DIP）+ `petEdgeBounds`（飞行与散步同取）+ B03 具名例外四面（§2.2.14） |
+| NFR-25 边界口径的可见性与零回退（B27） | **AC24** | 补偿后中心点可见（NFR-5 照旧）+ 冻结面零 diff + 行宽行数机检 |
 
 ### 1.2 本批不做（边界，逐条）
 
@@ -332,7 +334,7 @@ decideOwnership({ dragActive, physicsFlying, wanderInFlight }) =
 | `QUIET_SPAN_MAX_DIP` | 5 px | 静默判据：窗内端点位移 ≤ 该值 = 「位移接近 0」⇒ 判放置；5 px 与既有「位移 > 5px 判为拖动」口径**同源**（`pet.js:121`） |
 | `FEET_ANCHOR_INSET_DIP` | **26**（DIP） | **B26**：渲染层可见身体锚点的内缩量 = 窗高 270 − `PET_FEET_Y`(244)（`pet-chain-core.js`）+ `#pet { bottom: 26px }`（`pet.html`）——两者同源（CSS px = DIP，承 §2.2.6）；机检等式见 §3.1 AC21 |
 | `FEET_ALPHA_MARGIN_DIP` | **4**（DIP；本批值 = **修正轮 1 主 agent 代裁**，原 0） | **B26**：alpha 残差补偿量（实测：视频 ≈4.2 / PNG 动画帧 ≈3.6 / 待机 PNG = 0，见 O-13）；取两通道残差的**较大者**取整 ⇒ 视频与 PNG 动画帧**踩实**（|残留| ≤0.5 DIP），代价 = 待机 PNG 越沉 ≈4 DIP。**回正路径 = 本表一处常量改 0**（结构与判据不动） |
-| `FEET_INSET_DIP` | = 上两者之和 = **30**（DIP） | **B26**：地面增量的**唯一消费值**（`groundBounds` 与散步 y 归位上界同取它；落地等式见 §2.2.13 / AC21③） |
+| `FEET_INSET_DIP` | = 上两者之和 = **30**（DIP） | **B26**：地面增量的**唯一消费值**（`petEdgeBounds`（B27 起名；原 `groundBounds`）与散步 y 归位上界同取它；落地等式见 §2.2.13 / AC21③） |
 
 **U-2 口径（本轮修正）**：**已裁定 = ② 本仓调**（用户 2026-09-18 原话「先做成 B 吧，不行再调整手感」）——`restitution` 由样本 0.78 调为 **0.55**（其余四项照搬样本）；参数集中一处 ⇒ 后续单项调值只改本表数值、结构不动（差异登记 = O-12；静止时长判据的同源重算 = 批次档 §2.12）。
 
@@ -349,8 +351,8 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
   atRest = (贴地 ∧ |vy| < 1 ∧ |vx| < REST_VX) ∨ (bounced ∧ |v| < REST_VY ∧ |vy| < 1)
 ```
 
-- **边界** = 起飞时 `geometry.petWorkAreaBounds(geometry.petCurrentDisplay())` 的返回值经**地面补偿**（`groundBounds`，§2.2.13）后的 `{minX, minY, maxX, maxY}`——**起飞时算一次、全程恒定**（与散步段起点同源）；不可取（null）⇒ 不起飞（G8）。
-  - **口径分列（B26）**：`minX` / `maxX` / `minY` = **窗口矩形口径**（零改动）；`maxY` = **可见身体底沿口径**（`+FEET_INSET_DIP`）——权威句 = §2.2.13。
+- **边界** = 起飞时 `geometry.petWorkAreaBounds(geometry.petCurrentDisplay())` 的返回值经**四面补偿**（`petEdgeBounds`，§2.2.14；B26 起 = 地面补偿 `groundBounds`）后的 `{minX, minY, maxX, maxY}`——**起飞时算一次、全程恒定**（与散步段起点同源）；不可取（null）⇒ 不起飞（G8）。
+  - **口径分列（B26 → B27）**：`maxY` = **可见身体底沿口径**（`+FEET_INSET_DIP`；B26 起）；**B27 起 `minX` / `maxX` / `minY` 同步按可见身体补偿**（`∓SIDE_EDGE_INSET_DIP` / `−TOP_EDGE_INSET_DIP`）——权威句 = §2.2.13 / §2.2.14。
 - **与样本的唯一差异**：新增 `landed` 标志（触地专属）⇒ Q 弹只在**落地**触发（样本用 `res.y >= bounds.maxY - 1` 反推，本仓显式化）。
 - **坐标语义**：`x` / `y` = 窗口左上角 DIP，与冻结面同空间（R6）。
 
@@ -387,7 +389,7 @@ throwStep(state, dtRaw, bounds, PHYSICS) -> { x, y, vx, vy, bounced, landed, atR
 **窗口不在场的收口（本轮补）**：`reason ∈ {destroyed, quit}`（窗口已销毁 / 进程退出）⇒ 只执行步骤 1（停循环）与步骤 4（日志，最佳努力）——**跳过步骤 2**（几何写；窗口不在场）与步骤 3（动作面复位）⇒ 仍**各留 1 行** `phys-rest` 诊断（承 US-28 的「各留 1 行」）。
 
 **不变量（可机检；本轮修正）**：
-- **飞行期轨迹恒在界内，且不依赖起飞点**——由 §2.2.4 的钳入（`x` / `y` 逐帧夹回区间，含上条的强制落地）保证 ⇒ **收口点必在区间内**；区间 = `[minX, maxX] × [minY, maxY + FEET_INSET_DIP]`（**B26 面**的地面口径，§2.2.13）；
+- **飞行期轨迹恒在界内，且不依赖起飞点**——由 §2.2.4 的钳入（`x` / `y` 逐帧夹回区间，含上条的强制落地）保证 ⇒ **收口点必在区间内**；区间 = `petEdgeBounds(wa)`（**B27 面**的四面口径 = `[minX−41, maxX+41] × [minY−44, maxY+30]`，§2.2.14；B26 面 = 仅地面 `+FEET_INSET_DIP`，§2.2.13）；
 - 由上行 ⇒ 停泊点的 `petSettlePos` 结果恒为 `kind='none'`（**零 `geom-fix reason=physics-rest` 行**）；该行若出现即说明边界 / 几何异常——属**报告项**（不静默）；B26 面的地面位置（标称矩形越出工作区下沿 30 DIP）**不破坏本条**：`petSettlePos` 的可见性判据是**中心点**（`petIsVisible`）⇒ 地面位置照常判可见、零改写（见 §2.2.13 / O-14）；
 - **起飞点本身可能落在区间外**（US-2 允许拖出屏 + B03 settle 只保**中心点**可见）⇒ 由 §2.2.5 第 7 条的起飞归一化就地钳入（首帧至多一次位移，登记为已知限制 O-10）。
 
@@ -487,13 +489,14 @@ isQuietPlacement(trail, now) = 窗内端点位移 <= QUIET_SPAN_MAX_DIP   // tru
 #### 2.2.13 B26 面：落地口径（可见脚底）—— F2 / US-24
 
 **口径（本面唯一权威句）**：物理地面 = **可见身体底沿** = 窗口矩形下沿**下** `FEET_INSET_DIP`（DIP）；原「窗口矩形下沿」口径（§2.2.4 / DD-6）自本面起只作 `maxY` 的中间量，**不再是地面**。
+**B27 推广注记（§2.2.14）**：本面的纯函数 `groundBounds` 自 B27 起推广为四面补偿并**改名 `petEdgeBounds`**（底面语义 = 本面逐字不变；上 / 左 / 右三面为 B27 新增）——本档其余处 `groundBounds` 一律读作 `petEdgeBounds`（改名注记，非语义变更）。
 
 **常量与契约**
 
 - 常量（`pet-physics-core.js`；逐值见 §2.2.3 本仓新增表）：`FEET_ANCHOR_INSET_DIP = 26`（渲染层锚点内缩）· `FEET_ALPHA_MARGIN_DIP = 4`（实测 alpha 残差补偿，**修正轮 1 主 agent 代裁**；回正路径 = 改 0）· `FEET_INSET_DIP` = 两者之和 = **30**（地面增量的唯一消费值）；
-- 纯函数：`groundBounds(bounds)` ⇒ `{ ...bounds, maxY: bounds.maxY + FEET_INSET_DIP }`（`minX` / `maxX` / `minY` 逐字不变）；
-  - **空值契约（修正轮 1 #4 补）**：`groundBounds(null) ⇒ null`（与 G8 `no-bounds` 同源）——`petWorkAreaBounds` 的短路口径 = 「返回 null ≠ 位置为零，调用方必须跳过写入」。
-    飞行路径的 bounds 由 `win && !win.isDestroyed() ? … : null` 派生（`shell-pet-physics.js:119`）⇒ 照旧落 G8；散步侧先判空（`shell-pet.js:307`）。**桩测断言面 = AC21①**（`groundBounds(null) === null`）。
+- 纯函数：`petEdgeBounds(bounds)`（**B27 起名；B26 原名 `groundBounds`**）⇒ `{ minX: b.minX − SIDE_EDGE_INSET_DIP, maxX: b.maxX + SIDE_EDGE_INSET_DIP, minY: b.minY − TOP_EDGE_INSET_DIP, maxY: b.maxY + FEET_INSET_DIP }`（B26 面 = 只抬 `maxY`，其余逐字不变；四面推广 = §2.2.14）；
+  - **空值契约（修正轮 1 #4 补）**：`petEdgeBounds(null) ⇒ null`（与 G8 `no-bounds` 同源）——`petWorkAreaBounds` 的短路口径 = 「返回 null ≠ 位置为零，调用方必须跳过写入」。
+    飞行路径的 bounds 由 `win && !win.isDestroyed() ? … : null` 派生（`shell-pet-physics.js:119`）⇒ 照旧落 G8；散步侧先判空（`shell-pet.js:307`）。**桩测断言面 = AC21①**（`petEdgeBounds(null) === null`）。
 - **消费点两处、同一取值**（地面单一口径）：① 飞行 bounds（`shell-pet-physics.js` 的 `evaluateArm`）；② **散步段起点**的 y 归位上界（`shell-pet.js` 的 `doWander`）——它是①的必要配套：否则落地后的 y 会被散步拉回未补偿区间（30 DIP 上跳）；
 - **不变面**：`throwStep` 的边界语义（`b.maxY` 只是取值变了）· `armGate` 的 11 条（G8 照旧查 `petWorkAreaBounds !== null`）· 停泊序列（§2.2.6）· 几何层 / 渲染层 / `main.js` 零 diff（不新增注入面与依赖边）；
 - **与渲染层的同源声明 + 落地等式（修正轮 1 #12 补来源与限制）**：`FEET_ANCHOR_INSET_DIP` 对齐的可见身体锚点 = `PET_FEET_Y = 270 − 26`（`pet-chain-core.js:16`；视频媒体盒与命中区都由它定位）+ `#pet { bottom: 26px }`（`pet.html:34`；PNG 通道）——三者同线。
@@ -515,6 +518,70 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 
 - **处置**：① 档界值与 ≤4 s / ≤5 s 判据**数值不改**；② 扫描集（8 方向 × 4 速 × 4 起点 = 128 例）**必须在实施后按新地面重跑并重新登记**（登记行落批次档 §5；口径 = NFR-19 / AC11）。
 - **余量核算**：档内最坏实测 3.33 s（`e = 0.55`）⇒ 距 4 s 有 **0.67 s** 余量，足以吸收本次 +6% 的冲击速度变化 ⇒ **预期无新增逾期例**（**重跑为准**，不得以预期代替重跑）。
+
+#### 2.2.14 B27 面：边界口径四面化（可见身体贴边 · R21 / US-34）
+
+> 面 = 台账 R21（用户实机「上左右的边界有点小了，下面的是足够的」+ 先验「宠物模型自带空白宽度」）；回指 `docs/requirements/PET.md` US-34 / NFR-25 与 US-24 的 B27 修订注记；
+> 任务书与受影响文件（file 级权威表）= `docs/batches/B27-pet-feel-2.md` §2（承 B26 形态：设计档只给契约与判据，不复制文件表）。
+> 三方同源份额（本档）= 批次档 §2.1（AC 2（AC23–AC24）· TC 4（TC-41–TC-44）· DD 1（DD-18）· O 2（O-16…O-17））——编号与批次档逐条对应。
+
+##### 2.2.14.1 实测（三面差，本设计者亲算；以声明身体盒 + 同源常量为据）
+
+- 窗口矩形 = 250×270 DIP（`shell-pet-geometry.js:29`）；身体盒（画布）= x0 200 / y0 50 / x1 440 / y1 335（`pool.json:4` / `pet-chain-core.js:12`）；scale = 200/285 ≈ 0.70175（`mediaBox`，`pet-chain-core.js:106-122`）。
+- 可见身体盒（窗口坐标）：**top = PET_FEET_Y − 目标高 = 244 − 200 = 44.0**；**left = (250 − 240×0.70175)/2 ≈ 40.8**（右同——身体画布水平居中：320 = 640/2）；bottom = 244（= `PET_FEET_Y`，已由 B26 补偿 30）。
+- ⇒ 三面补偿量：**上 44 / 左 ≈40.8 / 右 ≈40.8** DIP——台账「≈40 DIP 级」的未实测值就此实测化（等式见 §2.2.14.3）。
+
+##### 2.2.14.2 方案选型对比
+
+**A 组 · 三面补偿量的取量路径**
+
+| # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **声明身体盒常数**：`TOP_EDGE_INSET_DIP = 44` · `SIDE_EDGE_INSET_DIP = 41`（单点常量 + 机检等式） | 与渲染层媒体盒 / 命中区**同源**（同一身体盒）；零新增依赖 / IPC；可机检（AC23①） | 逐段 alpha 实际内容与声明盒的残差未逐段实测（登记 O-16，实机标定） | **选定** |
+| 2 | 池帧内容盒实测（逐段 alpha 包围盒） | 逐段更准 | 逐段数据缺失且方差未测；需池装载依赖 + 新数据面 | 否决 |
+| 3 | 起飞时一次性校准（渲染层实测 + 新 IPC 上报） | — | 触渲染层 + 新 IPC + 「飞行中边界可变」耦合；B26 J 组候选 3 同款否决 | 否决 |
+
+**B 组 · U-4：越界口径（对 B03「标称矩形 ⊆ 工作区」）**
+
+| # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **具名例外（照 B26 O-14 先例，四面）** | 例外显式、可核销；B03 口径本体与骑线推离 / 跨屏尺寸标记机制零改动 | 例外面由下扩到四面（登记面变大） | **选定（推荐）** |
+| 2 | 改 B03「标称矩形 ⊆ 工作区」口径本体 | 无例外登记 | B03 已收口；该句服务于 `petRectInside` 的骑线推离与拖动跨屏标记 ⇒ 改口径波及这些机制，回退已验收面 | 否决 |
+
+##### 2.2.14.3 常量与契约
+
+- 常量（`pet-physics-core.js` 本仓新增表扩展）：`TOP_EDGE_INSET_DIP = 44` · `SIDE_EDGE_INSET_DIP = 41`（DIP；底面 `FEET_INSET_DIP = 30` 逐字不变）。
+- 纯函数：`groundBounds` 推广为四面补偿并**改名 `petEdgeBounds`**（B26 面 = 只抬 `maxY`；§2.2.13 已落推广注记）：
+  `petEdgeBounds(b) = b == null ? null : { minX: b.minX − SIDE_EDGE_INSET_DIP, maxX: b.maxX + SIDE_EDGE_INSET_DIP, minY: b.minY − TOP_EDGE_INSET_DIP, maxY: b.maxY + FEET_INSET_DIP }`
+- 消费点两处、同一取值：① 飞行 bounds（`shell-pet-physics.js` 的 `evaluateArm`）；② 散步段起点（`shell-pet.js` 的 `doWander`）——与 B26 地面同款配套（否则落地 / 抛掷后会被散步拉回未补偿区间）。
+- **机检等式（AC23①；跨档核对）**：
+  `TOP_EDGE_INSET_DIP === PetChainCore.PET_FEET_Y − PetChainCore.PET_BODY_TARGET_H`（244 − 200 = 44）；
+  `SIDE_EDGE_INSET_DIP === Math.round((PetChainCore.PET_STAGE_W − PetChainCore.mediaBox({canvas: PET_MEDIA_CANVAS, body: PET_MEDIA_BODY, targetH: PET_BODY_TARGET_H, feetY: PET_FEET_Y}).hit.w) / 2)`（≈ (250 − 168.42)/2 = 40.79 → 41）；
+  `FEET_INSET_DIP === FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP`（30，逐字不变）。
+  「270」的来源与限制同注 A（几何档不可装载 ⇒ 桩测从 `pet.html` 取 270 / 26，三方交叉核对）。
+- **可见性论证（NFR-25）**：补偿量 ≤ 44 DIP ≪ 中心点到窗口边缘的余量（x 125 / y 135 DIP）⇒ 任何补偿后位置的中心点仍落在 workArea 内（NFR-5 照旧）；
+  `petSettlePos` 对补偿后位置判 `kind='none'`（零改写）——与 B26 §2.2.6 不变量同款论证。
+- **口径生效点（五处，全取同一 `petEdgeBounds`）**：反弹触墙（`throwStep` 的 x/y 夹边）· 撞顶 · 5 s 超时强落 · 静止收口 · 起飞归一化钳入——上 / 左 / 右三面的夹边值随之扩展（底面口径不变）。
+- **散步配套**：`doWander` 的 y 归位区间与撞墙判定（`hitWall` 的 minX / maxX）同取 `petEdgeBounds` ⇒ 撞墙走到身体贴边处（TC-44）。
+
+##### 2.2.14.4 冲突核对与具名例外（B03 面）
+
+- **具名例外（四面；U-4 = ①）**：窗口标称矩形可越出工作区 / `bounds` 至多「上 44 / 左 41 / 右 41 / 下 30」DIP（均为透明留白）——B03「标称矩形 ⊆ 工作区」的具名例外由**一处（下）**扩为**四面**；
+  `petIsVisible`（中心点）与命中区（身体盒）照常成立（承 B26 O-14 论证）。
+- **条件分支（承 O-14）**：该屏 workArea 边 == bounds 边（任务栏置顶 / 自动隐藏）∧ 与另一块 scaleFactor 不同的屏重叠 ⇒ `petStraddleFix` 会把窗口推回 `bounds`（抵消该面补偿）——实机复核 = 批次档 §2.6。
+- **NFR-19 连带（重跑登记）**：顶边 minY 下移 44 增加**向上**行程（地面 maxY 不变 ⇒ 首触竖直速度口径不变）——扫描集（128 例）按 B26 §5.0.4 同口径**重跑并登记**（登记行落批次档 §5；顶边扩展只影响上抛例的飞行时长分布，收口 ≤5 s 硬上界不变）。
+
+##### 2.2.14.5 观察项（O-16…O-17）+ O-8 核销
+
+- **O-16 顶 / 左 / 右三面的 alpha 残差未逐段实测**：补偿量按**声明身体盒**取（用户先验「模型自带空白宽度」的实测化）；逐段实际内容与声明盒的残差（视频通道同 O-13 的 ≈4 DIP 级）未逐段实测 ⇒ 最坏 = 身体贴边残留少量透明缝（观感项，实机目视 = 批次档 §2.6）。
+- **O-17 顶边扩展的上抛时长面**：`ceilingBounce` 在扩展顶边反弹 ⇒ 上抛例的飞行时长分布变化（≤5 s 硬上界不变）——NFR-19 重跑登记（§2.2.14.4）。
+- **O-8 核销（B20 观察项）**：B20 登记的「不采用样本 sideAllow（身体贴边）语义」自 B27 起**采用**（上 / 左 / 右三面按可见身体贴边）——O-8 的「是否采用待用户裁」就此闭合（用户 R21 实机裁定即采用裁定）。
+
+##### 2.2.14.6 关键决策（DD-18）
+
+| # | 决策 | 理由 | 否决 / 备选 |
+|---|---|---|---|
+| DD-18 | 边界口径 = **四面 insets 单点常量** + `groundBounds` 推广改名 `petEdgeBounds`（飞行与散步同取） | 与渲染层同源（同一身体盒）；底面承 B26 不重做；B03 面按具名例外（U-4 = ①） | 池帧内容盒实测 / 起飞时校准（A 组否决）· 改 B03 口径本体（B 组否决） |
 
 ### 2.3 受影响文件全清单（行数 = 换行符口径，as-of 2026-09-18）
 
@@ -541,6 +608,7 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 **300–500 行档立场（本轮补，#14）**：`shell-pet.js` 426 → ≈434 已在「>300 行 ⇒ 主动拆分复核」档之上，但本批对它**只增 1 行守卫 + 1 处注入点 + 1 处停点**、**未跨 500 行档** ⇒ **不启动拆分**（拆分 = 结构变更，另批；存量大档的拆分复核不属本批范围）。
 
 - **B26 面（F2）的受影响文件与行数预算**：见批次档 `docs/batches/B26-pet-feel.md` §2（一次性任务书；本档**不复制文件表**——设计档不承载一次性任务，D2 单一权威源）。
+- **B27 面（R21）的受影响文件与行数预算**：见批次档 `docs/batches/B27-pet-feel-2.md` §2.3（同 B26 形态：本档不复制文件表）。
 
 ### 2.4 关键决策记录（DD-1…DD-17）
 
@@ -551,7 +619,7 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 | DD-3 | 拖拽写者**不进**状态机（只读派生 `getPetDrag() !== null`） | 冻结面不可改其内部；其优先级最高 ⇒ 无需被抢占 | 把拖拽改造成仲裁消费者（相抵冻结） |
 | DD-4 | 起飞的评估点 = `setImmediate`（同一事件的全部监听器执行之后） | 与监听顺序无关 ⇒ 保证「冻结面收口已完成」后才评估（escape 分支与 settle 均可见） | 依赖监听注册顺序（脆弱）；采样 tick 轮询兜底（会把 stale / destroyed 误判为可抛） |
 | DD-5 | 释放初速来源 = 主进程自采**光标**轨迹（仅拖动期） | 接触面最小（不碰渲染层 / preload）+ 与样本同源 | 窗口轨迹 / 渲染层上报 / 冻结面内部字段（§2.1 D 组） |
-| DD-6 | 飞行边界 = **当前屏工作区**（复用 `petWorkAreaBounds`；**B26 补正**：其 `maxY` 经地面补偿 `groundBounds`——见 DD-17 / §2.2.13） | 与散步同源（US-9 不回退）+ 复用单一 helper（NFR-8）+ 落点必可见（NFR-5） | 跨屏 AABB / 桌面并集 / `bounds`（§2.1 E 组） |
+| DD-6 | 飞行边界 = **当前屏工作区**（复用 `petWorkAreaBounds`；**B26 补正**：其 `maxY` 经地面补偿；**B27 起** = 四面补偿 `petEdgeBounds`——见 DD-17 / DD-18 / §2.2.13 / §2.2.14） | 与散步同源（US-9 不回退）+ 复用单一 helper（NFR-8）+ 落点必可见（NFR-5） | 跨屏 AABB / 桌面并集 / `bounds`（§2.1 E 组） |
 | DD-7 | 实现路径 = 按规格重写 CJS（样本仅作语义规格） | 零 TS 工具链；差异面显式可控（§1.3.3） | 逐行适配 TS / 运行时 require 样本（§2.1 C 组） |
 | DD-8 | 参数 = 代码内单一参数表；开关 = `settings.json` 顶层布尔 | 零新增文件与失败面；可复现（桩测断言常量） | JSON 配置档 / 用户可调（§2.1 G 组） |
 | DD-9 | 停泊收口复用几何既有离散序列（settle → calibrate → savePos → snapshot） | 与 B03 同一拓扑 ⇒ 不新增几何实现；`petCalibrateSize` 保持唯一尺寸写入路径 | 自造停泊序列 / 飞行中校准（相抵 §1.3.2-2） |
@@ -613,7 +681,7 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 | O-5 | 命名形态张力 | `docs/CONVENTIONS.md` §二「IPC 通道 = `<域>:<动作>`」与既有 `pet-*` 破折号族（12+ 条，含 B18 新增 `pet-chain-config`）形态不一致 | 本批新通道按**规则句**取名 `pet:physics-squash`；存量迁移属另批（建议行） |
 | O-6 | 流程面 | 本仓**无**「改动面反查（文档影响面）」脚本（工程纪律要求实施轮开工前跑） | 本批以人工受影响文件清单承担；建议行（归 B15 / B16 或另批） |
 | O-7 | 回归面 | B03 dev 桩仍损坏（T29）⇒ 本批回归面仍靠几何零 diff | 承 B18 §1.4-2；T29 属另批 |
-| O-8 | 观感差异 | 本批**不采用**样本的 `sideAllow`（身体贴边）语义 ⇒ 抛掷停止点比样本离屏缘略远（窗口矩形的透明留白） | 与散步口径同源（一致性优先）；是否采用待用户裁 |
+| O-8 | 观感差异 | 本批**不采用**样本的 `sideAllow`（身体贴边）语义 ⇒ 抛掷停止点比样本离屏缘略远（窗口矩形的透明留白） | 与散步口径同源（一致性优先）；是否采用待用户裁 → **已由 B27 采用（核销）**：R21 按「可见身体」口径扩上 / 左 / 右三面（§2.2.14）——本观察项就此闭合 |
 | O-9 | 观感交错 | 飞行期可能被 B19 工作档的「重断言」切走动作档（≤1 s） | 写权不受影响；待 B19 实施后实机看 |
 | O-10 | 已知限制（**常规路径**，本轮修正） | 起飞点可合法落在飞行区间外（US-2 允许拖出屏 + B03 settle 只保**中心点**可见）⇒ §2.2.5 第 7 条在建 `s0` 时钳入；窗口有 ≤ 1 tick（16 ms）在区间外，位移由该 tick 的一次 `setPosition` 落地（**不新增写入时点**） | 已落档为已知限制；**不产生伪 Q 弹**。要求「拖出屏零位移」= 边界语义变更（中心点式边界），另批裁定 |
 | O-11 | 样本注释与实现不符 | 样本注释（`samples/dsh-pet/dsh-pet/src/shared/physics.ts:212-213`）称死区判定与初速 / 软上限「一体线性缩放（相对力度）」；实现（`:263-264`）却把固定常量 `DEAD_ZONE_SPEED` 与**已乘 `throwPower`** 的速度比较 ⇒ 死区在原始速度上随 p 反比变化，与注释相反 | 本仓按**实现口径**（§2.2.12）；样本为只读参考（R14）不改；将来改 `throwPower` 默认值时复核该口径 |
@@ -662,23 +730,30 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 | AC18 | US-24 | 边界两支同时断言：门量 `v = T` ⇒ 起飞（**闭区间**）；`v = T − 1 px/s` ⇒ 不起飞（`below-threshold`） | 桩测 |
 | AC19 | US-24 | **静默放置**：松手前 120 ms 窗内**端点位移 ≤ 5 px** ⇒ 不起飞（`phys-stop reason=quiet-dwell`）+ 物理面零写入 + ≤200ms 静止；与「位移 > 5 px 且 `v < T`」两支**可区分**（后者 = `below-threshold`） | 桩测（门）+ 日志面 |
 | AC20 | US-24 | **判据量 = 速度（判别力断言）**：同一门量 `v`、末段加速度 **+ / −** 两例 ⇒ 门判据结果**相同**；门函数入参 = 标量速度（体内零加速度项）；`ACCEL_REF` / `ACCEL_GAIN_MAX` 的常量行标「不进判据」 | 桩测 + 静态机检 |
-| **AC21** | US-24（B26） | **地面 = 可见身体底沿**：① 桩测——增量 == `FEET_INSET_DIP`（30）∧ `groundBounds(null) === null` ∧ `FEET_ANCHOR_INSET_DIP === 270 − PetChainCore.PET_FEET_Y`；② 符号级——飞行与散步 y 归位**同取** `groundBounds`（两处）；③ `y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（±1）；细目 = 注 A | 桩测+静态机检+日志 |
+| **AC21** | US-24（B26） | **地面 = 可见身体底沿**：① 桩测——增量 == `FEET_INSET_DIP`（30）∧ `petEdgeBounds(null) === null` ∧ `FEET_ANCHOR_INSET_DIP === 270 − PET_FEET_Y`；② 符号级——飞行与散步 y 归位**同取** `petEdgeBounds`；③ `y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（±1）；细目 = 注 A | 桩测+静态机检+日志 |
 | **AC22** | US-24（B26） | **口径不产生位置回拉 / 上跳**：① 落地后原地再起飞（**限 `vy ≥ 0`**），首帧 `phys-tick` 的 `y` **不减小**；② 落地后散步段起点 `geom tag=seg-start` 的 `y` == 落地 `y`；③ 落地后 `petSettlePos` 判 `kind='none'`（**零 `geom-fix` 行**，条件例外见 O-14）；**细目 = 注 A** | 静态机检 + 日志面 |
+| **AC23** | US-34（B27） | **边界四面化（可见身体口径）**：① 桩测——`petEdgeBounds` 四边增量与常量等式逐条（细目 = 注 B′）；② 符号级——飞行与散步**同取** `petEdgeBounds`（两处命中）；③ 日志——静止于侧 / 顶边时 `x + hit.left ≈ wa.x` / `y + hit.top ≈ wa.y`（±1，与常量算术配对） | 桩测 + 静态机检 + 日志 |
+| **AC24** | NFR-25（B27） | **零回退与可见性**：① 冻结面零 diff——`shell-pet-geometry.js` / `shell-pet-drag.js` / `pet-chain*.js` / `assets/**` / `main.js` / `package.json` 逐档 `git diff --stat` 空；② 中心点可见性——补偿后位置 `visible=1`（日志 `geom` 行）；③ 改动档行宽 ≤300 / 单档 ≤500 / 文件头标准形 | 机检（git + 静态 + 日志） |
 
 **B26 连带（修正轮 1 #8）**：AC11 的扫描集须按新地面（`FEET_INSET_DIP` = 30 DIP）**重跑并重新登记**；影响估算与余量 = §2.2.13 末段。
 
 **注 A —— AC21 / AC22 判据细目（B26；修正轮 1 更新）**
 
-- **AC21①（常量等式，跨档核对）**：桩测装载**可装载**的真实实现——`FEET_INSET_DIP === FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP`（本批 = 26 + 4 = **30**）∧ `FEET_ANCHOR_INSET_DIP === 270 − PetChainCore.PET_FEET_Y`（244；`pet-chain-core.js:16` / `:193`）∧ **`groundBounds(null) === null`**（空值契约）。
+- **AC21①（常量等式，跨档核对）**：桩测装载**可装载**的真实实现——`FEET_INSET_DIP === FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP`（本批 = 26 + 4 = **30**）∧ `FEET_ANCHOR_INSET_DIP === 270 − PetChainCore.PET_FEET_Y`（244；`pet-chain-core.js:16` / `:193`）∧ **`petEdgeBounds(null) === null`**（空值契约；B27 起名，原名 `groundBounds`）。
   - **`270` 的来源与限制（修正轮 1 #12 如实登记）**：唯一权威处 = `shell-pet-geometry.js:29` 的 `PET_SIZE_DIP.h`，但该档 `require('electron')`（`:7`）⇒ **node 不可装载** ⇒ 桩测**不得** require 它。
     可装载的同源实数源 = `pet.html:13-14`（`#pet-wrap { height: 270px }`）与 `:34`（`#pet { bottom: 26px }`）⇒ 桩测从 HTML 取这两数，与 `PetChainCore.PET_FEET_Y`（244）三方交叉核对。
     残留弱点（明示）：若 `PET_SIZE_DIP.h` 与 `pet.html` 同时改而 `PET_FEET_Y` 未改，等式仍可通过（弱镜像面**收窄**，非消除）。
+- **注 B′（AC23 判据细目，B27）**：桩测装载**可装载**的真实实现（`pet-physics-core.js` + `pet-chain-core.js` 双环境导出）——上 / 侧等式的被减数 250 / 270 按注 A 同款限制从 `pet.html` 取（`#pet-wrap` 的 250×270），与 `PetChainCore` 常量三方交叉核对；残留弱点同注 A（弱镜像面收窄，非消除）。
+  - **四面增量与空值契约（AC23①）**：`petEdgeBounds` 增量 ==（minX−41, maxX+41, minY−44, maxY+30）∧ `petEdgeBounds(null) === null`——与 §2.2.14.3 机检等式同源。
+  - **顶边常量等式（AC23①）**：`TOP_EDGE_INSET_DIP === PetChainCore.PET_FEET_Y − PetChainCore.PET_BODY_TARGET_H`（244 − 200 = 44）。
+  - **侧边常量等式（AC23①）**：`SIDE_EDGE_INSET_DIP === Math.round((PetChainCore.PET_STAGE_W − PetChainCore.mediaBox({canvas: PET_MEDIA_CANVAS, body: PET_MEDIA_BODY, targetH: PET_BODY_TARGET_H, feetY: PET_FEET_Y}).hit.w) / 2)`（≈ (250 − 168.42)/2 = 40.79 → 41）。
+  AC23③ 的日志算术：`hit.left` / `hit.top` = `PetChainCore.mediaBox(...)` 的纯函数值（40.79 / 44.0）；配对 = `geom tag=physics-rest` 行的 `pos` 与同刻 `wa`（与 AC21③ 同法）。
 - **AC21③（日志面）**：`phys-rest pos=(x,y)` 与同一时刻 `geom` 行的 `wa` 配对取值 ⇒ `y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（±1 DIP；本批 = 底边 **+4**）。
 - **AC22①（输入写死，修正轮 1 #5）**：用例必须写死「**平抛 / 斜下抛（`vy ≥ 0`）**」——向上抛（`vy < 0`）时首帧 `y` 合法减小（`shell-pet-physics.js:195-215` / `pet-physics-core.js:232-242`），原表述会出**假失败**；与抛向无关的等价判据 = 「首帧 `y` **不小于** `groundBounds(wa).maxY`」。
 - **AC22③ 的条件例外（O-14）**：`workArea` 底边 == `bounds` 底边 ∧ 混合 `scaleFactor` 重叠的配置下，骑线推离会上推窗口（`kind='straddle'` + `geom-fix` 在场）；实机复核项 = 批次档 §2.7-2。
 - **AC22④（冻结面）**：`shell-pet-geometry.js` / `shell-pet-drag.js` / `pet-chain.js` / `pet-chain-core.js` / `assets/**` 与 `main.js` / `package.json` 逐档 `git diff --stat` 为空。
 
-### 3.2 用例表（TC-1…TC-40）
+### 3.2 用例表（TC-1…TC-44）
 
 | TC | 类型 | 输入 | 期望输出 | AC |
 |---|---|---|---|---|
@@ -722,10 +797,14 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 | **TC-38** | 正常 | 快甩落地（门量 `v ≥ T` ∧ 非静默；物理开启） | 收口在地面：`y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（= 可见脚底踩工作区底边；本批 +4，±1 DIP）；`phys-rest reason=atRest` · `snap=0`；轨迹恒在 `[minX,maxX] × [minY, maxY+30]` | AC16、AC21 |
 | **TC-39** | 边界 | 落地（`y` = 地面）后：① 原地再起飞（**输入写死：平抛 / 斜下抛 ⇒ `vy ≥ 0`**，同门量 `v ≥ T`）；② 触发一次散步段 | ① 首帧 `phys-tick` 的 `y` 不减（钳入用同一地面，零上跳；等价判据 = `y ≥ groundBounds(wa).maxY`）；② `geom tag=seg-start` 的 `y` == 落地 `y`（段起点归位同口径，零跳变） | AC21、AC22 |
 | **TC-40** | 异常 | 落地后显示器事件 / 松手校正路径（**默认配置**：`workArea` 底边 ≠ `bounds` 底边） | `petSettlePos` 判 `kind='none'` ⇒ **零 `geom-fix` 行**（位置不被拉回 30 DIP）；无异常。**条件例外（O-14）**：任务栏置顶 / 自动隐藏 ∧ 混合 `scaleFactor` 重叠 ⇒ 骑线推离可能上推窗口（该配置下预期不成立；复核 = 批次档 §2.7-2） | AC22 |
+| **TC-41** | 正常 | 快甩（门量 `v ≥ T`）**水平向右**，停泊在**右缘**（默认配置单屏工作区 1920×1040） | 停泊 `pos` 满足 `x + hit.right == wa.x + wa.width`（±1；hit.right ≈ 209.2 = `mediaBox(...).hit.left + hit.w`）——身体右缘贴工作区右缘；`phys-rest reason=atRest`；轨迹恒在 `petEdgeBounds(wa)` 内 | US-34 / AC23、AC24 |
+| **TC-42** | 边界 | **上抛**撞顶（`ceilingBounce=true`，门量 `v ≥ T`） | `minY` 扩展后身体顶缘可到 `wa.y`：反弹帧 `y == minY`（= `wa.y − 44`）∧ 轨迹不出 `petEdgeBounds(wa)`；收口在地面（底面口径不变） | US-34 / AC23 |
+| **TC-43** | 异常 | 起飞评估时 `petWorkAreaBounds` 为 null（屏不可取） | `petEdgeBounds(null) === null` ⇒ G8 `no-bounds` 照旧（零写入、不起飞） | US-34 / AC23① |
+| **TC-44** | 边界 | 抛到左 / 右缘落地后触发一次散步段（15–35 s 计时到点） | 散步撞墙判定 = 扩展边：`seg-start` 的 `y` == 落地 `y`（同口径零跳变）∧ 撞墙走到身体贴边处（窗口 x == 扩展 minX/maxX） | US-34 / AC23②、AC24 |
 
 ### 3.3 验证手段、仪表与限制
 
-**手段**：① 桩测（`node .thincoder/b20-pet-physics-stub.mjs` ⇒ 末行 `pass/total PASS`）——装载真实核心，覆盖 AC1–AC7 / AC9–AC12 / **AC15–AC20**；
+**手段**：① 桩测（`node .thincoder/b20-pet-physics-stub.mjs` ⇒ 末行 `pass/total PASS`）——装载真实核心，覆盖 AC1–AC7 / AC9–AC12 / **AC15–AC20**，并随 B26 / B27 面扩 **AC21–AC24**（B26 地面等式 / B27 `petEdgeBounds` 增量与常量等式；桩测档 = 各批次档 §2.3 所列）；
 ② 静态机检（四档 `git diff --stat` 零 diff · `package.json` 依赖段零 diff · 行宽行数 · 符号级顺序与零命中核对）；
 ③ 日志面（`BIGFISH_PET_DEBUG=1` ⇒ `userData/pet-physics.log` + `pet-geometry.log` + `pet-drag.log`；行格式见 §2.2.11）；
 ④ CPU 实测（`process.getCPUUsage()`，口径同 NFR-1）。
@@ -755,3 +834,5 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 | 2026-09-18 | 承上行（观察项与计数，D3）：**§2.5.3 新增 O-13 / O-14**；**计数：AC 20 → 22 · TC 37 → 40 · DD 16 → 17 · 选型 9 → 10 组 · O 12 → 14**（口径 = 末位编号）。 |
 | 2026-09-18 | **B26 修正轮 1（F2 面 6 条：🟡#4–#8、🔵#12；源 = §3 轮次 1 + 代裁）**：① 余量 0 → 4 ⇒ `FEET_INSET_DIP` = 30；② `groundBounds(null) ⇒ null`（#4）；③ AC22① `vy ≥ 0` + TC-39 写死（#5）；④ O-15（#6）；⑤ O-14 补 `bounds` 面（#7）；⑥ NFR-19 重跑（#8）；⑦ 注 A 补 `270` 来源（#12）。计数：O 14 → 15（其余不变）。 |
 | 2026-09-18 | B26 修正轮 2（换机复审 3 条发现；源 = §3 轮次 2）——本档经核验**无内容改动**（发现 1 / 3 = 批次档面；发现 2 = 动画档 / 需求档面）；as-of 行数 = **757** 行（换行符口径；供批次档 §2.4 行数订正引用）。 |
+| 2026-09-19 | **B27 面落档（边界四面化；源 = 台账 R21 / 批次档 §1）**：新增 **§2.2.14**（实测 / 选型 A·B / `petEdgeBounds` 契约 / B03 例外四面 / O-16…O-17 / DD-18）· §2.2.13 改名注记 · §2.2.4 / §2.2.6 口径分列 · O-8 核销 · §3.1 AC23–AC24 + 注 B′ · §3.2 TC-41–TC-44 · `groundBounds` → `petEdgeBounds`。**计数：AC 24 · TC 44 · DD 18 · O 17**。 |
+| 2026-09-19 | **B27 面落盘（续；三方一致收口）**：§1.1 增 US-34 / NFR-25 两行 + US-24 行补 B27 注记 · 档头标题 / 需求档与批次档指针同步 · §2.3 补 B27 文件表指针行 · §2.2.14 补三方份额行 · 观察项编号统一 `O-16 / O-17`（承 O-1…O-15 形态）· §3.2 标题计数 TC-40 → TC-44 · §3.3 手段①扩 AC21–AC24 · AC23 判据细目移注 B′（行宽合规）。**计数不变（AC 24 · TC 44 · DD 18 · O 17）**。 |
