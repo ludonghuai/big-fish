@@ -236,6 +236,12 @@
   两处均属「as-of 参考值」（R3 明示实施首步取当日实测、不得照抄），**故本轮未改**（不夹带未列条目）；基线建档时按当日实测即可自洽。
 - **`--slow` 注记**：A.2.2.1 保留 1 处「旧写法作废」注记（防回潮）；若评审要求「零残留」，可下次动笔时改为不引用该命令形态。
 
+### §2.10 微轮（2026-09-19 · AGENTS.md §三 同步）——承 §2.8 待同步项
+
+- 范围（零夹带，仅 `AGENTS.md` 一档）：§三 现状 0/3 → 3/3（三条 bullets 改写为实况）+ `tests/` 计数 4 → 9 档 + 目标段「已达成」口径 + 删同步注记 + §五变更记录 +1 行。
+- 实测依据（as-of 2026-09-19）：scripts 16 项（`package.json:13-30`）；`gates.yml` 28 行（windows-latest / push / PR / dispatch / 三步只调 npm script）；eslint/prettier 命中仅 `samples/dsh-pet/dsh-pet/` 第三方样例 2 档；`tests/` = 5 档 + `tests/integration/` 4 档（harness.js + 3 场景）。
+- 自证：`npm run lint` → `GATE lint PASS checks=6 selftest=14/14`（首跑红 1 = 本微轮新增变更记录行 327 字符超宽，当场折短至 261 后复跑绿）；D6 回读核对 ✓。
+
 ## §3 设计评审（评审子代理）
 
 <!-- 由评审子代理填 -->

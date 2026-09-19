@@ -33,15 +33,14 @@
 
 ## 三、门禁（现状与目标）
 
-**现状 = 0/3**（实测，as-of 2026-09-17）：
+**现状 = 3/3**（三道发布门全落地 + CI 真绿；实测 as-of 2026-09-19，证据 = `docs/batches/B16-test-gates.md` §6）：
 
-1. `package.json:13-26` 的 scripts（**12 项**；行号只作 as-of 参考）**无 `test`**（= postinstall / prestart / start / pack / dist / dist:win / dist:mac / dist:linux / icons / make-latest / bundle:refresh / bundle:check）。
-2. `.github/workflows/build.yml`（74 行）**无 lint / test 步骤**（只有构建与产物上传）。
-3. 全仓**无 lint / format 配置**（`.eslintrc*` / `eslint.config.*` / `.prettierrc*` 全零命中）。
+1. `package.json:13-30` 的 scripts（**16 项**；行号只作 as-of 参考）含 `lint` / `test` / `test:full` / `test:integration`。
+2. `.github/workflows/gates.yml` 已接线（windows-latest；push / PR / dispatch；三步只调 npm script）——CI **真绿 ×3 runs**（用户 2026-09-19 截图，含 `4f5d425`）。
+3. lint / format 面 = **自研门禁** `scripts/gates/**`（六判据 + 结构三条；基线冻结 + 逐条消解期）。本仓自有代码**仍无 eslint / prettier 配置**（自有代码面零命中；仅 `samples/dsh-pet/dsh-pet/` 第三方样例自带 `eslint.config.js` / `.prettierrc.json`，不属本仓门禁面）。
 
-**目标（归 B16，本档只声明目标与指针，不写实现）**：三道门 = `lint` → `test:full` → `test:integration`，并由 CI（`.github/**`）接线。
-现存 `tests/`（**4 档**：`harness-store.test.js` / `update-lib.test.js` / `update-stub.mjs` / `b12-plugin-guards.test.js`）为**开发期工具**，不构成仓门禁（计数 as-of 2026-09-18 实测）。
-**同步注记**：本节的「现状 = 0/3」与目标段**随 B16 实施后**同步（B16 设计 = `docs/design/REPO-CONVENTIONS.md` 附 A）；本轮只订正 `tests/` 计数。
+**门禁定义（已达成；细节指针化，本档不重述）**：三道门 = `lint` → `test:full` → `test:integration`，由 CI（`gates.yml`）接线；判据与基线机制 → `docs/CONVENTIONS.md`，实施与验收 → `docs/batches/B16-test-gates.md` §5-6。
+`tests/` 现含 **9 档**（计数 as-of 2026-09-19 实测）：`harness-store.test.js` / `update-lib.test.js` / `update-stub.mjs` / `b12-plugin-guards.test.js` / `layer.js` + `tests/integration/`（`harness.js` + 3 场景）；实测全绿 = 单元 45 用例 + 集成 3 场景。
 
 ---
 
@@ -64,3 +63,4 @@
 | 2026-09-17 | 建档（B11）：写权矩阵 / 四步流程 / 门禁现状 0/3 与目标（归 B16）/ 文档体系入口四要素 + 指针；代码规范指向 `docs/CONVENTIONS.md`（回指批次档 `docs/batches/B11-conventions.md` §1.6 AC1）。 |
 | 2026-09-17 | **B08 收口轮（门禁现状 ① 行同步）**：scripts 行锚与列举按 as-of 实测更正——`package.json:13-24`（10 项）→ **`:13-26`**（**12 项**：补 `bundle:refresh` / `bundle:check`；注「行号只作 as-of 参考」）；成因 = B08 增两行 scripts ⇒ 其后各行整体 +2。**「无 `test`」结论与现状 0/3 不变。** |
 | 2026-09-18 | **B16 落笔轮（§三 计数订正）**：`tests/` 计数 **3 档 → 4 档**（漏 `b12-plugin-guards.test.js`；实测 as-of 2026-09-18）+ 补「现状 0/3 与目标段随 B16 实施后同步」注记。**「无 `test`」与现状 0/3 结论不变**（实施未动）。依据 = 批次档 `docs/batches/B16-test-gates.md` §1.3-4。 |
+| 2026-09-19 | **B16 收口轮（§三 同步）**：门禁现状 **0/3 → 3/3**（scripts 16 项含 `lint`/`test`/`test:full`/`test:integration`；`gates.yml` 接线 + CI 真绿 ×3；lint/format = 自研门禁 `scripts/gates/**`）；`tests/` 计数 4 → **9 档**；目标段改「已达成」+ 删同步注记。依据 = `docs/batches/B16-test-gates.md` §6。 |
