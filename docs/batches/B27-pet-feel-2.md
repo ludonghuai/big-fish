@@ -106,7 +106,7 @@
 
 - **AC32（US-32，节奏机制）**：桩测 `decideNext` 判定矩阵（slot × kind × quiet 全组合）+ `parsePool` `ok=1` ∧ 权重逐值 + `PET_QUIET_MS` 定义恰 1 处——取证 = `node .thincoder/b27-pet-feel-2-stub.mjs`（末行 `pass/total PASS`）。
 - **AC33（US-32，节奏运行期）**：动作段末 ⇒ `reason=quiet` + `anim quiet enter`；静默区间零 `anim chain`；时长 == `PET_QUIET_MS`（+500 ms）；打断 ⇒ `anim quiet end reason=slot` + ≤300 ms；idle 段不静默——取证 = `BIGFISH_PET_DEBUG=1` 的 `pet-anim.log` + 探针 `--chain` 长跑。
-- **AC34（US-33，逃跑与拖拽表达）**：桩测 `judgeSwitch` 扩展矩阵；运行时 `slot-escape` 行 `loop=0` ∧ 窗口内零 `slot-idle` ∧ 存活 ≈ 段长；折返 `anim hold` 行；池 `events.drag` = 被吓一跳 ∧ 引用 95→94；`ESCAPE_LEG_*` 定义恰 1 处；⑥ 人工项——取证 = 桩测 + 日志 + 静态 + 实机目视。
+- **AC34（US-33，逃跑与拖拽表达）**：桩测 `judgeSwitch` 扩展矩阵；运行时 `slot-escape` 行 `loop=0` ∧ 窗口内零 `slot-idle` ∧ 存活 ≈ 段长 − `PET_OVERLAP_MS` ± 250 ms（细目 = 注 H②）；折返 `anim hold` 行；池 `events.drag` = 被吓一跳 ∧ 引用 95→94；`ESCAPE_LEG_*` 定义恰 1 处；⑥ 人工项——取证 = 桩测 + 日志 + 静态 + 实机目视。
 - **AC35（NFR-24，零回退与规范）**：零改动面 15 档零 diff + `package.json` 零 diff + 素材零 diff + 池只增 quiet 键 / 改 drag 引用 + 行宽行数 + 静默期内交互 ≤300 ms——取证 = `git diff --stat` + 静态 + 日志。
 - **AC23（US-34，边界四面化）**：桩测 `petEdgeBounds` 四边增量与常量等式（TOP === PET_FEET_Y − PET_BODY_TARGET_H；SIDE === round((250 − hit.w)/2)）+ 两消费点符号级 + 侧 / 顶边贴边日志算术——取证 = 桩测 + 静态 + `pet-physics.log` / `pet-geometry.log`。
 - **AC24（NFR-25，零回退与可见性）**：冻结面零 diff + 补偿后位置 `visible=1` + 行宽行数——取证 = `git diff --stat` + 日志 + 静态。
@@ -172,6 +172,10 @@
 
 - **源 = 父侧裁决（设计者自报存疑项 #2；TC-40 尾句与 TC-55 同属一类自相抵——`pre-end` 发生在播完之前）**；落点 = `docs/design/PET-ANIMATION.md:1497`：尾句改「escape 段播至段末前 `PET_OVERLAP_MS` 经 `reason=pre-end` 换段（段尾由叠化退场；存活 ≈ 段长 − `PET_OVERLAP_MS` ± 250 ms）」，其余字面不动（行宽 250 ≤ 300）；lint = GATE lint PASS（本段写入之后实跑）。
 
+### 2.11 修正轮 3（eng-designer，2026-09-19；append-only）
+
+- **修正轮 3（复核轮 2 🔵#1 收口，父侧裁决 = 同源同步）**：存活口径两处摘要行同步——`PET-ANIMATION.md:1514`（§3.9 AC34 行②「∧ 存活 ≈ 段长；」→「∧ 存活口径 = 注 H②；」——写全值形态实测 320 字符超宽限 300，故取指针形态，值由注 H② 承载）· `B27-pet-feel-2.md:109`（§2.4 AC34「∧ 存活 ≈ 段长 − `PET_OVERLAP_MS` ± 250 ms（细目 = 注 H②）」）；`npm run lint` = GATE PASS。
+
 ## §3 设计评审（评审子代理）
 
 <!-- 由评审子代理填 -->
@@ -199,6 +203,39 @@
 **计数：🔴 3 · 🟡 3 · 🔵 5（共 11 条）。**
 
 VERDICT: changes-required
+
+### 轮次 2（评审子代理）
+
+**评审对象**：B27「桌宠观感 II」设计面 —— 复核轮（轮 2）。范围 = `docs/requirements/PET.md` · `docs/design/PET-ANIMATION.md` · `docs/design/PET-MOVEMENT.md` · `docs/batches/B27-pet-feel-2.md` · `docs/CONVENTIONS.md`（五档全文已读）。
+
+**方法**：逐条核轮次 1 的 11 条（🔴3 / 🟡3 / 🔵5）收敛情况 + 修正轮 2 的 TC-40 一行级修正。代码面（`*.js` 行数 / 符号语义）不在本轮范围 ⇒ 相关断言未独立重测（unverified），仅按文档内一致性核对；规范面（行宽 / 行数 / 文件头 / 贴线档口径）本轮按 `docs/CONVENTIONS.md`（在范围）做文档层核对。按声明口径：本轮不开新面——新发现仅报「明显且阻断」项（无此类项）。文档面行宽 / 行数为档内自报值，未以工具复算；修正轮 1 / 2 声称的 `npm run lint` GATE PASS 本轮无法复跑（工具面不含 shell）——unverified。
+
+**一、收敛核对（逐条，11 条 + TC-40）**
+
+| # | 轮 1 条目 | 落点核验 | 结论 |
+|---|---|---|---|
+| 1 | 🔴#1 零回退清单两歧 | `PET-MOVEMENT.md:736`（AC24①：15 档指针对齐 + 「不含本批改动面 `pet-chain*.js` / `assets/pet-anim/pool.json`」）· `PET.md:564-565`（NFR-25 逐档枚举 + 括注）——与批次档 `:100-101` · `PET-ANIMATION.md:1517-1518`（AC35①）三处枚举逐项一致（15 档） | 已收敛 ✓ |
+| 2 | 🔴#2 escape `loop` 旧句 | `PET-ANIMATION.md:274` / `:1054` 各带 B27 修订注（escape 例外 `loop=false` 单遍；drag 仍 `true`）；顺查其余 `loop=true` 命中（`:1010` / `:1025` / `:1077` / `:1079` 等）——已带 B27 注或与 escape 无关 | 已收敛 ✓ |
+| 3 | 🔴#3 静默区间锚 | 六处同源：`:1144`（§2.14.3）/ `:1203`（§2.14.9 不变量）/ `:1318`（注 A′①）/ `:1513`（AC33②）/ `:1525`（注 H②）/ `:1542`（TC-50）——统一为 `anim quiet enter` → 其后第一条 `anim quiet end`（`reason ∈ {timer, slot}` 均收）+ 计时退出决策行豁免；旧锚表述仅存于轮次 1 历史记录（append-only，正确） | 已收敛 ✓ |
+| 4 | 🟡#4 turn 翻转去向 | `:1211`（翻转与计划类型解耦、静默计划保留翻转标记、桩测断言）+ 注 H①（`:1522`） | 已收敛 ✓ |
+| 5 | 🟡#5 注 E′② 归因 | `:1466` 订正（入静默走既有两触发；「或 0」主要来自 `quiet-end` 与 ended 兜底） | 已收敛 ✓ |
+| 6 | 🟡#6 存活容差与措辞 | AC34②（`:1530`）/ TC-55（`:1547`）带「段长 − `PET_OVERLAP_MS` ± 250 ms」并去自相抵；TC-40 由修正轮 2 收口（`:1497`）。**残留：两处摘要行未同步（见发现表 #1）** | 已收敛（残留 1 🔵） |
+| 7 | 🔵#7 注 B′ 等式口径 | `PET-MOVEMENT.md:746` 按建议改写（`PetChainCore` 常量求值 + 250×270 三方交叉核对） | 已收敛 ✓ |
+| 8 | 🔵#8 AC25 / TC-37 池计数 | `:1450` / `:1494` 各带 B27 修订注（引用 94 / 未引用 12） | 已收敛 ✓ |
+| 9 | 🔵#9 `pet-chain.js` 跨 300 行复核 | §2.9 记录（append 替代落点）：职责单一 / 只增机制 / 未跨 500 / 不启动拆分——实体结论在场 | 已收敛 ✓（替代落点） |
+| 10 | 🔵#10 NFR-19 重跑括注 | `PET-MOVEMENT.md:572`：「档界值（800 px/s）不变，例的档属按重跑重分类」 | 已收敛 ✓ |
+| 11 | 🔵#11 评审范围限制 | 本轮 `docs/CONVENTIONS.md` 已入范围，规范面文档层核对通过；**残余限制**：代码面行数 / 符号断言仍无法在本范围重测（unverified，如实标注） | 已解除（残余限制如实标注） |
+| — | 修正轮 2：TC-40 一行级修正 | `:1497` 尾句逐字与 §2.10 记录一致（「escape 段播至段末前 `PET_OVERLAP_MS` 经 `reason=pre-end` 换段（段尾由叠化退场；存活 ≈ 段长 − `PET_OVERLAP_MS` ± 250 ms）」），与 AC34② / TC-55 口径自洽；「其余字面不动」核对成立 | 已收敛 ✓ |
+
+**二、发现表**
+
+| # | Category | Severity | Issue | Suggestion |
+|---|----------|----------|-------|------------|
+| 1 | Doc-state（轮 1 #6 同源残留） | 🔵 | 「存活」口径两处摘要行未随修正轮 1 同步：`docs/design/PET-ANIMATION.md:1514`（§3.9 AC34 行②「存活 ≈ 段长」）与 `docs/batches/B27-pet-feel-2.md:109`（§2.4 AC34「存活 ≈ 段长」）；权威细目已正确（注 H② `:1530` = 「段长 − `PET_OVERLAP_MS` ± 250 ms」、TC-55 `:1547`、TC-40 `:1497`），两处摘要差 1200 ms 量级，且 AC34 行② 未带「（注 H）」指针 | 下次 §2 append / 修正轮顺手同源同步（补容差口径或加「（细目 = 注 H②）」指针）；非阻断——权威判据行已正确，不影响实施与验收 |
+
+**计数：🔴 0 · 🟡 0 · 🔵 1（共 1 条；轮 1 全 11 条 + 修正轮 2 的 TC-40 修正均已收敛）。**
+
+VERDICT: pass
 
 ## §4 评审裁决与实施启动（主 agent）
 

@@ -1511,7 +1511,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 |---|---|---|---|
 | AC32 | US-32 | **节奏机制（桩测 + 池数据 + 静态）**：① 桩测——`decideNext` 判定矩阵（slot × kind × quiet 全组合，注入 roll）+ 静默段回退（细目 = 注 H①）；② 池数据——`parsePool` `ok=1` ∧ 权重 / `events.quiet` 逐值（注 H②）；③ 静态——`PET_QUIET_MS` 定义恰 1 处 | 机检（桩测 + parsePool + 静态） |
 | AC33 | US-32 | **节奏运行期（日志面）**：① 动作类段末 ⇒ `reason=quiet` + `anim quiet enter`；② 静默区间（`anim quiet enter` → `anim quiet end`，细目 = 注 H②）零 `anim chain` / 零其它 `anim switch` 行；③ 时长 == `PET_QUIET_MS`（+500 ms）；④ 打断 ⇒ `anim quiet end reason=slot` 且 `shown − t0 ≤ 300 ms`；⑤ idle 段零 quiet 行（细目 = 注 H） | 机检（日志） |
-| AC34 | US-33 | **逃跑与拖拽表达**：① 桩测——`judgeSwitch` 扩展矩阵（注 H）；② 运行时——`slot-escape` 行 `loop=0` ∧ 触发窗口零 `slot-idle` 换段 ∧ 存活 ≈ 段长；③ 折返 / 重入 ⇒ `anim hold` 行在场、零二次 switch；④ 池——`events.drag` = 被吓一跳 ∧ 引用 95 → 94（注 H）；⑤ 静态——`ESCAPE_LEG_*` 各定义恰 1 处；⑥ **人工项**——观感待实机目视 | 机检（桩测 + 日志 + 静态）；⑥ 人工 |
+| AC34 | US-33 | **逃跑与拖拽表达**：① 桩测——`judgeSwitch` 扩展矩阵（注 H）；② 运行时——`slot-escape` 行 `loop=0` ∧ 触发窗口零 `slot-idle` 换段 ∧ 存活口径 = 注 H②；③ 折返 / 重入 ⇒ `anim hold` 行在场、零二次 switch；④ 池——`events.drag` = 被吓一跳 ∧ 引用 95 → 94（注 H）；⑤ 静态——`ESCAPE_LEG_*` 各定义恰 1 处；⑥ **人工项**——观感待实机目视 | 机检（桩测 + 日志 + 静态）；⑥ 人工 |
 | AC35 | NFR-24 | **零回退与规范**：① 零改动面 15 档逐档 `git diff --stat` 空（§2.14 的零改动面清单）；② `package.json` 依赖段与 `build.files` 零 diff；③ 素材本体零 diff ∧ `pool.json` 只增 `events.quiet` 键、改 `events.drag` 引用（其余键值逐字）；④ 改动档行宽 ≤300 / 单档 ≤500 / 文件头标准形；⑤ 交互即时性——静默期内用户触发换段 `shown − t0 ≤ 300 ms`（同 AC33④） | 机检（git + 静态 + 日志） |
 
 **零改动面（本批；AC35① 的机检对象）**：`shell-pet-geometry.js` · `shell-pet-drag.js` · `pet-preload.js` · `pet.html` · `pet.js` · `shell-pet-work.js` · `pet-work-core.js` · `main.js` · `shell-ipc.js` · `package.json` ·
