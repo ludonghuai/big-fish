@@ -18,7 +18,7 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 
 > **当前版本：`0.0.1`** · 已发布 Windows 安装包；macOS / Linux 目前需自行打包（见下文「打包」）
 >
-> **源码、文档与问题反馈**：<https://gitee.com/ludonghuai/big-fish>
+> **源码与文档**：<https://gitee.com/ludonghuai/big-fish> · **问题反馈（Issues）**：<https://github.com/ludonghuai/big-fish/issues>
 
 ## 下载与安装
 
@@ -145,7 +145,9 @@ Bigfish 遵循 DeepSeek Harness 官方 Cordis 插件体系：
 
 ## 反馈
 
-问题、建议、需求都可以提在 Gitee 仓库的 Issues 里：<https://gitee.com/ludonghuai/big-fish>
+问题、建议、需求都可以提在 **GitHub Issues** 里：<https://github.com/ludonghuai/big-fish/issues>
+
+（国内网络打不开 GitHub 时，也可提在 Gitee 仓库的 Issues：<https://gitee.com/ludonghuai/big-fish/issues>）
 
 提 Issue 时附上系统版本、Bigfish 版本号，以及 `%USERPROFILE%\.dsh` 下的报错日志会更快定位。
 
