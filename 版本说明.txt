@@ -46,7 +46,7 @@ Bigfish 是 DeepSeek Harness 的 Electron 桌面版：
 ──────────────────────────────
 三、安装包
 ──────────────────────────────
-   · Windows 10 / 11：Bigfish.Setup.0.0.1.exe（约 276 MB，未签名，
+   · Windows 10 / 11：Bigfish.Setup.0.0.1.exe（约 206 MB，未签名，
      SmartScreen 弹窗点「更多信息 → 仍要运行」）
    · macOS / Linux：本期没有发布安装包，需自行从源码打包
      （原生依赖要在对应系统上构建，见 README「打包」一节）

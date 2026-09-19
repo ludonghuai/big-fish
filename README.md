@@ -24,12 +24,12 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10 / 11 | [`Bigfish.Setup.0.0.1.exe`](https://github.com/ludonghuai/big-fish/releases/download/v0.0.1/Bigfish.Setup.0.0.1.exe) | 约 276 MB，双击按向导安装 |
+| Windows 10 / 11 | [`Bigfish.Setup.0.0.1.exe`](https://github.com/ludonghuai/big-fish/releases/download/v0.0.1/Bigfish.Setup.0.0.1.exe) | 约 206 MB，双击按向导安装 |
 
 安装包没有做代码签名：Windows 若弹「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」
 （不是病毒，是没买签名证书）。
 
-> 为什么下载不在 Gitee：Gitee 发行版的单个附件上限是 100 MB，而安装包约 276 MB（自带 Node.js
+> 为什么下载不在 Gitee：Gitee 发行版的单个附件上限是 100 MB，而安装包约 206 MB（自带 Node.js
 > 运行时与后端依赖），传不上去，所以安装包托管在 GitHub Releases；Gitee 这边放源码、文档与更新清单。
 > GitHub 在国内部分网络下访问不稳定，若打不开可换网络或使用加速工具。
 
