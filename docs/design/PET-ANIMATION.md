@@ -271,7 +271,7 @@
 **计数口径注（B21；承 B19 §2.8.3 的「新增档位批次面独立成表」先例）**：上表 = B18 面落位时的 **11 档**（B19 的 `work-*` 与 B21 的 `drag` / `escape-*` 均按同一先例在批次面独立成表——§2.8.3 / §2.13.6）；本表与 §1.3.1 的 11 档词表计数保持 B18 期原义、不回写。
 
 - **「单候选」分支的适用条件（与池数据核对，消除三方张力）**：上表「单候选 ⇒ `loop=true`」只在**池数据使某档仅 1 段**时适用；批次档 §2.5 第 7 项的交付下限要求每个 `events.*` 档 **≥ 2 段** ⇒ 本批池（`assets/pet-anim/pool.json`）各事件档均 ≥ 2 段（`sleep` = 2 段），该分支在本批**不适用**；`sleep` 的 `loop=true` 来自**持续状态**语义（上表该行），与候选数无关。
-- **B21 起该分支重启**：`drag` / `escape` 两个新交互档各 1 段 ⇒ 单候选 ⇒ `loop=true`（§2.13.6 / §2.13.8 降级路径；与 R1 同源）——B21 档位在批次面独立成表（§2.13.6）。
+- **B21 起该分支重启**：`drag` / `escape` 两个新交互档各 1 段 ⇒ 单候选 ⇒ `loop=true`（§2.13.6 / §2.13.8 降级路径；与 R1 同源）——B21 档位在批次面独立成表（§2.13.6）。**B27 修订**：escape 例外——`loop=false` 单遍（§2.14.6 / §2.14.9）；`drag` 仍 `loop=true`。
 - **镜像规则**（承样本 `noMirror` 语义）：`facing = 'right'` 时视频以 `scaleX(-1)` 镜像；`categories[].noMirror = true` 的分类在 `facing = 'right'` 时**不参与抽取**（全部被滤时退回全池，宁可镜像也不空）；
 - **PNG 通道的同表映射**：PNG 通道按**同一档位词表**取 `FRAMES` 表（11 档），零变更。
 
@@ -1051,7 +1051,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 **降级路径（逐条）**
 
 - 池缺 `events.drag` / `events.escape` 键 ⇒ 级② 该档走 PNG（未知档位渲染待机帧，`pet.js` 既有分支）——不空白、不报错；其余档照常；
-- 单候选（`drag` / `escape` 均单段）⇒ `loop=true` 持续档（§2.2.3 分支；与 R1 同源）；
+- 单候选（`drag` / `escape` 均单段）⇒ `loop=true` 持续档（§2.2.3 分支；与 R1 同源）——**B27 修订**：escape 例外，`loop=false` 单遍（§2.14.6 / §2.14.9）；`drag` 仍 `loop=true`；
 - reduce ⇒ 叠化归零（F=0 ⇒ 旧段即刻 pause）；预触发与无空白帧不变；
 - `duration` 不可得 ⇒ 预触发不武装、`ended` 兜底（`overlap=0`）——链行为同改前。
 
@@ -1141,7 +1141,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 | 2 | PNG 静态待机帧（切回 PNG 通道） | 完全静止 | 200↔140 可见高度跳变（TC-9 登记为**仅回落**可接受的取舍）+ 观感「死鱼」+ 每次静默一次通道切换 | 否决 |
 
 - **静默期「禁止换段」的判据口径**：静默期内链**不掷骰、不换段**（静默段 `loop=true` 循环）；档位变化（任何非 idle 槽到达）⇒ 打断静默（立即换段）；
-  静默计时到点 ⇒ 回链重掷。判据 = 日志面（静默区间内零 `anim chain` / 零其它 `anim switch` 行；区间 = `reason=quiet` 换段行 → `reason=quiet-end` 换段行）。
+  静默计时到点 ⇒ 回链重掷。判据 = 日志面（静默区间 = `anim quiet enter` 行 → 其后第一条 `anim quiet end` 行（`reason ∈ {timer, slot}` 均收）；区间内零其它 `anim switch` 行、零 `reason=quiet` 系以外的换段行；计时退出路径的 `anim chain` 决策行在 `anim quiet end` 之后（区间外，显式豁免））。
 
 #### 2.14.4 静默触发面选型（动作后 vs 每个链段后）
 
@@ -1200,7 +1200,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 - **退出（两条路）**：① 计时到点 ⇒ `quietActive = false` + 日志 `anim quiet end reason=timer` + `triggerChainDecision('quiet-end', 0)` 回链重掷；
   ② 任何非 idle 槽到达（`startSlot` 首行 `clearQuiet()`）⇒ 清计时器 + 日志 `anim quiet end reason=slot` + 照常换段。
 - **清除面（`clearQuiet()`）**：非 idle 槽进入 / 通道回落（`setChannel` 下行）/ 池重配（`onConfig`）三处调用；幂等（非静默时零行）。
-- **不变量**：静默只在 idle 槽内存在（进入条件 = `slot === 'idle'`）；静默期内无链决策（零 `anim chain` 行）；静默段 `loop=true` ⇒ 不武装预触发（§2.13.4 既有规则）。
+- **不变量**：静默只在 idle 槽内存在（进入条件 = `slot === 'idle'`）；静默期内无链决策（零 `anim chain` 行；计时退出决策行在 `anim quiet end` 之后、区间外）；静默段 `loop=true` ⇒ 不武装预触发（§2.13.4 既有规则）。
 
 **`decideNext` 扩展（`pet-chain-core.js` 纯函数，注入 roll 保确定性）**
 
@@ -1208,6 +1208,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 - 判定次序：① rotate（事件段多候选轮换，逐字不变）→ ② **静默判定**：`slot === 'idle' ∧ !input.quiet ∧ playing.kind ∈ {action, turn}`
   ⇒ `{ plan: 'quiet', name: <pickSlot(pool.events.quiet, cur) 或回退 pool.idle[0]>, mirror: false }` → ③ 链掷骰（逐字不变）。
 - 静默段取值：`pool.events.quiet` 在场 ⇒ `pickSlot(..., cur)`（避开连播）；**缺失 ⇒ 回退 `pool.idle[0]`**（降级面，链不崩；TC-54）。
+- **翻转标记（`turn` 段）与计划类型解耦（B27）**：`turn` 段末进入静默时，静默计划**保留** `turn` 段的翻转标记（翻转照执行——翻转与「回链 / 入静默」解耦，不因下一计划为 `quiet` 被吞）；桩测断言 = `turn` 段末 ⇒ `plan='quiet'` ∧ 翻转已执行。
 
 **`judgeSwitch` 作用域扩展（R1 / R2；`pet-chain-core.js` 纯函数）**
 
@@ -1314,7 +1315,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 - **as-of 实测（2026-09-17；源 = 批次档 §5.3 + 探针长跑日志）**：600 s 窗口 ⇒ `switch` **97** 条 · `shown` 间隔最大 **10042 ms** · `ended → shown` 最大 **24 ms**（n = 48）· `kind` = `{action:64, idle:8, turn:4}`；
 - **替代关系（防两套判据）**：本注取代原「`anim switch` ≥ 60 / 10 min」字面——该字面在完整应用口径下**结构性不可达**（段长恒 10.04 s ⇒ 600 s 纯链理论上界 59.8 < 60，2 min 入睡规则进一步中断链）。
 - **注 A′（AC3 判据的 B27 修订注记；源 = §2.14.11 C60）**：原 ①「相邻 switch 的 shown 间隔 ≤ 段时长 + 100 ms」与 ②「switch 条数 ≥ 0.9 × 窗口 ÷ 段长」按**无静默期**的链写 ⇒ 自 B27 起改按**非静默期口径**读：
-  - ① 非静默期内的相邻 switch 间隔 ≤ 段长 + 100 ms；静默期（`reason=quiet` 换段行到其后第一条 `reason=quiet-end` 换段行的区间）为**设计内停摆**，时长 == `PET_QUIET_MS`（+500 ms 容差，定时器只晚不早）；
+  - ① 非静默期内的相邻 switch 间隔 ≤ 段长 + 100 ms；静默期（`anim quiet enter` 行到其后第一条 `anim quiet end` 行的区间，`reason ∈ {timer, slot}` 均收；计时退出 `anim chain` 决策行在 `anim quiet end` 之后、区间外）为**设计内停摆**，时长 == `PET_QUIET_MS`（+500 ms 容差，定时器只晚不早）；
   - ② switch 条数与非静默时长 ÷ 段长**同阶**（同阶口径 = ≥ 0.9 ×，承原判据）且 ≥ 1；
   - ③④⑤ 逐字不变；TC-2 的期望输出同口径订正（静默期为预期停摆）。
 
@@ -1446,7 +1447,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 
 | 验收 | 回指需求 | 判定方式 | 机检可能性 |
 |---|---|---|---|
-| AC25 | US-29 | **分类契约与池数据**：① 分类表在场（§2.13.3）；② `parsePool` `ok=1` ∧ `events.drag` / `events.escape` 在场各 1 段 ∧ 引用名逐条存在于 `webm/`；引用段 94 → 95（未引用 12 → 11）；③ 日志——拖动期 `anim slot key=events.drag` ∧ 逃生 `anim switch … reason=slot-escape` | 机检（桩测池数据 + 日志） |
+| AC25 | US-29 | **分类契约与池数据**：① 分类表在场（§2.13.3）；② `parsePool` `ok=1` ∧ `events.drag` / `events.escape` 在场各 1 段 ∧ 引用名逐条存在于 `webm/`；引用段 94 → 95（未引用 12 → 11）（**B27 修订**：引用 94 / 未引用 12，细目同 AC34④）；③ 日志——拖动期 `anim slot key=events.drag` ∧ 逃生 `anim switch … reason=slot-escape` | 机检（桩测池数据 + 日志） |
 | AC26 | US-29 | **交互档打断（在途不换段）**：① 交互档在途（`drag` / `escape` / `happy` / `eat` 段播期间）⇒ 该段区间内**无中途顶掉**换段（判据细目 = 注 G）；② 点击从个人动作切入 ⇒ `anim switch reason=slot-happy` 且 `shown − t0 ≤ 300 ms`（**无容差**，NFR-9 同口径） | 机检（日志） |
 | AC27 | US-30、NFR-23 | **衔接**（细目 = 注 E）：① 换段行带 `overlap=<ms>`；② 链自主换段行 `overlap ∈ [N − 250, N + 250]` 或 0（0 = ended 兜底行）；③ 段末前触发占比 ≥ **0.9**；④ 叠化窗内两路 `paused=false`、**窗后稳态**恒 1 路（ended 兜底行豁免）；⑤ `PET_OVERLAP_MS` 定义恰 1 处 ∧ 消费恰 1 处；⑥ **人工项**——衔接观感待用户实机目视 | 机检（日志 + 探针 + 静态）；⑥ 人工 |
 | AC28 | US-30 | **零空白帧不回退**：① AC4 三条禁止形态零命中（§2.2.5 第 5 条静态核对）；② **全部**换段行 `readyState ≥ 2`；③ ended 触发（`overlap=0`）的换段 `ended → shown ≤ 300 ms`；④ 无「旧段 `pause()` 早于新段 `readyState ≥ 2`」路径（`pause()` 唯一调用点 = 淡出窗末回调） | 机检（静态 + 日志） |
@@ -1462,7 +1463,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 - **段末前触发占比**：`overlap > 0` 的链自主换段行 / 链自主换段行总数 ≥ 0.9（取样 = `npx electron probe-pet-media.js --chain 600` 窗口）。
 - **探针叠化窗采样（④）**：`--chain` 驱动期内注入两路 `paused` 状态采样（≥ 每 10 ms，与既有 `--entry` 入场采样同款注入形态）——叠化窗 = 换前台到淡出窗末的区间；判据 = 窗内两路 `paused=false`、**窗后稳态**恒 1 路 `paused=false`；**采样豁免** = ended 兜底行（旧段已自然结束 ⇒ 叠化窗不成立 ⇒ 该行窗口不采「两路」判据——其「新段就绪后恒 1 路」由 AC28 ② 的 `readyState ≥ 2` 判据面覆盖；[D, D+L] 内 0 路在播是 ended 路径的物理事实，非违例）。
 - **探针与桩测增量**：`probe-pet-media.js` 的叠化窗两路播放 / `overlap=` 读数 / 拖动档 / 逃跑档取证 + 新建 `.thincoder/b21-pet-selection-stub.mjs`（`decideNext` / `judgeSwitch` 装载真实实现；末行 `pass/total PASS`）——文件与增量预算 = 批次档 §2.3 第 6 / 7 行。
-- **注 E′（AC27 判据的 B27 修订注记；源 = §2.14.11 C61）**：自 B27 起：②「或 0」的归属扩展——`overlap = 0` 也来自**静默进出行**（`reason ∈ {quiet, quiet-end}`，静默段 `loop=true` 无自然结束 ⇒ 无预触发窗口）；
+- **注 E′（AC27 判据的 B27 修订注记；源 = §2.14.11 C61）**：自 B27 起：②「或 0」的归属扩展——`overlap = 0` 的必要性主要来自**静默出行**（`reason=quiet-end`：静默段 `loop=true` 无自然结束 ⇒ 无预触发窗口 ⇒ 0）与 ended 兜底；**入静默行**（`reason=quiet`）走既有两触发——预触发 ⇒ `overlap ≈ PET_OVERLAP_MS`、`ended` 兜底 ⇒ 0；
   ③ 段末前触发占比的分母与分子**排除静默行**（分母 = 链自主换段行中 `reason ∉ {quiet, quiet-end}` 者）；链自主换段定义（§2.13.4）同步扩为 `{pre-end, ended, event-end, slot-rotate, quiet, quiet-end}`。
 
 **注 F —— AC29 判据细目（逃跑）**
@@ -1490,10 +1491,10 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 
 | 用例 | 类型（正常/边界/异常） | 输入 / 前置 | 预期输出 | 映射 |
 |---|---|---|---|---|
-| TC-37 | 正常 | 池含 `events.drag` / `events.escape` 两新键；`parsePool` | `ok=1`（V1–V6 全过）；引用段 95 / 未引用 11；零改动面逐档零 diff + 常量单点（同轮核 AC30） | US-29 / AC25、AC30 |
+| TC-37 | 正常 | 池含 `events.drag` / `events.escape` 两新键；`parsePool` | `ok=1`（V1–V6 全过）；引用段 95 / 未引用 11（**B27 修订**：引用 94 / 未引用 12）；零改动面逐档零 diff + 常量单点（同轮核 AC30） | US-29 / AC25、AC30 |
 | TC-38 | 正常 | 按住鲸鱼娘拖动一段后松手（起拖 → 拖 → pointerup） | 拖动期 `anim slot key=events.drag pick=被吓一跳`（B27 修订；原 = 被鼠标拖拽悬空反馈）∧ switch 行 `loop=1`；松手回链（idle 换段正常） | US-29 / AC25 |
 | TC-39 | 正常 | 个人动作在途时点击鲸鱼娘 | `anim switch reason=slot-happy` 且 `shown − t0 ≤ 300 ms`；happy 段窗口内**无中途顶掉换段**（由 idle / 个人档驱动的换段行零命中——交互→交互的合法切换**不在违规面**、**区间延续**、不构成违规；细目 = 注 G）；段末前 `PET_OVERLAP_MS` 内的 `reason=pre-end` 换段与 `anim chain` 行 = **段末衔接退场、不违规**；随后 1.6 s 定时回 idle（既有节奏不变） | US-29 / AC26 |
-| TC-40 | 正常 | 把她拖到屏幕边缘松手（触发挣脱逃跑） | `anim switch … reason=slot-escape`（`anim` = 池内逃跑段、`loop=0`（B27 修订；细目 = TC-55）、档名 = `escape-<反方向>`）；逃跑段播完经 `pre-end` 回链 | US-31 / AC29 |
+| TC-40 | 正常 | 把她拖到屏幕边缘松手（触发挣脱逃跑） | `anim switch … reason=slot-escape`（`anim` = 池内逃跑段、`loop=0`（B27 修订；细目 = TC-55）、档名 = `escape-<反方向>`）；escape 段播至段末前 `PET_OVERLAP_MS` 经 `reason=pre-end` 换段（段尾由叠化退场；存活 ≈ 段长 − `PET_OVERLAP_MS` ± 250 ms） | US-31 / AC29 |
 | TC-41 | 边界 | 逃跑 / 走动在途，同段重复到达（再次触发同槽同段） | `anim hold reason=same same=1` 在场；该区间零同段名第二个 switch 行（不回到第一帧） | US-31 / AC29 |
 | TC-42 | 边界 | 折返 / 方向翻转（`walk-*` / `run-*` / `escape-*` 镜像翻转） | `anim hold reason=mirror` 在场；无重载（无新 switch 行、无 load） | US-31 / AC29 |
 | TC-43 | 边界 | `moves.run` 单段槽高频重入（run → idle → run 连切） | 折返瞬态 idle 预载被 gen 竞态丢弃（无 `reason=slot-idle` 换段行）；第二次 run 重入被 R1 / R2 吸收（无同段短间隔二次 switch）——不再反复从头重来 | US-31 / AC29（R1 / R2 面） |
@@ -1509,7 +1510,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 | 验收 | 回指需求 | 判定方式 | 机检可能性 |
 |---|---|---|---|
 | AC32 | US-32 | **节奏机制（桩测 + 池数据 + 静态）**：① 桩测——`decideNext` 判定矩阵（slot × kind × quiet 全组合，注入 roll）+ 静默段回退（细目 = 注 H①）；② 池数据——`parsePool` `ok=1` ∧ 权重 / `events.quiet` 逐值（注 H②）；③ 静态——`PET_QUIET_MS` 定义恰 1 处 | 机检（桩测 + parsePool + 静态） |
-| AC33 | US-32 | **节奏运行期（日志面）**：① 动作类段末 ⇒ `reason=quiet` + `anim quiet enter`；② 静默区间零 `anim chain` / 零其它 switch 行；③ 时长 == `PET_QUIET_MS`（+500 ms）；④ 打断 ⇒ `anim quiet end reason=slot` 且 `shown − t0 ≤ 300 ms`；⑤ idle 段零 quiet 行（细目 = 注 H） | 机检（日志） |
+| AC33 | US-32 | **节奏运行期（日志面）**：① 动作类段末 ⇒ `reason=quiet` + `anim quiet enter`；② 静默区间（`anim quiet enter` → `anim quiet end`，细目 = 注 H②）零 `anim chain` / 零其它 `anim switch` 行；③ 时长 == `PET_QUIET_MS`（+500 ms）；④ 打断 ⇒ `anim quiet end reason=slot` 且 `shown − t0 ≤ 300 ms`；⑤ idle 段零 quiet 行（细目 = 注 H） | 机检（日志） |
 | AC34 | US-33 | **逃跑与拖拽表达**：① 桩测——`judgeSwitch` 扩展矩阵（注 H）；② 运行时——`slot-escape` 行 `loop=0` ∧ 触发窗口零 `slot-idle` 换段 ∧ 存活 ≈ 段长；③ 折返 / 重入 ⇒ `anim hold` 行在场、零二次 switch；④ 池——`events.drag` = 被吓一跳 ∧ 引用 95 → 94（注 H）；⑤ 静态——`ESCAPE_LEG_*` 各定义恰 1 处；⑥ **人工项**——观感待实机目视 | 机检（桩测 + 日志 + 静态）；⑥ 人工 |
 | AC35 | NFR-24 | **零回退与规范**：① 零改动面 15 档逐档 `git diff --stat` 空（§2.14 的零改动面清单）；② `package.json` 依赖段与 `build.files` 零 diff；③ 素材本体零 diff ∧ `pool.json` 只增 `events.quiet` 键、改 `events.drag` 引用（其余键值逐字）；④ 改动档行宽 ≤300 / 单档 ≤500 / 文件头标准形；⑤ 交互即时性——静默期内用户触发换段 `shown − t0 ≤ 300 ms`（同 AC33④） | 机检（git + 静态 + 日志） |
 
@@ -1518,15 +1519,15 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 
 **注 H —— AC32–AC34 判据细目（B27；表行为主干，本注为同源细目）**
 
-- **AC32①（判定矩阵；注入 roll 保确定性）**：`slot='idle' ∧ quiet=false ∧ playing.kind∈{action,turn}` ⇒ `plan='quiet'`；`kind∈{idle,event,walk,run,quiet}` ⇒ 非 quiet；`quiet=true` ⇒ 非 quiet；`slot≠'idle'` ⇒ 非 quiet；`events.quiet` 缺失 ⇒ 静默段回退 `pool.idle[0]`。
+- **AC32①（判定矩阵；注入 roll 保确定性）**：`slot='idle' ∧ quiet=false ∧ playing.kind∈{action,turn}` ⇒ `plan='quiet'`；`kind∈{idle,event,walk,run,quiet}` ⇒ 非 quiet；`quiet=true` ⇒ 非 quiet；`slot≠'idle'` ⇒ 非 quiet；`events.quiet` 缺失 ⇒ 静默段回退 `pool.idle[0]`；`kind='turn'` 段末 ⇒ `plan='quiet'` ∧ 翻转标记保留（翻转照执行）。
 - **AC32②（池数据逐值）**：`parsePool`（真实实现）`ok=1`（V1–V6 全过）∧ `weights={idle:55,turn:5,move:0}` ∧ Σcategories == 40 ∧ `events.quiet` 在场 ≥1 段。
 - **AC33①**：动作类段（`action` / `turn`）段末 ⇒ `anim switch … reason=quiet loop=1` + `anim quiet enter name=<段> dur=<ms>`。
-- **AC33②**：静默区间（`reason=quiet` 换段行 → `reason=quiet-end` 换段行）内零 `anim chain` 行、零其它 `anim switch` 行。
+- **AC33②**：静默区间 = `anim quiet enter` 行 → 其后第一条 `anim quiet end` 行（`reason ∈ {timer, slot}` 均收）；区间内零其它 `anim switch` 行、零 `reason=quiet` 系以外的换段行；计时退出路径的 `anim chain` 决策行在 `anim quiet end` 之后（区间外，显式豁免）。
 - **AC33③**：静默时长 == `PET_QUIET_MS`（`enter` → `end` 间隔，+500 ms 容差，定时器只晚不早）。
 - **AC33④**：静默期内点击 / 喂食 / 拖动 / 散步 / 工作档 ⇒ `anim quiet end reason=slot` 先于对应换段行，且换段 `shown − t0 ≤ 300 ms`。
 - **AC33⑤**：idle 段（kind=idle）段末 ⇒ 零 quiet 行。
 - **AC34①**：`judgeSwitch` 扩展矩阵——`loop=false ∧ slotKey=escape-* ∧ 同名同镜像` ⇒ `hold-same`；同名异镜像 ⇒ `hold-mirror`；非 escape 的 `loop=false` ⇒ `reload`。
-- **AC34②**：`reason=slot-escape` 行 `loop=0` ∧ 触发窗口（注 F 同口径）内零 `reason=slot-idle` 换段行 ∧ escape 存活 ≈ 段长（10.04 s ± 容差）。
+- **AC34②**：`reason=slot-escape` 行 `loop=0` ∧ 触发窗口（注 F 同口径）内零 `reason=slot-idle` 换段行 ∧ escape 存活 ≈ 段长 − `PET_OVERLAP_MS` ± 250 ms（≈ 8.84 s；依据 = `loop=false` ⇒ 段末前 1200 ms 预触发换段，预载 ≤300 ms 计入容差）。
 - **AC34③**：折返 / 重入 ⇒ `anim hold reason=mirror|same` 行在场、零同段名二次 switch。
 - **AC34④**：`events.drag` 引用名 == 被吓一跳 ∧ `parsePool ok=1` ∧ 引用段 95 → 94 / 未引用 11 → 12（登记项）。
 - **AC34⑤**：`ESCAPE_LEG_MIN_DIP` / `ESCAPE_LEG_RANGE_DIP` / `ESCAPE_LEG_SPEED` 各定义恰 1 处。
@@ -1538,12 +1539,12 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 
 | 用例 | 类型（正常/边界/异常） | 输入 / 前置 | 预期输出 | 映射 |
 |---|---|---|---|---|
-| TC-50 | 正常 | 池含新权重与 `events.quiet`；链长跑窗口（≥ 3 个「段 + 静默」周期） | 动作类段末 ⇒ `reason=quiet` 换段行 + `anim quiet enter`；静默区间零 `anim chain`；`quiet end` 间隔 == `PET_QUIET_MS`（+500 ms 容差）；静默后回链重掷（`anim chain` 行恢复） | US-32 / AC32、AC33 |
+| TC-50 | 正常 | 池含新权重与 `events.quiet`；链长跑（≥ 3 个「段 + 静默」周期） | 动作类段末 ⇒ `reason=quiet` 换段行 + `anim quiet enter`；静默区间（`anim quiet enter` → 第一条 `anim quiet end`，`reason∈{timer,slot}` 均收）零其它 `anim switch` 行（计时退出决策行在其后）；`quiet end` 间隔 == `PET_QUIET_MS`（+500 ms）；静默后回链重掷（`anim chain` 恢复） | US-32 / AC32、AC33 |
 | TC-51 | 边界 | 静默期内点击鲸鱼娘 | `anim quiet end reason=slot` 先于 `reason=slot-happy` 换段行；`shown − t0 ≤ 300 ms`；happy 1.6 s 回 idle 后链重掷（不立即回静默） | US-32 / AC33④ |
 | TC-52 | 边界 | 静默期内散步段到达（15–35 s 计时到点） | `anim quiet end reason=slot` + `slot-walk-*` 换段行在场；段末回 idle 链照常 | US-32 / AC33④ |
 | TC-53 | 边界 | 链掷出 idle 类段（kind=idle）并播完 | 段末**零** quiet 行（idle 段不触发静默——§2.14.4 候选 1）；随后掷出 action 段 ⇒ 其段末进入静默 | US-32 / AC32、AC33⑤ |
 | TC-54 | 异常 | 池缺 `events.quiet` 键 | 静默段回退 `pool.idle[0]`（桩测面）；链不崩、静默行为照常 | US-32 / AC32① |
-| TC-55 | 正常 | 拖到屏幕边缘松手（触发挣脱逃跑） | `anim switch … reason=slot-escape` 且 `loop=0`；触发窗口（注 F 同口径）内零 `reason=slot-idle` 换段行；escape 段播完（≈10.04 s ± 容差）后经 `reason=pre-end` 回链 | US-33 / AC34② |
+| TC-55 | 正常 | 拖到屏幕边缘松手（触发挣脱逃跑） | `anim switch … reason=slot-escape` 且 `loop=0`；触发窗口（注 F 同口径）内零 `reason=slot-idle` 换段行；escape 段播至段末前 `PET_OVERLAP_MS` 经 `reason=pre-end` 换段（存活 ≈ 段长 − `PET_OVERLAP_MS` ± 250 ms ≈ 8.84 s；段尾由叠化退场） | US-33 / AC34② |
 | TC-56 | 边界 | 逃跑在途撞墙折返（同段重入 / 镜像变化） | `anim hold reason=mirror|same` 行在场；零同段名二次 switch 行（不回到第一帧） | US-33 / AC34③ |
 | TC-57 | 正常 | 按住鲸鱼娘拖动（起拖 → 拖 → 松手） | 拖动期 `anim slot key=events.drag pick=被吓一跳`；松手重断言当前槽 | US-33 / AC34④ |
 | TC-58 | 正常 | 桩测判定矩阵（`decideNext` / `judgeSwitch` 全组合，注入 roll） | AC32① 与 AC34① 的矩阵逐条断言；末行 `pass/total PASS` | US-32、US-33 / AC32①、AC34① |
@@ -1574,3 +1575,5 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 | 2026-09-18 | **B21 修正轮 2（复核轮 2 条 🟡；源 = 批次档 §3 轮次 2 + 主 agent 裁决就地收敛）**：F-10 注 G 违规面收窄为「idle / 个人档驱动」+ 显式排除交互→交互合法切换；合法面「只允许」集并入交互→交互合法切换（区间延续、不构成违规）——区间口径与改前后树区分不变；F-11 TC-44 带 = `[N − 250, N + 250]`、TC-46「窗外」→「窗后稳态（ended 兜底行豁免）」——与 AC27 ②④ / 注 E 一致。计数不变（AC 31 · TC 49 · DD 37 · C 56 · O 27）。 |
 | 2026-09-18 | **B21 修正轮 3（TC-39 字面与注 G 收窄对齐；源 = 批次档 §2 修正轮 3）**：TC-39 预期输出「（非本档 `slot-*` 零命中）」→「由 idle / 个人档驱动的换段行零命中——交互→交互的合法切换不在违规面、区间延续、不构成违规」（细目 = 注 G）；TC-39 其余字面（`slot-happy` ≤300 ms · `pre-end` / `anim chain` 不违规 · 1.6 s 回 idle）不变；计数不变（AC 31 · TC 49 · DD 37 · C 56 · O 27）。 |
 | 2026-09-19 | **B27 面落盘（观感 II；源 = 台账 R23 / R22）**：新增 **§2.14**（选型 / 常量 / 契约 / 池数据 / C57–C62 / O28–O30 / DD-38–DD-43）· §2.13 四处注记 · 注 A′ / 注 E′ · §3.9 AC32–AC35 + 注 H · §3.10 TC-50–TC-58 · TC-2 / 6 / 38 / 40 订正 · O22 / O24 处置 · §1.1 补 B27 行。**计数：AC 35 · TC 58 · DD 43 · C 62 · O 30**。 |
+| 2026-09-19 | **B27 修正轮 1（评审轮 1 🔴#1–#3 / 🟡#4–#6 / 🔵#7–#10；源 = 批次档 §3 轮次 1 + 主 agent 裁决）**：① 静默区间锚改静默标记行（`anim quiet enter` → `anim quiet end`）六处同源 + 计时退出决策行豁免；② §2.2.3 / §2.13.8 escape `loop` 旧句补 B27 修订注（`loop=false` 单遍；drag 仍 `true`）；③ `turn` 翻转标记与计划类型解耦（§2.14.9 + 注 H①）。 |
+| 2026-09-19 | 承上行（④–⑥）：④ 注 E′ ② 归因订正（入静默走既有两触发；「或 0」主要来自 `quiet-end` 与 ended 兜底）；⑤ AC34② / TC-55 存活口径「段长 − `PET_OVERLAP_MS` ± 250 ms」+ TC-55 去自相抵；⑥ AC25 / TC-37 池计数 B27 修订注（94 / 12）。**计数不变（AC 35 · TC 58 · DD 43 · C 62 · O 30）**。 |

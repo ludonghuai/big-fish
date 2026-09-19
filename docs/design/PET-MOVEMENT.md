@@ -569,7 +569,7 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 - **具名例外（四面；U-4 = ①）**：窗口标称矩形可越出工作区 / `bounds` 至多「上 44 / 左 41 / 右 41 / 下 30」DIP（均为透明留白）——B03「标称矩形 ⊆ 工作区」的具名例外由**一处（下）**扩为**四面**；
   `petIsVisible`（中心点）与命中区（身体盒）照常成立（承 B26 O-14 论证）。
 - **条件分支（承 O-14）**：该屏 workArea 边 == bounds 边（任务栏置顶 / 自动隐藏）∧ 与另一块 scaleFactor 不同的屏重叠 ⇒ `petStraddleFix` 会把窗口推回 `bounds`（抵消该面补偿）——实机复核 = 批次档 §2.6。
-- **NFR-19 连带（重跑登记）**：顶边 minY 下移 44 增加**向上**行程（地面 maxY 不变 ⇒ 首触竖直速度口径不变）——扫描集（128 例）按 B26 §5.0.4 同口径**重跑并登记**（登记行落批次档 §5；顶边扩展只影响上抛例的飞行时长分布，收口 ≤5 s 硬上界不变）。
+- **NFR-19 连带（重跑登记）**：顶边 minY 下移 44 增加**向上**行程（顶边抬高 ⇒ 撞顶例落地冲击速度随天花板高度增大，可能跨档）——扫描集（128 例）按 B26 §5.0.4 同口径**重跑并登记**（登记行落批次档 §5；**档界值（800 px/s）不变，例的档属按重跑重分类**；收口 ≤5 s 硬上界不变）。
 
 ##### 2.2.14.5 观察项（O-16…O-17）+ O-8 核销
 
@@ -733,7 +733,7 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 | **AC21** | US-24（B26） | **地面 = 可见身体底沿**：① 桩测——增量 == `FEET_INSET_DIP`（30）∧ `petEdgeBounds(null) === null` ∧ `FEET_ANCHOR_INSET_DIP === 270 − PET_FEET_Y`；② 符号级——飞行与散步 y 归位**同取** `petEdgeBounds`；③ `y + PET_FEET_Y == wa.y + wa.height + FEET_ALPHA_MARGIN_DIP`（±1）；细目 = 注 A | 桩测+静态机检+日志 |
 | **AC22** | US-24（B26） | **口径不产生位置回拉 / 上跳**：① 落地后原地再起飞（**限 `vy ≥ 0`**），首帧 `phys-tick` 的 `y` **不减小**；② 落地后散步段起点 `geom tag=seg-start` 的 `y` == 落地 `y`；③ 落地后 `petSettlePos` 判 `kind='none'`（**零 `geom-fix` 行**，条件例外见 O-14）；**细目 = 注 A** | 静态机检 + 日志面 |
 | **AC23** | US-34（B27） | **边界四面化（可见身体口径）**：① 桩测——`petEdgeBounds` 四边增量与常量等式逐条（细目 = 注 B′）；② 符号级——飞行与散步**同取** `petEdgeBounds`（两处命中）；③ 日志——静止于侧 / 顶边时 `x + hit.left ≈ wa.x` / `y + hit.top ≈ wa.y`（±1，与常量算术配对） | 桩测 + 静态机检 + 日志 |
-| **AC24** | NFR-25（B27） | **零回退与可见性**：① 冻结面零 diff——`shell-pet-geometry.js` / `shell-pet-drag.js` / `pet-chain*.js` / `assets/**` / `main.js` / `package.json` 逐档 `git diff --stat` 空；② 中心点可见性——补偿后位置 `visible=1`（日志 `geom` 行）；③ 改动档行宽 ≤300 / 单档 ≤500 / 文件头标准形 | 机检（git + 静态 + 日志） |
+| **AC24** | NFR-25（B27） | **零回退与可见性**：① 冻结面零 diff——**15 档清单**（= 批次档 §2.3 / `docs/design/PET-ANIMATION.md` §3.9 AC35①；不含本批改动面 `pet-chain*.js` / `assets/pet-anim/pool.json`）逐档 `git diff --stat` 空；② 中心点可见性——补偿后位置 `visible=1`（日志 `geom` 行）；③ 改动档行宽 ≤300 / 单档 ≤500 / 文件头标准形 | 机检（git + 静态 + 日志） |
 
 **B26 连带（修正轮 1 #8）**：AC11 的扫描集须按新地面（`FEET_INSET_DIP` = 30 DIP）**重跑并重新登记**；影响估算与余量 = §2.2.13 末段。
 
@@ -743,7 +743,7 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
   - **`270` 的来源与限制（修正轮 1 #12 如实登记）**：唯一权威处 = `shell-pet-geometry.js:29` 的 `PET_SIZE_DIP.h`，但该档 `require('electron')`（`:7`）⇒ **node 不可装载** ⇒ 桩测**不得** require 它。
     可装载的同源实数源 = `pet.html:13-14`（`#pet-wrap { height: 270px }`）与 `:34`（`#pet { bottom: 26px }`）⇒ 桩测从 HTML 取这两数，与 `PetChainCore.PET_FEET_Y`（244）三方交叉核对。
     残留弱点（明示）：若 `PET_SIZE_DIP.h` 与 `pet.html` 同时改而 `PET_FEET_Y` 未改，等式仍可通过（弱镜像面**收窄**，非消除）。
-- **注 B′（AC23 判据细目，B27）**：桩测装载**可装载**的真实实现（`pet-physics-core.js` + `pet-chain-core.js` 双环境导出）——上 / 侧等式的被减数 250 / 270 按注 A 同款限制从 `pet.html` 取（`#pet-wrap` 的 250×270），与 `PetChainCore` 常量三方交叉核对；残留弱点同注 A（弱镜像面收窄，非消除）。
+- **注 B′（AC23 判据细目，B27）**：桩测装载**可装载**的真实实现（`pet-physics-core.js` + `pet-chain-core.js` 双环境导出）——等式按 AC23① 字面用 `PetChainCore` 常量求值（顶边 = `PET_FEET_Y − PET_BODY_TARGET_H`；侧边 = `round((PET_STAGE_W − hit.w)/2)`，逐条见 §2.2.14.3）；`pet.html` 的 250×270 作**三方交叉核对**（弱镜像面收窄，非消除——残留弱点同注 A）。
   - **四面增量与空值契约（AC23①）**：`petEdgeBounds` 增量 ==（minX−41, maxX+41, minY−44, maxY+30）∧ `petEdgeBounds(null) === null`——与 §2.2.14.3 机检等式同源。
   - **顶边常量等式（AC23①）**：`TOP_EDGE_INSET_DIP === PetChainCore.PET_FEET_Y − PetChainCore.PET_BODY_TARGET_H`（244 − 200 = 44）。
   - **侧边常量等式（AC23①）**：`SIDE_EDGE_INSET_DIP === Math.round((PetChainCore.PET_STAGE_W − PetChainCore.mediaBox({canvas: PET_MEDIA_CANVAS, body: PET_MEDIA_BODY, targetH: PET_BODY_TARGET_H, feetY: PET_FEET_Y}).hit.w) / 2)`（≈ (250 − 168.42)/2 = 40.79 → 41）。
@@ -836,3 +836,4 @@ B03 `docs/design/PET-MULTIMONITOR.md` §2.3.1 / §2.3.6 的「标称矩形 ⊆ �
 | 2026-09-18 | B26 修正轮 2（换机复审 3 条发现；源 = §3 轮次 2）——本档经核验**无内容改动**（发现 1 / 3 = 批次档面；发现 2 = 动画档 / 需求档面）；as-of 行数 = **757** 行（换行符口径；供批次档 §2.4 行数订正引用）。 |
 | 2026-09-19 | **B27 面落档（边界四面化；源 = 台账 R21 / 批次档 §1）**：新增 **§2.2.14**（实测 / 选型 A·B / `petEdgeBounds` 契约 / B03 例外四面 / O-16…O-17 / DD-18）· §2.2.13 改名注记 · §2.2.4 / §2.2.6 口径分列 · O-8 核销 · §3.1 AC23–AC24 + 注 B′ · §3.2 TC-41–TC-44 · `groundBounds` → `petEdgeBounds`。**计数：AC 24 · TC 44 · DD 18 · O 17**。 |
 | 2026-09-19 | **B27 面落盘（续；三方一致收口）**：§1.1 增 US-34 / NFR-25 两行 + US-24 行补 B27 注记 · 档头标题 / 需求档与批次档指针同步 · §2.3 补 B27 文件表指针行 · §2.2.14 补三方份额行 · 观察项编号统一 `O-16 / O-17`（承 O-1…O-15 形态）· §3.2 标题计数 TC-40 → TC-44 · §3.3 手段①扩 AC21–AC24 · AC23 判据细目移注 B′（行宽合规）。**计数不变（AC 24 · TC 44 · DD 18 · O 17）**。 |
+| 2026-09-19 | **B27 修正轮 1（评审轮 1 🔴#1 / 🔵#7 / 🔵#10；源 = 批次档 §3 轮次 1 + 主 agent 裁决）**：AC24① 冻结面改 15 档口径（= 批次档 §2.3 / AC35①；不含本批改动面 `pet-chain*.js` / `pool.json`）；注 B′ 等式口径订正（`PetChainCore` 常量求值 + 250×270 三方交叉核对）；NFR-19 重跑括注订正（档界值不变、档属按重跑重分类）。**计数不变（AC 24 · TC 44 · DD 18 · O 17）**。 |
