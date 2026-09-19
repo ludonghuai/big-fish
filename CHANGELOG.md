@@ -31,7 +31,7 @@
 
 （2026-09-19 六批核销同步：条目源 = 各批 §6；B08–B26 历史回溯补写见 `docs/TODO.md` **T54**）
 
-## [0.0.1] — 待发布（发布动作见 `docs/TODO.md` T11）
+## [0.0.1] — 2026-09-19 发布（GitHub release `v0.0.1`；清单 = Gitee raw `latest.json`；发布记录 = `docs/TODO.md` T11）
 
 ### Added
 

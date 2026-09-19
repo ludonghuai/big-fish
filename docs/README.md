@@ -78,6 +78,7 @@
 
 | 日期 | 变更点 |
 |---|---|
+| 2026-09-19 | **0.0.1 正式发布（发布链闭环）**：GitHub release `v0.0.1` 发布（附件 `Bigfish.Setup.0.0.1.exe` · 206 MB · sha256 `6d150bf0…d7950e` —— 与 `latest.json` 逐字一致 ✓）+ GitHub / Gitee 双 tag + 清单推达 Gitee raw（更新通道打通）；README / 版本说明安装包大小订正（276 → 206 MB，实测值）；台账 **T11 已核销归档**。依据 = `docs/TODO.md` T11 · `latest.json` · `CHANGELOG.md`。 |
 | 2026-09-19 | **B31 折账微轮 #6 核验 + 台账新增两条（D7）**：微轮 #6（文档层折账五件）落地并经父侧逐条核验 ✓（`PET.md:602-603` · `PET-AFFINITY.md:204/:287/:298` · `CONVENTIONS.md:119/:122-123` · `REPO-CONVENTIONS.md:425/:427/:439`）；B31 §6 「收口轮」行同步为已闭合；台账新增 **T53**（逃跑气泡时机 + 硬切观感——B27 派生）与 **T55**（B31 折账轮残留三处：静态占位文案 / `ARCHITECTURE.md` 旧口径「15 档」/ `baseline.asOf`）。依据 = `docs/batches/B31-affinity-balance.md` §2.8 / §6。 |
 | 2026-09-19 | **B29 实施轮·文档面落地（D7）**：判据 E 权威句落 `docs/CONVENTIONS.md` §四（表头注 + E 行 + 变更记录）· 定位档 `docs/SAMPLES.md` 建档（三问 + 指针表，57 行）· `AGENTS.md` 写权矩阵补定位档 + §三 **六判据 → 七判据**；判据 E 机检全绿（`CHECK samples PASS refs=0 pkg=0` · `checks=7 selftest=20/20`）；地图 §二 +1 行（本行同批）。依据 = `docs/batches/B29-samples-guard.md` §5。 |
 | 2026-09-19 | **B30 / B31 核销 + 全链路收口（D7；用户实机验收「都对了」）**：**B30**（重启零误报 + 等待确认提醒）与 **B31**（好感度重平衡：63,000 顶档 / 喂食 2 倍 / 满级 `MAX`）**双双 §6 核销**（各带验收证据链 ✓）；台账：**T40 / R12（B30）· T48 / T49（B31）→ 已核销归档**（`docs/TODO-archive.md`）；地图批次表 / 设计档表 3 行状态同步；两批设计凭证槽收口 ✓；CHANGELOG 补六批条目 ✓。依据 = `docs/batches/{B30-notify-followup,B31-affinity-balance}.md` §6。 |
