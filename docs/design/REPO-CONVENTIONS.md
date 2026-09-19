@@ -3,6 +3,7 @@
 > 设计档（长寿命）：需求层 / 设计层 / 测试层 + 变更记录。
 > 回指：批次档 `docs/batches/B11-conventions.md` §1（立案 · §1.3 体检实证 · §1.6 AC1–AC6）与 §2（任务书）。
 > **附 A = B16 面**（测试分层与门禁）：回指批次档 `docs/batches/B16-test-gates.md` §1（三方同源 = §1.4 五件 + §1.5 硬约束）；B11 面 = §一–§三（节号与指针零改动）。
+> **附 A-续 = B29 面**（`samples/` 解耦判据 E 与定位收口）：回指批次档 `docs/batches/B29-samples-guard.md` §1（三方同源 = §1.4「做」三项 + §1.5 硬约束）；B16 面 = 附 A（A.1–A.3，节号与指针零改动）。
 > 需求来源 = 台账 R11「接手项目规范化」① 规范载体——**工程/流程类需求，本仓无对应需求档**：需求条文由批次档 §1 承载（三方同源 = `docs/batches/B11-conventions.md` §1.6 的 AC1–AC6）。
 > 落点约定（层与清单）→ `docs/README.md`；本档不重述。
 
@@ -381,7 +382,7 @@ docs/CONVENTIONS.md
 
 | 层 | 命令 | 内容 | 摘要行（机器可 grep） |
 |---|---|---|---|
-| ① 静态机检 | `npm run lint` → `node scripts/gates/run.js` | 自证夹具（判据 A–C 与 D①②③ 的边界 / 错误面）→ **六条判据** | `GATE lint PASS checks=6 selftest=14/14` |
+| ① 静态机检 | `npm run lint` → `node scripts/gates/run.js` | 自证夹具（判据 A–C · D①②③ · **E（B29）** 的边界 / 错误面）→ **七条判据** | `GATE lint PASS checks=7 selftest=20/20`（B29 修订：判据 E 入队 ⇒ checks 6→7 · selftest 14→20；E 面 = 附 A-续） |
 | ② 单元与桩测 | `npm run test`（快层）· **`npm run test:full`**（全量 = 门） | `tests/**/*.test.js`；慢测层自动 skip | `GATE test:full PASS pass=45 fail=0 skipped=0 ms=<n>` |
 | ③ 集成场景 | `npm run test:integration` → `node scripts/test-integration.js` | 三场景（A.2.2.4），逐场景 spawn `electron` | `GATE test:integration PASS scenarios=3 pass=3 fail=0` |
 
@@ -400,7 +401,7 @@ docs/CONVENTIONS.md
 - **层注入口径（命令面无层 flag）**：层由**运行器**注入 —— 运行器按自身开关（`test` 缺省 / `test:full` 传 `--full`）置 `BIGFISH_TEST_LAYER` 后再 spawn 子进程，`tests/layer.js` 的 `isFastLayer()` 只读该环境变量（A.2.2.3）。⇒ `npm run test:full --slow` 的旧写法**作废**（层不经命令行参数传递）。
 - **本批实施序（步序契约）**：① 落地 `scripts/gates/**` + `tests/layer.js` → ② 写 `baseline.json`（**取实施当日实测值**，见 A.2.2.6）→ ③ `test-run.js` + b12 的 `slow()` 改标 → ④ 集成三层（`harness.js` + 3 场景 + `test-integration.js` + stub 扩展）→ ⑤ `package.json` scripts → ⑥ `gates.yml` → ⑦ 本地三条门全绿取证。
 
-##### A.2.2.2 机检判据逐条（六条：A · B · C · D①②③ —— 判据句 + 口径 + 机检方式 + 现状）
+##### A.2.2.2 机检判据逐条（七条：A · B · C · D①②③ · E —— 判据句 + 口径 + 机检方式 + 现状）
 
 **扫描面（六条判据共用的档集合）**：仓库根起 `fs` 递归，**跳过清单** = 与根 `.gitignore` 同源的非仓库内容——
 `node_modules` · `dist` · `electron-dist` · `node-runtime` · `samples` · `测试-更新功能` · `.git` · `.thincoder` · `.npm-cache` · `.electron-cache` ·
@@ -418,6 +419,7 @@ docs/CONVENTIONS.md
 | D① | 依赖无环 | 回指 `docs/CONVENTIONS.md` §四 D① | 只认字面量 `require('.<相对>')`；边 = 解析到扫描面内档 | DFS 着色求环 |
 | D② | 域模块 fan-out | 回指 `docs/CONVENTIONS.md` §四 D② | 域模块 = 扫描面内 `.js` / `.mjs` 去掉 `tests/` · `scripts/` · `probe-*`；组合根 `main.js` 免判（装配面天然高扇出） | 逐档出度计数；**基线** = 超限档的冻结值 |
 | D③ | 接线点唯一 | 回指 `docs/CONVENTIONS.md` §四 D③ | **覆盖面 = 组合根绑定面**（口径见下条）；面内不导出 `init` 的档列入**免检清单**（含理由）；**未解析的 `require` 形态 = 红**（fail-closed） | 绑定正则 + 调用计数正则；免检清单在基线档 |
+| E | 样本区零引用 | 权威 = `docs/CONVENTIONS.md` §四（B29 实施轮落笔）——判据句与口径见 附 A-续 §A-B29.2.2（本表只列名，不重述） | 同左 | 同左 |
 
 - **判据句单一权威源（D2）**：B / C 的判据句权威 = `docs/CONVENTIONS.md` §五，D①②③ 的判据句权威 = `docs/CONVENTIONS.md` §四；本表只承载**机检口径与机检方式**，**不复述判据句**（防两处措辞分叉）；规范档只留判据句 + 机检实现面的指针。
 - **D③ 的覆盖面 = 组合根绑定面**（判据闭合，2026-09-18 实测）：D③ 只对 `main.js` 的相对 `require`（`const <名> = require('<相对>')`）**绑定到的**档适用 —— `main.js:32-46` 共 **15** 条相对 require。
@@ -437,8 +439,8 @@ docs/CONVENTIONS.md
 - **D③**：**13/13 恰一处**；免检 2 档 = `shell-settings.js`（工具档，无 `init`）· `shell-ipc.js`（走 `register()` 接线）。
   T37（B20 实机：`physics.init` 漏调致功能全死而 AC 全绿）正是本判据的拦截面。
 
-- **F1 覆盖面 = 六条判据**（A 语法 · B 行宽 · C 行数 · D① 无环 · D② fan-out · D③ 接线点唯一）——与 A.2.2.1 的 `checks=6` 同口径；六条各出一行 `CHECK …` 摘要（A.3.1 AC-B16-6/7/8 据此逐条回指）。
-- **自证面**：内联 `--selftest` 自证 **TC-B16-01…14**（结构面，每次 `npm run lint` 跑）；**TC-B16-15…24** 由各自执行面承载（慢层运行器 / 集成场景 / 结构 grep），不在自证内。
+- **F1 覆盖面 = 七条判据**（A 语法 · B 行宽 · C 行数 · D① 无环 · D② fan-out · D③ 接线点唯一 · **E 样本区零引用（B29）**）——与 A.2.2.1 的 `checks=7` 同口径；七条各出一行 `CHECK …` 摘要（A.3.1 AC-B16-6/7/8 据此逐条回指；E 的回指 = 附 A-续 A-B29.3.1）。
+- **自证面**：内联 `--selftest` 自证 **TC-B16-01…14 + TC-B29-01…06（B29）**（结构面，每次 `npm run lint` 跑）；**TC-B16-15…24** 由各自执行面承载（慢层运行器 / 集成场景 / 结构 grep），不在自证内。
 - **自证夹具隔离面（承 TC-B16-06 / 09 / 13）**：判据函数以**参数**接收 `root` 与 `baseline`（缺省 = 真实值）⇒ 夹具在 `fs.mkdtempSync(path.join(os.tmpdir(), 'b16-gate-'))` 的**临时档树**内造档，**不往仓库写任何档**。
   夹具树内容 = 自造超宽行 `.md` / 互 `require` 的 `.js` / 违规基线条目；清理 = `try` / `finally` 内 `fs.rmSync(root, { recursive: true, force: true })`。
   **与跳过清单的关系**：夹具根在 `os.tmpdir()` ⇒ **永不在门禁扫描面内**（扫描面 = 仓库根起递归）⇒ 无需新增跳过条目；若改用「仓库内临时根」（**不推荐**）⇒ 该根须同时写入跳过清单并保证 `finally` 清理，否则残档会被真实判据当**新增违规** ✗。
@@ -640,7 +642,7 @@ docs/CONVENTIONS.md
 
 | # | 验收标准（回指 §1） | 判据（可机检） |
 |---|---|---|
-| AC-B16-1 | **`lint` 门在场且本地可跑**（§1.4-1） | `npm run lint` 退出 0 且 stdout 含 `GATE lint PASS checks=6 selftest=14/14`（串 = A.2.2.1 契约表的摘要行，二者同源）；`package.json` scripts 的 `lint` = `node scripts/gates/run.js`（A.2.2.1 字面值表） |
+| AC-B16-1 | **`lint` 门在场且本地可跑**（§1.4-1） | `npm run lint` 退出 0 且 stdout 含 A.2.2.1 契约表的摘要行（B16 期 = `checks=6 selftest=14/14`；**B29 起 = `checks=7 selftest=20/20`**——串与契约表同源）；`package.json` scripts 的 `lint` = `node scripts/gates/run.js`（A.2.2.1 字面值表） |
 | AC-B16-2 | **`test:full` = 收编后的统一入口**（§1.4-2） | `npm run test:full` 退出 0 且 TAP 摘要 `# pass 45` + `# fail 0` + `# skipped 0` |
 | AC-B16-3 | **快层：慢测自动 skip**（§1.5-3） | `npm run test` 退出 0 且 `# skipped 1` + `# pass 44`（被 skip 者 = `TC-82`） |
 | AC-B16-4 | **集成层三场景**（§1.4-3） | `npm run test:integration` 退出 0，stdout 含 `SCENARIO S1 PASS` / `SCENARIO S2 PASS` / `SCENARIO S3 PASS`（S3 含 a/b 两子态行） |
@@ -685,6 +687,195 @@ docs/CONVENTIONS.md
 - **N/A 声明**：本批 **UI / 交互用例 = 无**（A.2.6）；集成层无「正常/边界/错误」三分法之外的面（场景即用例）。
 - **单价时长**：判据 A–D + 自证 <2 s；单元层 1.2 s；集成层 ≈3 次真启动 + 1 次进程内（本机量级分钟级）。
 
+### 附 A-续 —— B29 面：`samples/` 解耦判据（E）与定位收口（B29 批次修订）
+
+> 本续节 = **B29 批次**（`samples/` 解耦守卫 + 定位收口）的完整设计（需求层 / 设计层 / 测试层）。
+> 回指批次档 `docs/batches/B29-samples-guard.md` §1；**B16 面 = A.1–A.3**（测试分层与门禁），其节号与指针零改动（本续节编号 A-B29.x 独立）。
+> B16 面中随本批**修订**的四处（A.2.2.1 契约表 · A.2.2.2 判据表与 F1 覆盖面 · A.3.1 AC-B16-1 判据串）= 活契约修订，变更记录已注记。
+> 需求来源 = 批次档 §1（**工程/流程类需求，本仓无对应需求档**——依 B11 / B16 先例）；三方同源 = §1.4「做」三项 + §1.5 硬约束。
+> 现状实测（as-of 2026-09-19）：代码面（`.js` / `.mjs` / `.html` / `.json` / `.cmd` / `.yml`）含 `samples` 字面量**恰 1 处** = `scripts/gates/lib.js:18`（跳过清单条目，守卫自身——不在 E① 扫描面）；
+> `package.json` 的 `build.files`（`:45-92`）/ `extraResources`（`:93-106`）零登记 `samples`；`samples/` 现 1 项（`dsh-pet`），目录在跳过清单（`lib.js:18`）⇒ 扫描面永不读样本档。
+
+#### A-B29.1 需求层
+
+##### A-B29.1.1 总体需求
+
+为**接手本仓的人与 AI 代理**解决一个具体问题：`samples/` = 外部项目样本区，其「完全解耦」（不引用 / 不构建 / 不入仓）目前只是口头约定 + 人眼巡查——**无任何机检句**（批次档 §1.3 缺口实测）。本批把约定**变成判据**（机检随 CI 生效），并补上可读的定位文档；**零样本写入、零业务行为变更**。
+
+##### A-B29.1.2 功能性需求（逐条 = 批次档 §1.4 的「做」三项）
+
+| # | 需求（回指 §1.4） | 范围边界（明确不做什么） |
+|---|---|---|
+| F1 | **门禁新判据 E**（§1.4-①）：引用面零命中（E①）+ 打包白名单零登记（E②）；违规 ⇒ 红 + 自检用例 | 不引入样本内容（零样本写入）；**不改 `build.files` 白名单现行内容**（只加「不得登记 `samples`」判据）；判据严格性 = **零命中**（非基线冻结） |
+| F2 | **定位文档**（§1.4-②）：`samples/` 是什么 / 怎么加样本 / 移植怎么走四步流程（落点 = U-1 裁定） | 不做移植本体（R15 已收口 A 面 ✓；后续另立需求点）；文档必须在仓内（样本区不入仓 ⇒ 不可放 `samples/` 内） |
+| F3 | **地图 / 台账指针同步**（§1.4-③，主 agent 面） | 本设计者只给建议行；台账 / 地图写权 = 主 agent |
+
+##### A-B29.1.3 非功能性需求
+
+| # | 约束 | 度量方式 |
+|---|---|---|
+| NFR-B29-1 | **零样本写入**（§1.5-1） | 改动面不含 `samples/**`；`samples/` 现 1 项不变；守卫与文档的对象 = 规则，不是样本 |
+| NFR-B29-2 | **判据进既有骨架**（§1.5-2） | 判据 E 落在 `scripts/gates/**`（checks.js / run.js / selftest.js），随 `npm run lint` 与 CI 生效；本地与 CI 同源（承 NFR-A4） |
+| NFR-B29-3 | **零业务行为变更** | 运行时代码面 `git diff` 为空；`package.json` 零 diff（E② 只读） |
+| NFR-B29-4 | **规则句可机检**（承 B11 NFR-3） | 每条验收标准给出可执行命令（A-B29.3.1） |
+| NFR-B29-5 | 单一权威源（D2） | 判据句权威 = `docs/CONVENTIONS.md` §四；机检实现面 = 本附节；定位文档 = `docs/SAMPLES.md`；地图只留落点行 |
+
+##### A-B29.1.4 回指
+
+- 验收标准 = A-B29.3.1 的 **AC-B29-1…AC-B29-7**，逐条回指批次档 §1.4（F1–F3）与 §1.5（硬约束 1–3）。
+- 台账承载：**R14**（样本区落位——本批 = 其「守卫 + 定位」余项；销账条件 = §1.7）。
+- 需求档：无新增（工程/流程类，§1.7）。
+
+#### A-B29.2 设计层
+
+##### A-B29.2.1 方案选型对比（判据来自 A-B29.1；被否决候选逐条写否决理由）
+
+**组 1 — U-2 判据挂法（候选 3）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **新增第七判据 E**（`samples-guard`，独立函数 + 独立摘要行） | 覆盖面独立（全仓引用面 + 打包白名单——与 A–D 任何一条不重叠）；判据句独立（依赖方向面）；**零命中恒判**（现状零命中 ⇒ 无需基线，硬约束 §1.5-2）；自证夹具独立；对既有面的侵入 = 摘要行计数 + 契约表 1 行 | 代价：`run.js` / `selftest.js` / `checks.js` 三档改动 + 计数同步（checks 6→7 · selftest 14→20） | **选定** |
+| 2 | 并入 **D③ assembly** | D③ 覆盖面 = **组合根绑定面**（`main.js` 15 条绑定）——samples 引用可出现在**任意档**，覆盖面不匹配；判据对象 = `init` 接线唯一，与「解耦引用」是两类语义；合并使 `CHECK assembly PASS (13/13)` 摘要语义混装、归因面变差 | — | **否决** |
+| 3 | 并入 **D① / D②** | **功能不可行**：`samples/` 在跳过清单（`lib.js:18`）⇒ `require('./samples/x')` 解析不到扫描面内档 ⇒ 不产边 ⇒ D①（环）/ D②（扇出）**天然漏判**；且 D② 只数域模块出度，`package.json` 白名单面无处承载 | — | **否决** |
+
+**组 2 — U-1 定位文档落点（候选 5；硬约束 = 须在 `docs/**` 内）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **新档 `docs/SAMPLES.md`**（docs/ 顶层定位档） | 发现路径 = 地图一行（与规范档 `docs/CONVENTIONS.md` 同族先例）；单档承载三问（是什么 / 怎么加样本 / 移植四步流程）；不侵入既有档结构契约（规范档九节前缀机检固定 / 地图索引面）；写权 = eng-designer（同族先例——写权矩阵补半行） | 代价：地图 +1 行（主 agent）、写权矩阵补半行（实施轮） | **选定** |
+| 2 | 并入 `docs/design/REPO-CONVENTIONS.md` 附 B | 免新档类；但定位档是**指南**不是**设计记录**——本档已 701 行（B16 面 414 行增量先例），混入指南面层不符；发现路径弱（人不会去设计档找「怎么加样本」） | — | **否决** |
+| 3 | 并入 `docs/CONVENTIONS.md` 新节 | 结构契约 = 九节标题**前缀机检固定**（§2.2.3）⇒ 加第十节破契约；且样本定位**非代码形态** | — | **否决** |
+| 4 | `docs/README.md` 新节详述 | 写权 = 主 agent（本设计者不可写）；地图 = **索引面**（D2 只引用不重述）——详述放地图违反「地图只留指针」 | — | **否决** |
+| 5 | `samples/README.md` / 根 `README.md` / `版本说明.txt` / `THIRD-PARTY-NOTICES.md` | 硬约束 ✗：样本区不入仓 ⇒ 文档必须在仓内（`samples/` 内不可）；根三档 = **B27 实施期冻结面**（批次档 §2 硬约束明令禁碰） | — | **否决** |
+
+##### A-B29.2.2 契约与结构
+
+**判据 E（samples-guard）契约**
+
+| 面 | 判据句（权威 = `docs/CONVENTIONS.md` §四，B29 实施轮落笔） | 机检口径（本附节 = 机检实现面） | 机检方式 |
+|---|---|---|---|
+| E① 引用面 | 全仓代码面不得出现指向 `samples/` 的引用 | 扫描面 = 门禁扫描面内**非文档档**（排除 `.md` / `.txt`——规则与定位的声明面）− `scripts/gates/**`（守卫自身 = 判据载体）− `.gitignore`（忽略声明自身）；检测两式（细则见下条） | `checkSamples(files, root)` 逐档逐行正则 |
+| E② 打包白名单 | `package.json` 的 `build.files` / `extraResources` 零登记 `samples` | `JSON.parse(root/package.json)`；`build.files` 每条目与 `extraResources` 每 `from` / `to` 做子串 `samples` 判；命中即红，点名键与条目；缺档 / 不可解析 ⇒ 红（fail-closed），绝不静默通过 | 同上函数 |
+
+- **检测两式（E①）**：① **路径形态** `samples/` · `samples\`（含 `require('./samples/…')`）② **引号形态** `'samples'` / `"samples"`（`path.join(…, 'samples', …)` 等裸段引用）——命中即红，点名档:行。
+- **严格性 = 零命中恒判**（硬约束 §1.5-2）：现状 = 零命中 ⇒ **不入 `baseline.json`、不冻结、无到期条件**——任何命中（含存量）即红。
+- **判据句单一权威源（D2）**：判据句权威 = `docs/CONVENTIONS.md` §四（B29 实施轮落笔，建议句见下）；本附节只承载机检口径，不复述判据句。
+- **与既有六判据的关系**：A–D 与 E 覆盖面 / 判据对象零重叠；`require('./samples/…')` 因跳过清单解析不到扫描面内档 ⇒ D①②③ 对样本引用**天然漏判**——正是 E 独立存在的原因（组 1 候选 3 的否决理由）。
+- **守卫自身豁免的判据句**（E① 排除 `scripts/gates/**`）：守卫是**判据载体**——其源码必然承载 `samples` 字面量（跳过清单条目 + 判据正则 + 自证夹具构造的违规面）；豁免 = 覆盖面口径（同 D② 排除 `tests/` · `scripts/` 的域口径先例），**非**存量豁免、**非**基线冻结。
+- **变量名不误报**：裸标识符 `const samples = …`（无路径分隔符、无引号包裹）**不判**——检测只认路径 / 引号两形态（TC-B29-05 钉死该边界）。
+- **摘要行（机器可 grep）**：`CHECK samples PASS refs=0 pkg=0`；红面 = `CHECK samples FAIL refs=<n> pkg=<m>` + 逐条 `VIOLATION samples <kind> <档>:<行> :: <内容>`（kind = `ref` / `pkg-build` / `pkg-extra` / `pkg-unreadable`）。
+- **run.js 契约变更**：判据块按 A–E 顺序跑（E 在 D③ 之后）；`checkCount` 6 → **7**；摘要行分母**动态化**（`selftest=${self.passed}/${self.total}`——`runSelftest` 返回值增 `total`；判据数增长时不再同步改 run.js 两处 + 设计档判据串，DD-A18）。
+- **自证面（TC-B29-01…06，结构面）**：沿用 A.2.2.2 夹具隔离面（`os.tmpdir()` 临时档树 + `try/finally` 清理；夹具根永不在扫描面内）——夹具可自由构造含 `samples` 字面量的违规档（守卫自身在 E① 扫描面外，无需字符串拼接规避）；夹具树须自带最小 `package.json`（除 TC-B29-04 故意缺档外——E② 对缺档 fail-closed）。
+
+**B16 面随本批修订的四处（活契约修订）**：
+
+1. A.2.2.1 契约表 ① 行：`checks=6 selftest=14/14` → **`checks=7 selftest=20/20`**（已改）。
+2. A.2.2.2 判据表：题头六条 → **七条**，增 E 行（已改）。
+3. A.2.2.2 「F1 覆盖面」行：六条 → **七条**、`checks=6` → **`checks=7`**（已改）。
+4. A.3.1 AC-B16-1 判据串：加「B29 起 = checks=7 selftest=20/20」注记（已改；B16 期串保留为历史面）。
+
+**实施轮建议句（机械落笔面）**：
+
+- `docs/CONVENTIONS.md` §四：表头注「结构判据三条」→「结构判据三条 + 样本解耦判据一条（E）」；表增一行，判据 = `E`、判据句 = 「全仓代码面不得出现指向 `samples/` 的引用（路径形态 `samples/` · `samples\` 或引号形态 `'samples'` / `"samples"`）；`package.json` 的 `build.files` / `extraResources` 零登记 `samples`」。
+- 同上行口径与免检 = 「扫描面 = 扫描面内非文档档 − `scripts/gates/**` − `.gitignore`；严格性 = 零命中恒判（现状零命中 ⇒ 不设基线，任何命中即红）；机检口径 → 本设计档附 A-续 §A-B29.2.2」；变更记录 +1 行。`AGENTS.md`：§三「六判据」→「七判据」；写权矩阵第一行补「定位档 `docs/SAMPLES.md`」；变更记录 +1 行。
+
+**定位文档内容契约（`docs/SAMPLES.md`，实施轮 eng-designer 落笔；目标 ≈60–80 行）**：
+
+- 头部：`# SAMPLES —— 外部样本区定位（Bigfish）` + 读者行（接手本仓的人与 AI 代理）+ as-of。
+- **一、是什么（完全解耦三条）**：`samples/` = 外部项目样本 / 移植参考区，**非交付物**（git-ignored；第三方代码不入仓历史——许可与污染面）。三条铁律（机检承载，指针 → `docs/CONVENTIONS.md` §四 + 本附节 A-B29.2.2）：① 不被任何代码引用（判据 E①）② 不参与构建 / 不打进发行版（判据 E② + `build.files` / `extraResources` 白名单制——不登记即天然排除）③ 第三方代码不入仓历史（`.gitignore` 声明面）。
+- **二、怎么加样本**：顶层 `samples/<项目名>/` 直放他人项目；许可面注意（他人代码的许可证不随本仓分发）；不修改仓内档去适配样本（完全解耦 = 双向不引用）。
+- **三、移植怎么走四步流程**：与一切需求同链——登记需求点（台账）→ 立案（批次档 §1）→ 设计评审 + 用户批准 → 实施 + 测试 + §6 核销。先例：R14（样本区落位）· R15（动画链移植 A 面，B18 已收口）。
+- 变更记录：一行注记。
+
+**数据流（本批无 UI）**：判据 E 的输入 = ① 磁盘档树（扫描面）② `root/package.json`；输出 = ① `CHECK samples` 摘要行 ② 退出码（0/1/2——门禁契约不变）。消费方 = 人（本地）· CI（`gates.yml` 零改动——只调 npm script）· 批次 §6 核销。
+
+##### A-B29.2.3 受影响文件全清单（修改 3 · 新建 1 · 既有文档修订 3 · 运行时代码改动 0）
+
+| 文件 | 现状（行数，as-of 2026-09-19） | 本批动作 | 预计增量 | 写权（实施轮） |
+|---|---|---|---|---|
+| `scripts/gates/checks.js` | **261** 行 | 增 `checkSamples(files, root)`（E①/E② + fail-closed） | +≈75 → ≈336 | eng-coder |
+| `scripts/gates/run.js` | **122** 行 | 增 E 判据块 + `checkCount=7` + selftest 分母动态化 | +≈14 → ≈136 | eng-coder |
+| `scripts/gates/selftest.js` | **260** 行 | 增 `samplesFixture` + TC-B29-01…06 六例 | +≈85 → ≈345 | eng-coder |
+| `scripts/gates/lib.js` | **177** 行 | **0**（跳过清单已含 `samples`——口径不变；检测逻辑归 checks.js） | 0 | — |
+| `scripts/gates/baseline.json` | **38** 行 | **0**（E = 零命中恒判，不入基线） | 0 | — |
+| `docs/SAMPLES.md` | 不存在 | 新建（U-1 选定落点；内容契约见 A-B29.2.2） | ≈70 | eng-designer |
+| `docs/CONVENTIONS.md` | **191** 行 | §四 增 E 判据句行 + 表头注记 + 变更记录 1 行 | +≈6 → ≈197 | eng-designer |
+| `AGENTS.md` | **67** 行 | §三「六判据」→「七判据」+ 写权矩阵补定位档 + 变更记录 1 行 | +≈4 → ≈71 | eng-designer |
+| `docs/README.md` | **98** 行 | §一 落点行 + §二 当前文档行（建议行见下） | +2 → ≈100 | 主 agent |
+| `docs/design/REPO-CONVENTIONS.md` | **701** 行 | 本续节 + 四处活契约修订 + 变更记录 1 行（本设计轮已落） | +191 → **892** | eng-designer（本设计轮） |
+| `package.json` / 运行时代码 / `samples/**` / `.github/**` | — | **零改动**（E② 只读 `package.json`；`gates.yml` 只调 npm script，判据面变化透明生效） | 0 | — |
+
+**主 agent 建议行（本设计者不落）**：
+
+- 地图 §一 落点约定增：`| 定位档（外部样本区） | docs/SAMPLES.md | samples/ 是什么 · 怎么加样本 · 移植怎么走四步流程（完全解耦三条的详述处；机检判据句 → docs/CONVENTIONS.md §四） |`
+- 地图 §二 当前文档增：`| docs/SAMPLES.md | 定位档 | 生效（B29 落档） | 外部样本区定位三问：是什么（完全解耦）/ 怎么加样本 / 移植四步流程 |`
+- 台账 R14 行：销账 = 判据机检生效 + 定位文档落档 + 地图/台账指针（§6 核销时同步）。
+
+**步序契约（实施轮）**：① `checks.js`（checkSamples）→ ② `selftest.js`（六例）→ ③ `run.js`（E 块 + 计数）→ ④ 本地 `npm run lint` 取证 + **红面双向实测**（AC-B29-2/3 注入与移除）→ ⑤ eng-designer 微轮落 `docs/SAMPLES.md` + `docs/CONVENTIONS.md` §四 + `AGENTS.md` 两处 → ⑥ 主 agent 落地图两行 → ⑦ 三条门全绿 + 批次 §5/§6 收口。
+
+**贴线档拆分计划：无**——改动档均 <480 行（`checks.js` ≈336 · `selftest.js` ≈345）；本设计档为 `.md`（行数判据只适用于 `.js` / `.mjs`，判据 C 口径）。
+
+##### A-B29.2.4 关键决策记录
+
+| # | 决策 | 理由 | 否决备选 |
+|---|---|---|---|
+| DD-A14 | 判据挂法 = **新增第七判据 E**（独立函数 / 摘要行 / 自证） | 覆盖面与语义与 A–D 全部不重叠；并入 D①/D② **功能不可行**（跳过清单使引用不产边）；并入 D③ 覆盖面 = 组合根绑定面不匹配（组 1 对比表） | 并入 D③ / 并入 D①·D② |
+| DD-A15 | E = **零命中恒判**（不入基线、不冻结、无到期条件） | 硬约束 §1.5-2「零命中而非基线冻结」；现状零命中 ⇒ 无存量面 | 基线冻结 + 只拦新增 |
+| DD-A16 | E① 扫描面 = 非文档档 − `scripts/gates/**` − `.gitignore` | 守卫自身 = 判据载体（须承载判据句与自证夹具的 `samples` 字面量）；文档面 = 声明面非引用面；同 D② 域口径先例（覆盖面口径，非豁免面） | 扫描守卫自身 / 排除全 `scripts/` |
+| DD-A17 | E① 检测 = 路径形态 + 引号形态两式 | 覆盖 `require` / 路径拼接 / 裸段引用三种引用形态；裸标识符不判（防变量名误报） | 只判路径形态（漏 `join('samples', …)`）/ 全子串判（变量名误报） |
+| DD-A18 | selftest 摘要分母**动态化**（`passed/total`） | 判据增长时不再同步改 run.js 两处 + 设计档判据串 | 保持硬编码（计数漂移面） |
+| DD-A19 | 定位文档 = **新档 `docs/SAMPLES.md`**；写权 = eng-designer | 组 2 对比表：层契合（指南 ≠ 设计记录 / 代码形态 / 索引）+ 发现路径 + 规范档同族先例 | 附 B / 规范档新节 / 地图详述 / 根三档（冻结面 ✗） |
+
+##### A-B29.2.5 边界（本设计不做的事）
+
+- **不引入样本内容**（零样本写入）；不改 `build.files` / `extraResources` 白名单现行内容（只加判据）；不改 `package.json` 任何块（E② 只读）。
+- **不做移植本体**（R15 已收口 A 面；后续另立需求点）；不搬任何档进 / 出 `samples/`。
+- **不碰** `README.md` / `版本说明.txt` / `THIRD-PARTY-NOTICES.md`（B27 实施期冻结面 ✗）；不写台账 / 地图 / `CHANGELOG.md`（主 agent 面，只给建议行）。
+- **本设计轮不落** `docs/SAMPLES.md` / `docs/CONVENTIONS.md` / `AGENTS.md` 正文（批次档 §2 硬约束 = 只写本设计档 + §2；三档随实施轮落笔）。
+- **不新增行宽豁免面**；判据 E 不新增基线条目；不改 `gates.yml`。
+
+##### A-B29.2.6 UI / 交互决策
+
+**N/A（本批无界面、无交互路径改动）**——显式声明，非遗漏：运行时代码面零改动；「交互」仅为 A-B29.2.2 的判据输入输出流，无 `open` 项。
+
+##### A-B29.2.7 待确认 / open
+
+| # | 待确认 | 影响面 |
+|---|---|---|
+| ① | E① 的引号形态（`'samples'` 裸段引用也判红）严格于批次档 §1.3 缺口句的字面（其例 = `require` / 路径拼接） | 若评审 / 用户裁定只判路径形态 ⇒ 删引号形态正则 + TC-B29-02 改口径（本设计推荐保留——`path.join('samples', …)` 是真实引用形态，漏判即守卫空心） |
+| ② | 写权矩阵「定位档 = eng-designer」为**新增半行**（DD-A19） | `AGENTS.md` 写权矩阵行（实施轮落；若被否，改为「主 agent 内容权 + eng-designer 落笔」） |
+| ③ | 定位文档是否需要在 `docs/design/ARCHITECTURE.md`（B25 面）留指针 | B25 在途（设计待派）——本批不碰；建议随 B25 设计面定，不在本批范围 |
+
+#### A-B29.3 测试层
+
+##### A-B29.3.1 验收标准（逐条回指批次档 §1）
+
+| # | 验收标准（回指 §1） | 判据（可机检） |
+|---|---|---|
+| AC-B29-1 | **判据 E 落地为第七判据**（§1.4-① / §1.5-2） | `npm run lint` 退出 0 且 stdout 含 `CHECK samples PASS refs=0 pkg=0` 与 `GATE lint PASS checks=7 selftest=20/20`（串 = A.2.2.1 契约表，二者同源） |
+| AC-B29-2 | **引用面零命中 + 红面实测（双向）**（§1.4-①） | 现状：代码面含 `samples` 字面量恰 1 处 = `scripts/gates/lib.js:18`（守卫自身，不在 E① 扫描面）；临时在仓内代码档注入 `require('./samples/x.js')` ⇒ `npm run lint` 退出 1 + `VIOLATION samples ref <档>:<行>`；移除后退出 0（注入/移除为临时操作，不落提交） |
+| AC-B29-3 | **打包白名单零登记 + 红面实测**（§1.4-①） | 现状：`build.files` / `extraResources` 零登记 `samples`（实测 as-of 2026-09-19）；临时在 `build.files` 注入 `"samples/x"` ⇒ 退出 1 + `VIOLATION samples pkg-build`；移除后退出 0 |
+| AC-B29-4 | **自证常驻**（§1.5-2） | `npm run lint` 每次跑 E 面 6 例（TC-B29-01…06）全绿（`selftest=20/20`） |
+| AC-B29-5 | **定位文档落档**（§1.4-②） | `test -f docs/SAMPLES.md` 且含三问标题（「是什么」「怎么加样本」「四步流程」）；地图 §一 / §二 各 +1 行（主 agent）；档内无 >300 字符单行 |
+| AC-B29-6 | **判据句权威 + 计数同步**（§1.4-③ 面 / NFR-B29-5） | `docs/CONVENTIONS.md` §四 含 E 判据句行（权威句）；`AGENTS.md` §三 无「六判据」残留、写权矩阵行含「定位档 `docs/SAMPLES.md`」；设计档契约表 / 判据表 / AC-B16-1 串与 `checks=7` 同口径（本设计轮已落） |
+| AC-B29-7 | **零样本写入 + 零业务改动**（§1.5-1/3） | 实施面 `git status --porcelain` = `scripts/gates/` 三档 + 文档层四档（`docs/SAMPLES.md` · `docs/CONVENTIONS.md` · `AGENTS.md` · 地图）；`package.json` / 运行时代码 / `.github/**` / `samples/**` 零 diff；`samples/` 现 1 项不变 |
+
+##### A-B29.3.2 用例表（正常 / 边界 / 错误 —— 输入 / 期望输出 / 映射）
+
+| # | 类型 | 输入 | 期望输出 | 断言面 | 映射 |
+|---|---|---|---|---|---|
+| TC-B29-01 | 错误 | 夹具 `a.js` 含 `const x = require('./samples/x.js');` | 判红（`ref`，点名档:行） | 结构面 | AC-B29-1 / 4 |
+| TC-B29-02 | 错误 | 夹具 `b.js` 含 `path.join(base, 'samples', name)`（引号形态） | 判红（`ref`） | 结构面 | AC-B29-1 / 4 |
+| TC-B29-03 | 错误 | 夹具 `package.json` 的 `build.files` 含 `"samples/dsh-pet"` 且 `extraResources.from` 含 `"samples"` | 判红（`pkg-build` + `pkg-extra`，共 2 条） | 结构面 | AC-B29-1 / 3 / 4 |
+| TC-B29-04 | 错误 | 夹具根**无** `package.json` | 判红（`pkg-unreadable`，fail-closed） | 结构面 | AC-B29-1 / 4 |
+| TC-B29-05 | 边界 | 夹具 `c.js` 含 `const samples = 1;`（裸标识符）+ `d.md` 含 `samples/` 字面量 | **不**判红（变量名不误报；文档面不属引用面） | 结构面 | AC-B29-1 / 4 |
+| TC-B29-06 | 正常 | 真实仓库面 `checkSamples(扫描面, REPO_ROOT)` | 0 违规（现状锚：零命中恒绿） | 结构面 | AC-B29-2 / 3 |
+| TC-B29-07 | 错误 | 仓内代码档临时注入 `require('./samples/x.js')` 后跑 `npm run lint` | 退出 1 + `VIOLATION samples ref` 点名；移除后退出 0 | 行为面 | AC-B29-2 |
+| TC-B29-08 | 错误 | `package.json` `build.files` 临时注入 `"samples/x"` 后跑 `npm run lint` | 退出 1 + `VIOLATION samples pkg-build`；移除后退出 0 | 行为面 | AC-B29-3 |
+
+- **N/A 声明**：本批 UI / 交互用例 = 无（A-B29.2.6）。
+- **单价时长**：判据 E + 自证 <1 s（并入 `npm run lint`，总量级不变）。
+
 ---
 
 ## 四、变更记录
@@ -698,3 +889,4 @@ docs/CONVENTIONS.md
 | 2026-09-17 | **修正轮 4**（独立复核轮次 2 的清理）：§2.2.3 后缀 5 处行号更正为实测值（`:10` / `:29` / `:117` / `:130` / `:158`）并注「行号只作 as-of 参考」（D4）· 目标行数标「**起草期目标**」（现值见批次档 §2.13 实测）；§3.1 半自动候选同步为 6 行；AC2 判据列取值串补齐第三条（口径条数 3 不变）。 |
 | 2026-09-18 | **B16 面设计落档（附 A）**：三层契约（`lint` / `test:full` / `test:integration` + 退出码 + 摘要行）· **六条**机检判据（语法 / 行宽 / 行数 / 依赖无环 / 域模块 fan-out / 组装面接线点唯一）· 冻结基线 + 到期条件 · 慢测层 `slow()` 与 >500 ms 硬红 · 集成三场景 · DD-A1…13 · AC-B16-1…12 + TC-B16-01…24 · 出批项 O-A1…6；顶注补附 A 一行、§2.3 出批项 O3 标「已落设计」。 |
 | 2026-09-18 | **B16 修正轮 1**（评审轮 1 pass 后）：②门命令契约统一（四条 script 字面值 + 层由运行器注入）· AC-B16-1 串对齐契约表 · D③ 覆盖面 = **组合根绑定面**（免检 2 档闭合）· 集成三场景判据补 file:line 证据行 · AC-B16-9 禁用面收窄为可判形态 · D①②③ 判据句权威 = 规范档 §四 · 自证夹具隔离面（`os.tmpdir()`）· 计数订正（`build.yml` 74 行 · 六条判据）· 豁免面 43 行（D1）· A.2.7 ① 已闭合。 |
+| 2026-09-19 | **B29 面落档（附 A-续）**：判据 **E（样本区零引用）**——E① 引用面 + E② 打包白名单（fail-closed）；零命中恒判 + 自证 6 例（TC-B29-01…06）；契约表 / 判据表 / AC-B16-1 串随修订（checks 6→7 · selftest 14→20）；U-2 候选 3 / U-1 候选 5 裁定 → `docs/SAMPLES.md`；DD-A14…A19；AC-B29-1…7 + TC-B29-01…08；回指 `docs/batches/B29-samples-guard.md` §1。 |

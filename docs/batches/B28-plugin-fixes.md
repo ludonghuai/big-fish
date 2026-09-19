@@ -14,7 +14,7 @@
 
 - **T22**：`market.js:99-103` 的 `normalizePlugin` 只从 `install` 字段提 `add …` 形态，而内置条目 `install` = 字面量 `builtin:<name>` ⇒ `installSpec === undefined` ⇒ `market.js:275` 的「一键安装」为**死码** ✗（对照：`shell-plugins.js` 的 `builtin:` 分支**已实现** ✓）。
 - **T32**：`shell-plugins.js:412` / `:415` / `:421` / `:424` 卸载动作面用**原始入参** ⇒ `uninstallPlugin('builtin:<名>')` 返回 `{ok:true, '已卸载 builtin:<名>…'}` 而**实际未删未注销** ✗（B12 交付报告 §5.6 残余 #4，主 agent 亲验）。
-- **T30**：`scripts/ensure-deps.js` 的 PowerShell 清理通配对反斜杠路径不匹配 ⇒ 用户运行中的旧后端**未被清**（B08 §5.6 范围外注记实测）⇒ 依赖变更后旧后端可能仍占端口 / 跑旧代码。
+- **T30**（**实位订正**：B28 设计轮实测 `scripts/ensure-deps.js` 94 行全读**无此代码** ⇒ 死指针）：`shell-backend.js:188`（`cleanupStaleDsh`）的 PowerShell 清理通配对反斜杠路径不匹配 ⇒ 用户运行中的旧后端**未被清**（B08 §5.6 范围外注记实测）⇒ 依赖变更后旧后端可能仍占端口 / 跑旧代码。
 - **T23**：`market.js` 两项低风险卫生（细节 = 台账 T23 行）。
 
 ### 1.4 范围（做 / 不做）
@@ -54,6 +54,55 @@
 <!-- 由 eng-designer 填 -->
 
 ---
+
+### 三方一致清单（硬）
+
+本批条目 **I1–I5** = 设计档 `docs/design/SHELL-UX.md` §3.1 **AC32–AC36** 回指条目 = 需求档**无新增**（缺陷修复面——回指锚 = `docs/requirements/SHELL.md` **US-14 / US-15** / NFR-6 / NFR-7；行为口径以 B12 已收口面为准）。设计档 §3.1「B28 回指口径」与本清单同源。
+
+| # | 条目 | 设计档承载 | 验收 |
+|---|---|---|---|
+| I1 | T22：内置条目「一键安装」补可达路径（U-1 裁 **A**——`normalizePlugin` 认 `builtin:` + `bundledNames` 目录过滤） | §2.1 N-1 · §2.2.15 ① · DD-51 | AC32 |
+| I2 | T32：卸载面动作面改用解析门 `realName`（`builtin:` / `github:` 形态统一落法） | §2.1 N-4 豁免 · §2.2.15 ② · DD-52 | AC33 |
+| I3 | T30：Windows 陈旧后端清理通配双形态 `-like`（**实位 = `shell-backend.js:188`**；台账/§1.3 指针错误见下「提请主 agent」） | §2.1 N-2 · §2.2.15 ③ · DD-53 | AC35 |
+| I4 | T23：市场面卫生两项（① 「主页」链接不再直赋注册表 `url`；② 删两条「为打日志而扫描」的调试行） | §2.1 N-3 / N-5 · §2.2.15 ④⑤ · DD-54 / DD-55 | AC34 |
+| I5 | 零回退 + 门禁三连（B12 锁定面逐字不动 + lint / test:full / test:integration 全绿） | §2.2.15 行为差异表 · C45 · DD-57 | AC36 |
+
+### 实施面（含受影响文件与行数）
+
+- `shell-plugins.js`（454 行）：`uninstallPlugin`（`:408-428`）动作面 6 行（`bundledSource` / `target` / `removeBundle`×3 / `pnpm remove` 实参）与 3 条成功消息由 `pkgName` → `realName`；**±0 行**。门 / 越界 / 解析门 / 消息前缀逐字不动（C45）。
+- `market.js`（**500** 行）：`normalizePlugin` 删注释行 + 增 `builtin:` 识别分支（净 −1）；删 `link.href = p.url`（−1）⇒ **净 −2（498 行）**；实测 >500 ⇒ **停手上报**（§2.3 B28 表下注）。
+- `shell-market.js`（198 行）：`bundledNames`（`:101`）单行替换为目录过滤；删两条调试行（`:129` / `:133`）⇒ **净 −2（196 行）**。
+- `shell-backend.js`（323 行）：`:188` PowerShell 通配单行替换为双形态 `-like`（`*dsh/lib/bin.js*` + `*dsh\lib\bin.js*`）⇒ ±0。
+- `tests/b28-plugin-fixes.test.js`（新，≈150 行）：T32 卸载夹具 + T22 vm 桩 + 静态 grep 断言（设计档 §3.3 手段 14）。
+- **零 diff**：`shell-ipc.js` / `market.html` / `market-preload.js` / `market-update.js` / `package.json` / `tests/b12-plugin-guards.test.js`。
+
+### 验收
+
+- **AC32–AC36**（判定方式逐条 = 设计档 §3.1；机器面 = 桩测 + 静态 grep + 门禁三连；真机人工 = TC-96）。
+- 销账条件（§1.7）= 修复 + 机检 + **用户实机确认**（TC-96：一键安装 → 重启生效 → 卸载走通；运行中旧后端被清）。
+
+### 明确出批（不做）
+
+- 不改 IPC 通道名 / 参数契约 / 返回字段；不改白名单 / 越界 / 解析门判据句与消息前缀（三前缀拒绝消息逐字不回退）。
+- 不改 `installPlugin` 与更新链（`pluginUpdateSpecOf` 已 skip `builtin:`，本批不触）。
+- 不拆 `shell-plugins.js`（B12 体量裁定消解期复核结论 = **不拆分**——±0 行变量面替换；拆分即「修复轮夹带重构」；重登口径 = §2.3 B28 表下注）。
+- 不改 POSIX 清理侧（O26）；不做「已装未收录条目」的 `installSpec` 补全（O25，语义面超批）。
+
+### 待用户追认（设计已按推荐值落全档；评审时可由用户改判）
+
+- **U-1 → A**（补可达路径；B 否决理由 = 设计档 N-1）。
+- **U-2 → 同轮**（T30 与 T22 / T32 / T23 同批实施）。
+
+### 提请主 agent 处置（本角色写域外）
+
+- **O24 死指针**：台账 T30 行 / 批次档 §1.3 / B08 §5.6 记「`scripts/ensure-deps.js` 的清理通配」——实测该档无此代码（94 行全读；唯一命中 = `shell-backend.js:188`）⇒ 请更正为 `shell-backend.js`。
+- **O25**（语义面，建议登记台账或另批）：`market.js:455-464` 兜底条目 `installSpec` 恒 undefined ⇒ 「已安装」标签页过滤掉 AI 安装的未收录插件（与 `:452-453` 注释意图相抵）。
+- 设计评审发起权在用户（评审时传 `batchDoc`）。
+
+### 三方声明
+
+- 需求档无新增（缺陷修复面）；设计档 = `docs/design/SHELL-UX.md`（§2.1 选型 N / §2.2.15 / §2.3 B28 表 / §2.4 DD-51…DD-57 / §2.5 C41–C47 + O24–O26 + L-B28 指针 / §2.6 U-16 / §3.1 AC32–AC36 / §3.2 TC-88–TC-96 / §3.3 手段 14 / 变更记录）。
+- 本批条目（I1–I5）= AC32–AC36 回指 = US-14 / US-15（锚）——三方一致。
 
 ## §3 设计评审（评审子代理）
 

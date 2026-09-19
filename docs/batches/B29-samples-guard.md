@@ -54,6 +54,49 @@
 
 ---
 
+### 任务书（eng-designer · 2026-09-19 设计轮）
+
+设计落点 = `docs/design/REPO-CONVENTIONS.md` 附 A-续（§A-B29.1 需求层 / §A-B29.2 设计层 / §A-B29.3 测试层）+ 四处活契约修订（A.2.2.1 契约表 · A.2.2.2 判据表与 F1 覆盖面 · A.3.1 AC-B16-1 判据串）。本批条目与设计档验收标准、批次档 §1.4「做」三项三方同源。
+
+**① 本批条目**
+
+1. F1 **门禁新判据 E（samples-guard）**（§1.4-①）：E① 引用面零命中 + E② 打包白名单零登记；**零命中恒判**（不入基线、不冻结）；自证 6 例（TC-B29-01…06）。
+   - E① = 全仓代码面零引用 `samples/`：路径形态 `samples/` · `samples\` + 引号形态 `'samples'` / `"samples"` 两式；E② = `build.files` / `extraResources` 子串 `samples` 判，缺档 fail-closed。
+   - 摘要行 `CHECK samples PASS refs=0 pkg=0`、总摘要 `GATE lint PASS checks=7 selftest=20/20`；设计 = 附 A-续 §A-B29.2.2；判据句权威 = `docs/CONVENTIONS.md` §四（实施轮落笔）。
+2. F2 **定位文档 `docs/SAMPLES.md`**（§1.4-②；U-1 裁定落点 = docs/ 顶层新档）：是什么（完全解耦三条）/ 怎么加样本 / 移植四步流程。内容契约 = 附 A-续 §A-B29.2.2；实施轮 eng-designer 落笔。
+3. F3 **地图 / 台账指针同步**（§1.4-③；主 agent 面）：建议行 = 附 A-续 §A-B29.2.3（地图 §一 / §二 各 +1 行 + 台账 R14 销账）。
+
+**② 范围外（显式不做）**
+
+- **零样本写入**：不引入任何第三方代码 / 二进制（判据与文档的对象 = 规则，不是样本）；`samples/` 现 1 项不变。
+- 不改 `build.files` / `extraResources` 白名单现行内容（只加「不得登记 `samples`」判据）；不改 `package.json` 任何块（E② 只读）。
+- 不做移植本体（R15 已收口 A 面 ✓；后续另立需求点）；不搬任何档进出 `samples/`。
+- 不碰根 `README.md` / `版本说明.txt` / `THIRD-PARTY-NOTICES.md`（B27 实施期冻结面 ✗）；不写台账 / 地图 / `CHANGELOG.md`（主 agent 面，只给建议行）。
+- 本设计轮不落 `docs/SAMPLES.md` / `docs/CONVENTIONS.md` / `AGENTS.md` 正文（任务书硬约束 = 只写设计档 + 本段；三档随实施轮 eng-designer 落笔）。
+
+**③ 受影响文件（写权 + 现状行数 as-of 2026-09-19 + 预计增量）**
+
+| 文件 | 现状 | 本批动作 | 增量 | 写权 |
+|---|---|---|---|---|
+| `scripts/gates/checks.js` | 261 行 | 增 `checkSamples(files, root)`（E①/E② + fail-closed） | +≈75 → ≈336 | eng-coder |
+| `scripts/gates/run.js` | 122 行 | 增 E 判据块 + `checkCount=7` + selftest 分母动态化（`passed/total`） | +≈14 → ≈136 | eng-coder |
+| `scripts/gates/selftest.js` | 260 行 | 增 `samplesFixture` + TC-B29-01…06 六例 | +≈85 → ≈345 | eng-coder |
+| `scripts/gates/lib.js` | 177 行 | **0**（跳过清单已含 `samples`——口径不变） | 0 | — |
+| `scripts/gates/baseline.json` | 38 行 | **0**（E = 零命中恒判，不入基线） | 0 | — |
+| `docs/SAMPLES.md` | 不存在 | 新建（U-1 选定落点） | ≈70 | eng-designer |
+| `docs/CONVENTIONS.md` | 191 行 | §四 增 E 判据句 + 表头注记 + 变更记录 1 行 | +≈6 → ≈197 | eng-designer |
+| `AGENTS.md` | 67 行 | §三「六判据」→「七判据」+ 写权矩阵补定位档 + 变更记录 1 行 | +≈4 → ≈71 | eng-designer |
+| `docs/README.md` | 98 行 | §一 落点行 + §二 当前文档行（建议行） | +2 → ≈100 | 主 agent |
+| `docs/design/REPO-CONVENTIONS.md` | 701 行 | 附 A-续 + 四处活契约修订 + 变更记录 1 行 | +191 → 892 | eng-designer（本设计轮已落） |
+| `package.json` / 运行时代码 / `samples/**` / `.github/**` | — | **零改动**（`gates.yml` 只调 npm script，判据面变化透明生效） | 0 | — |
+
+**④ 验收标准（AC-B29-1…7，判据串逐条 = 设计档 §A-B29.3.1）+ 步序**
+
+- AC-B29-1 判据 E 落地（`CHECK samples PASS` + `checks=7 selftest=20/20`）· AC-B29-2/3 引用面与白名单**红面双向实测**（注入 ⇒ 退出 1 + `VIOLATION samples`、移除 ⇒ 退出 0）· AC-B29-4 自证常驻（6 例每次 lint 跑）。
+- AC-B29-5 定位文档落档（三问标题 + 地图两行）· AC-B29-6 判据句权威（规范档 §四）与计数同步（`AGENTS.md` 无「六判据」残留）· AC-B29-7 零样本写入 + 零业务改动（改动面 = gates 三档 + 文档层四档；`package.json` / `samples/**` 零 diff）。
+- 步序契约：① checks.js → ② selftest.js → ③ run.js → ④ 本地 `npm run lint` 取证 + 红面双向实测 → ⑤ eng-designer 微轮落 `docs/SAMPLES.md` + 规范档 §四 + `AGENTS.md` → ⑥ 主 agent 落地图两行 → ⑦ 三条门全绿 + 批次 §5/§6 收口。
+- 待确认（设计档 §A-B29.2.7）：① E① 引号形态是否保留（推荐保留——`path.join('samples', …)` 是真实引用形态）② 写权矩阵「定位档 = eng-designer」半行 ③ ARCHITECTURE.md（B25 面）指针另议。
+
 ## §3 设计评审（评审子代理）
 
 <!-- 由评审子代理填 -->
