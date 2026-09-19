@@ -22,6 +22,10 @@
 
 | # | 条目 | 结论 | 批次 | 日期 |
 |---|---|---|---|---|
+| T4 | 无自动化测试基建（`package.json` scripts 无 `test`；`tests/` 三档为开发期工具、非仓门禁） | 已核销——三道门落地（`lint` 六判据 + `test:full` 45 用例 + `test:integration` 3 场景）+ CI 接线（`gates.yml`）；**CI 真绿 ×3 runs**（含 `4f5d425`）+ 冷 runner 可跑性实证；证据 = `docs/batches/B16-test-gates.md` §5 / §6.1 | B16 | 2026-09-19 |
+| T26 | 行宽 ≤300 / 行数 ≤500 升为门禁句（机检接入 CI） | 已核销——`checks.js` width/lines 判据 + `baseline.json` 基线冻结（带 `expires` 消解期）+ `gates.yml` 接线；本地 `GATE lint PASS checks=6 selftest=14/14` + CI 三次绿；证据 = 同上 §5 / §6.1 | B16 | 2026-09-19 |
+| T37 | 组装面机检缺失（域模块 `init(deps)` 接线无机检面；B20 实测 `physics` 漏调 ⇒ 全链路死而批内 AC 全绿） | 已核销——`checkAssembly`（接线点唯一 + 免检两态陈腐检测 `VIOLATION assembly stale-exempt`）+ `CHECK assembly PASS (13/13) exempt=2`；证据 = 同上 §5 | B16 | 2026-09-19 |
+| T39 | 结构判据三条（依赖无环 / 域模块 fan-out ≤3 / 接线点唯一） | 已核销——三判据落地并接入门禁/CI（dag 0 环 · fanout frozen=6 · assembly 13/13）；**存量 fanout 6 档消解面转 T45**（不随本条目归档而消失）；证据 = 同上 §5 / §6.1 | B16 | 2026-09-19 |
 | T3 | `setPetEnabled()` 不可达——「按 `petEnabled` 开关桌宠」之路无入口 | 已核销——用户裁定 A：删除死代码（`setPetEnabled()` 移除；`settings.petEnabled` 键与 `DEFAULT_SETTINGS` 保留，`setMode()` 为唯一模式入口） | B02 | 2026-09-16 |
 | T6 | 打包前置缺 `node-runtime/node.exe`——打包版后端起不来（90s×2 超时后弹「后端启动失败」），更新检查永不执行 | 已核销——本机按 `download-node.js` 同源 URL 补入 Node v24.16.0，打包版后端正常启动、真机复测通过；**结构性缺口（全新克隆仍无法打包）由 T7 继续承载** | B02 | 2026-09-16 |
 | T1 | 桌宠右键语义修正——右键松开也走 `clicked()`，导致一次右键同时开主窗口与兑换屋 | 已核销——左键开 / 聚焦、右键仅开兑换屋（真机确认，B07 §6.1 AC7） | B06（承 B07） | 2026-09-17 |

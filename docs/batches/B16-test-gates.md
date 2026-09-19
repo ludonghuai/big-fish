@@ -369,4 +369,33 @@ git log 佐证 = B26 立案 52d4c46（15:10）+ B26 设计落档 bfa5bb1（15:18
 
 ## §6 验收核销（主 agent）
 
-<!-- 由主 agent 填 -->
+### 6.1 验收结论（2026-09-19）
+
+**发布门 0/3 → 3/3 全部落地并通过（本地亲跑 + **CI 真绿**）**：
+
+| 面 | 证据 | 结论 |
+|---|---|---|
+| ① `lint`（六判据 + 结构三条） | 本地 `GATE lint PASS checks=6 selftest=14/14`；六 CHECK = syntax / width / lines / dag（0 环）/ fanout / **assembly（13/13 + exempt=2）** | ✓ |
+| ② `test:full` | `GATE test:full PASS pass=45 fail=0 skipped=0` | ✓ |
+| ③ `test:integration` | `GATE test:integration PASS scenarios=3 pass=3 fail=0`（S1 / S2 / S3a / S3b） | ✓ |
+| **④ CI 真绿（实机项 R1）** | **用户 2026-09-19 09:02 截图**：GitHub Actions `gates` **×3 runs 全绿**（#3 = `4f5d425`，1m 52s；#1 / #2 = 早前两次推送） | ✓ |
+| **⑤ 冷 runner 可跑性（实机项 R2）** | 同上——三次 run 均在 GitHub 托管 runner 上跑通（含 `dsh-bundle` 安装面）⇒ §2.7 R2 实证 | ✓ |
+| ⑥ fail-closed 验证 | 故意破坏 ⇒ 门禁拦住 ✓（实施期实测） | ✓ |
+| ⑦ 基线机制 | `scripts/gates/baseline.json`：同日实测冻结 + **`expires` 逐条写死消解路径** + `hardRule`（不得冻结新增违规） | ✓ |
+
+### 6.2 验收边界（如实）
+
+- **存量豁免带消解期** ✓：width 15 档/93 行（→ T13 消解路径）；fanout 6 档（→ 存量降 ≤3；**消解面转 T45**——T39 判据已落地，存量不随 T39 归档而消失）；assemblyExempt 2 档（有 `why`，属形态说明非违例）。
+- **`Build` 工作流不在本批验证面**（本批 = `gates` 接线；`Build` 的触发面非本批范围）。
+- **§5 的「基线外撞面」上报已消**：当事批次（B26 / B21 族）的超宽行已由归属批次清偿 ⇒ 现状 `CHECK width PASS` ✓。
+
+### 6.3 收口处置（测试纪律）
+
+- 本批产出 = **常驻门禁基建**（`scripts/gates/**` · `scripts/test-run.js` · `scripts/test-integration.js` · `tests/integration/**` · `.github/workflows/gates.yml`）⇒ **不退役** ✓。
+- 开发期夹具（`mkdtemp` + try/finally）不落仓库；实施期临时探针已删净（§5）✓。
+
+### 6.4 台账与地图同步（D7）
+
+- **T4 / T26 / T37 / T39 → 已核销**（移入 `docs/TODO-archive.md`）；新增 **T45**（fanout 存量 6 档消解，归 B17）；
+- 地图本行状态 → **已收口 + 核销**；
+- **待同步项（已派）**：`AGENTS.md` §三 的「现状 = 0/3」与目标段（该档自注「随 B16 实施后同步」）⇒ eng-designer 微轮同步（同批登记）。
