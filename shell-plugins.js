@@ -409,23 +409,23 @@ async function uninstallPlugin(pkgName) {
   if (installSpecKind(pkgName) === null) return rejectSpec('无效的插件标识：', pkgName);
   const realName = resolveInstalledName(pkgName); // 解析门：解析不到已装对象 ⇒ 无可卸载对象
   if (realName === null || !isPluginInProfile(realName)) return rejectSpec('未安装或无法解析：', pkgName);
-  const bundledSource = path.join(bundledPluginsDir(), pkgName);
+  const bundledSource = path.join(bundledPluginsDir(), realName);
   if (!isInsideDir(bundledSource, bundledPluginsDir())) return rejectSpec('插件标识越界，已拒绝：', pkgName);
   if (fs.existsSync(bundledSource)) {
-    const target = path.join(profileDir(), 'node_modules', pkgName);
+    const target = path.join(profileDir(), 'node_modules', realName);
     if (!isInsideDir(target, nodeModulesDir())) return rejectSpec('插件标识越界，已拒绝：', pkgName);
     if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
-    removeBundle(pkgName);
-    return { ok: true, message: `已卸载内置插件 ${pkgName}` };
+    removeBundle(realName);
+    return { ok: true, message: `已卸载内置插件 ${realName}` };
   }
-  const res = await runCmd(runtimeNodeExe(), pnpmArgs('remove', pkgName), { timeout: 10 * 60 * 1000 });
+  const res = await runCmd(runtimeNodeExe(), pnpmArgs('remove', realName), { timeout: 10 * 60 * 1000 });
   if (res.code !== 0) {
     // pnpm 可能已经改了一半，无论如何把 bundles 清理掉
-    removeBundle(pkgName);
-    return { ok: true, message: `已卸载 ${pkgName}（pnpm 有警告，已清理注册）` };
+    removeBundle(realName);
+    return { ok: true, message: `已卸载 ${realName}（pnpm 有警告，已清理注册）` };
   }
-  removeBundle(pkgName);
-  return { ok: true, message: `已卸载 ${pkgName}` };
+  removeBundle(realName);
+  return { ok: true, message: `已卸载 ${realName}` };
 }
 
 module.exports = {

@@ -38,6 +38,7 @@ const pet = require('./shell-pet.js');
 const physics = require('./shell-pet-physics.js');
 const work = require('./shell-pet-work.js');
 const affinity = require('./shell-affinity.js');
+const affinityCore = require('./affinity-core.js');
 const mode = require('./shell-mode.js');
 const plugins = require('./shell-plugins.js');
 const win = require('./shell-window.js');
@@ -52,10 +53,22 @@ const READY_TIMEOUT_MS = 90 * 1000;
 // （8000 > 5000 = 判定承重前提：静默达阈值时快照必已折叠最近一次会话事件）
 const IDLE_NOTIFY_MS = 8 * 1000;
 const IDLE_NOTIFY_FALLBACK_MS = 30 * 1000; // 判定源不可用（unavailable）时的降级阈值 = 现状语义（§2.2.12 规则②）
+// B30（US-17 / §2.2.12 判据句②）：等待确认阈值 60 s（高于完成阈值 8 s 一个量级——正常思考 / 短调用不触发）
+const WAITING_NOTIFY_MS = 60 * 1000;
 
 /** 空闲阈值（默认 `IDLE_NOTIFY_MS` = 8000 ms）；env `BIGFISH_IDLE_NOTIFY_MS` 可覆盖（测试钩子，承 `webUrlWaitMs()` 形）。 */
 function idleNotifyMs(defaultMs = IDLE_NOTIFY_MS) {
   const raw = process.env.BIGFISH_IDLE_NOTIFY_MS;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return defaultMs;
+}
+
+/** 等待确认阈值（默认 `WAITING_NOTIFY_MS` = 60000 ms）；env `BIGFISH_WAITING_NOTIFY_MS` 可覆盖（测试钩子，承 `idleNotifyMs()` 形：空 / 非有限数 / 负数 ⇒ 取默认）。 */
+function waitingNotifyMs(defaultMs = WAITING_NOTIFY_MS) {
+  const raw = process.env.BIGFISH_WAITING_NOTIFY_MS;
   if (typeof raw === 'string' && raw.trim() !== '') {
     const n = Number(raw);
     if (Number.isFinite(n) && n >= 0) return n;
@@ -73,7 +86,7 @@ function isQuitting() { return quitting; }
 function setQuitting(v) { quitting = v; }
 
 // ---- 模块接线（依赖注入；设计档 docs/design/SHELL-UX.md §2.2.6 依赖方向规则）----
-notifier.init({ getDshHome: backend.dshHome, petSay: pet.petSay, IDLE_NOTIFY_MS: idleNotifyMs(), IDLE_NOTIFY_FALLBACK_MS });
+notifier.init({ getDshHome: backend.dshHome, petSay: pet.petSay, IDLE_NOTIFY_MS: idleNotifyMs(), IDLE_NOTIFY_FALLBACK_MS, WAITING_NOTIFY_MS: waitingNotifyMs() });
 backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: plugins.sanitizeProfileBundles, getMainWindow: win.getMainWindow });
 geometry.init({ getPetWindow: pet.getPetWindow, getPetDrag: drag.getPetDrag });
 drag.init({ getPetWindow: pet.getPetWindow, pet });
@@ -100,7 +113,7 @@ physics.init({
   settings,
   setPetState: pet.setPetState,
 });
-affinity.init({ getPetWindow: pet.getPetWindow, pet, setQuitting, APP_NAME });
+affinity.init({ getPetWindow: pet.getPetWindow, pet, setQuitting, APP_NAME, affinityCore });
 mode.init({ getMainWindow: win.getMainWindow, destroyPetWindow: pet.destroyPetWindow, ensurePet: pet.ensurePet, rebuildTrayMenu: tray.rebuildTrayMenu, notify: notifier.notify, APP_NAME });
 plugins.init({ updaterLog: update.updaterLog });
 update.init({ setQuitting, APP_NAME, runtimeNodeExe: plugins.runtimeNodeExe, bundledPnpmPath: plugins.bundledPnpmPath });

@@ -176,6 +176,14 @@
 
 - **修正轮 3（复核轮 2 🔵#1 收口，父侧裁决 = 同源同步）**：存活口径两处摘要行同步——`PET-ANIMATION.md:1514`（§3.9 AC34 行②「∧ 存活 ≈ 段长；」→「∧ 存活口径 = 注 H②；」——写全值形态实测 320 字符超宽限 300，故取指针形态，值由注 H② 承载）· `B27-pet-feel-2.md:109`（§2.4 AC34「∧ 存活 ≈ 段长 − `PET_OVERLAP_MS` ± 250 ms（细目 = 注 H②）」）；`npm run lint` = GATE PASS。
 
+### 2.12 修正轮 4（eng-designer，2026-09-19；append-only）
+
+- **源 = 父侧裁决（棒 B-1 评审 Deferred 🟡×2 收口；批次档 §5.4 存疑 1/2）**；落点 = `docs/design/PET-ANIMATION.md`；数值与语义零改动（只补清除点 + 取证措辞对齐）。
+- **Deferred-1（第 4 清除点）**：§2.14.9 清除面「三处调用」→「四处调用」（补 `onPlayFail` 入口）+ 理由行——静默段 `loop=true` 仍武装 `onerror`，播中出错路径（`onerror` ⇒ `onPlayFail` ⇒ `chainStep('play-fail')`）会在静默区间内产链决策行（违 AC33②）且残留 `quietActive`/计时器 ⇒ 入口即 `clearQuiet()` 短路防残留。代码面（`pet-chain.js` `onPlayFail` 补 `clearQuiet()`）由另派 coder 轮落地。
+- **Deferred-2（取证措辞对齐）**：计时退出恒 `plan='chain'`（`weights.move=0` ⇒ `none` 不可达）⇒ 零 `anim chain` 决策行——豁免句 / TC-50 的「`anim chain` 恢复」字面落空 ⇒ 五处同源改「`reason=quiet-end` 换段行」（§2.14.3 判据行 / §2.14.9 不变量 / 注 A′ ① / AC33② / TC-50）；TC-50 行宽约束下同步压缩（「≥ 3 个「段 + 静默」周期」→「≥ 3 个周期」、去「换段行」冗余，语义不变）。
+- **计数（D3）**：不变（条目 3 · AC 6 · TC 13 · DD 7 · C 6 · O 5；设计档 AC 35 · TC 58 · DD 43 · C 62 · O 30）。
+- **门禁**：`npm run lint` = GATE lint **FAIL**——width 6 条违规全部为存量、非本设计轮改动面（本批 §5 段 3 条 L312/L328/L342——eng-coder 段，本设计轮不越段 + B22 1 条 + B29 2 条）；本设计轮落点 `PET-ANIMATION.md` 全档 width 零违规（改后最长行 298）。
+
 ## §3 设计评审（评审子代理）
 
 <!-- 由评审子代理填 -->
@@ -249,6 +257,195 @@ VERDICT: pass
 
 ---
 
+### 5.1 交付面（四档；与任务书声明一致）
+
+| # | 文件 | 动作 | 落点（file:line） |
+|---|---|---|---|
+| 1 | `assets/pet-anim/pool.json` | 改（数据档） | weights={idle:55,turn:5,move:0}（:7）；categories ×0.5 = 10/10/8/7/5（:17/:27/:38/:46/:55）；`events.drag` → ["被吓一跳"]（:73）；新增 `events.quiet` = ["待机呼吸休闲"]（:75）；共 8 处，76 → 77 行 |
+| 2 | `pet-chain-core.js` | 改 | `PET_QUIET_MS = 30000` 恰 1 处定义（:24）+ 导出（:222）；`decideNext` 增 quiet 入参与第四类计划（:81-98；判定次序 = §2.14.9 ①rotate→②quiet→③掷骰；回退 `pool.idle[0]`；turn 翻转由调用方先行、解耦注记 :88-89）；`judgeSwitch` 作用域扩为 `loop===true ∨ slotKey.startsWith('escape-')`（:101-107）；217 → 227 行 |
+| 3 | `pet-physics-core.js` | 改 | `TOP_EDGE_INSET_DIP = 44`（:92）· `SIDE_EDGE_INSET_DIP = 41`（:94）各恰 1 处 + 导出（:350）；`groundBounds` 推广四面补偿并改名 `petEdgeBounds`（:208-219；null 透传 + 导出 :351；底面 FEET_INSET_DIP=30 逐字不变）；函数清单行与 L89 注记同步改名收口（零 groundBounds 残留）；347 → 357 行 |
+| 4 | `.thincoder/b27-pet-feel-2-stub.mjs` | 新建（gitignored 开发期桩测） | 136 行；装载真实实现（双档 require）+ 真实池 parsePool + webm 目录事实；覆盖 AC32①② / AC34①④ / AC23①（注 B′ 等式）/ TC-54 回退 / 静态机检 9 项；末行 `55/55 PASS` |
+
+### 5.2 验证（命令 + 结果，原始输出）
+
+- `node .thincoder/b27-pet-feel-2-stub.mjs` ⇒ **55/55 PASS**（含引用段 ==94 / webm 总数 ==106 / 未引用 ==12 的 AC34④ 机检命中；AC23① 等式逐条：TOP==44==244−200、SIDE==41==round((250−168.42)/2)、FEET==30；petEdgeBounds 增量 (−41,+41,−44,+30) 与 null 透传/不改入参）。
+- `npm run test:full` ⇒ **GATE PASS pass=45 fail=0**（单元 45 用例全绿，零回退）。
+- `npm run test:integration` ⇒ **GATE PASS scenarios=3**（S1 / S2 / S3a / S3b 全绿）。
+- `npm run lint` ⇒ 唯一违例 = `docs/batches/B25-architecture-docs.md` 超宽（**别批在飞面**，非本批写域，不越域代修）；本批四档零新增违例；贴线 NOTE 3 条（market.js / updater.js / b12 测试）均非本批面。
+- 行数红线：227 ≤ 237 ✓ · 357 ≤ 358 ✓ · pool 77 行 ✓；行宽 >300：四档零命中。
+- 零改动面机检：`git diff --stat` 中 15 档零清单零命中（含 `package.json` / 素材目录）；棒 B 写域 `pet-chain.js` / `shell-pet*.js` 零命中 ✓。
+
+### 5.3 决策透明表（实施期裁量，逐条）
+
+| # | 决策 | 依据 |
+|---|---|---|
+| 1 | drag 换引用在首轮池编辑漏落，D6 回读（diff 全文核对）发现后当轮补上（:73） | D6 回读核对纪律；发现即修，未挂账 |
+| 2 | 物理档函数清单行缩进曾被模糊匹配歪成两空格 + L89 注记残留旧名 `groundBounds`——D6 回读发现，当轮修正收口 | 同上；残留即示范 |
+| 3 | quiet 回退取值 `pool.events.quiet !== undefined` 判在场（不是 truthy——空数组在场时应走 pickSlot 由 V5 拦截，回退只对「键缺失」生效） | §2.14.9「缺失 ⇒ 回退」字面 + TC-54 |
+| 4 | 桩测 turn 翻转断言 = `plan='quiet' ∧ mirror=false`（不注入 mirror 值）——翻转执行属调用方 `pet-chain.js:165`，棒 B 域 | §2.14.9 翻转解耦句 + 写域边界（不碰 pet-chain.js） |
+
+### 5.4 未落 / 存疑项（如实）
+
+- **未落（棒 B 域，按分工不在本轮）**：`pet-chain.js` 的 quietActive/quietTimer/clearQuiet + 两型日志；`shell-pet.js` 的 ESCAPE_LEG_* 与 doWander/petEdgeBounds 消费；`shell-pet-physics.js` 的 evaluateArm 改名跟随；escape 段 loop=false。
+- **存疑项：无**。
+- **AC33 / AC34②③ / AC23③ 的运行期取证**（日志面 / 探针长跑 / NFR-19 重跑）= 运行期项，待棒 B 合并后由主 agent 按批次 §2.4 组织。
+
+### 5.5 审计与代码评审轮次（append-only，逐轮追加）
+
+- （待续：发散审计 / 代码评审轮次与终态逐轮落此。）
+
+### §5 eng-coder 交付（B27 微修——groundBounds → petEdgeBounds 三处改名跟进；实机崩修复）
+
+**交付摘要（逐条落点）**：
+
+1. `shell-pet-physics.js:123`：`core.groundBounds(waBounds)` → `core.petEdgeBounds(waBounds)`（evaluateArm 飞行 bounds）。
+2. `shell-pet-physics.js:327`：导出键 `groundBounds: core.groundBounds` → `petEdgeBounds: core.petEdgeBounds`（其余导出键逐字不动）。
+3. `shell-pet.js:307`：`physics.groundBounds(...)` → `physics.petEdgeBounds(...)`（doWander 段起点 bounds）。
+4. 注释面收口（`shell-pet-physics.js:10-11 / 121`、`shell-pet.js:306`）：符号名随改，且按评审发现把残留的 B26「只抬 maxY」单面语义改为 B27 四面口径（「B26 / §2.2.13 起地面口径，B27 / §2.2.14 四面推广」）；不重写其它注释。
+
+**决策透明表**：| 处 | 决策 | 理由 |
+|---|---|---|
+| 注释语义改写 | 评审 🟡#1 触发，修正轮落地 | 「petEdgeBounds 只抬 maxY」在 B27 四面推广后为假陈述（实测消费点 = :316 y 钳入 minY/maxY + :324/:327 撞墙 minX/maxX）；行在本次编辑域内，就地修 |
+| 历史注记 | `pet-physics-core.js:89/:208` 保留不动 | 棒 A 产物 + 历史语义注记（B26 原名映射），验收口径允许 |
+
+**审计与评审**：内部审计 = git diff 域核验（两档 diff 恰为改名面，无越域改动）+ 全仓 grep（不限文件类型：运行时代码 `groundBounds` 残留 0，仅 core 两处历史注记）；**advisor 代码评审 1 轮**（VERDICT: pass；1 🟡 optional = 注释单面语义滞后）→ **修正轮 1**（落地上述注释改写）→ 终态 **clean**。评审对象声明：棒 A（pet-physics-core.js）与其余批次（B28–B32）不在评审面。
+
+**验证**：`node --check` 两档 ✓；桩测 `.thincoder/b27-pet-feel-2-stub.mjs` **55/55 PASS**（含改名静态断言）；收口 grep `groundBounds` 于 `*.js` = 仅 `pet-physics-core.js:89/:208` 两处历史注记 ✓。范围外注记：`pet-physics-core.js:225` 注释「窗口矩形口径」同属 B27 前旧口径残留（棒 A 档，本次不碰，报备）。
+
+### §5 eng-coder 交付（棒 B-1：pet-chain.js 静默状态机 + escape 单遍 + 桩测链侧断言；2026-09-19）
+
+**5.1 交付面（两档；与任务书声明一致）**
+
+- `pet-chain.js`（281 → 311 行；≤317 预算；行宽 ≤224）：
+  - 静默状态机：`quietActive`/`quietTimer` 声明（:23）；进入面 = `triggerChainDecision` 的 `plan='quiet'` 分支
+    `switchTo(d.name, true, 'quiet', false, 'quiet', overlap)`（:171）+ `enterQuiet` 落账（:177-183；`PET_QUIET_MS` 单点消费恰 1 处，:179）；
+    退出路 ① `quietExpire`（:186-191：end 行 → `triggerChainDecision('quiet-end', 0)`，决策行在 end 之后）；
+    退出路 ②/清除面 `clearQuiet`（:194-199，幂等）三处调用 = startSlot 首行（:103）/ setChannel 下行（:50）/ onConfig 池重配（:65）。
+  - 两型日志：`anim quiet enter name=… dur=…`（:182）/ `anim quiet end reason=timer|slot`（:189 / :198）；换段 reason 新值 `quiet` / `quiet-end`。
+  - turn 翻转与计划类型解耦：翻转行（:168）先于 `decideNext` 调用（:169，传 `quiet: quietActive`）。
+  - escape 单遍：startSlot escape/drag 分支 `loop` 实参 true → `s === 'drag'`（escape=false / drag 仍 true，:118）。
+- `.thincoder/b27-pet-feel-2-stub.mjs`（137 → 171 行）：补链侧静态断言 12 条（AC33-链-1…10 / AC34-链-1…2，:133-165）——翻转先行 / quiet 字段 / 声明单点 / clearQuiet 三处 / 行型计数与字段 / 计时退出决策行次序 / enter 在 switch 行之后 / `PET_QUIET_MS` 消费恰 1 处 / escape loop 实参 / 预触发收尾面复用；末行 `pass/total PASS`。
+
+**5.2 验证（命令 + 结果）**
+
+- `node .thincoder/b27-pet-feel-2-stub.mjs` = **68/68 PASS**（含棒 A 面 55 条基线回归）。
+- `node --check pet-chain.js` = OK；`npm run test:full` = **GATE PASS 45/45**；`npm run test:integration` = **GATE PASS 3/3**。
+- `npm run lint`：本棒两档**零违例**；GATE lint FAIL 的 3 处 width 违例全部在他批文档（B22 / B25 / ARCHITECTURE.md，本棒开工前已在工作区）——不属本棒写域，报父侧。
+
+**5.3 决策透明表（实施期裁量，逐条）**
+
+1. **裁量点**：`anim quiet enter` 落账时点：§2.14.9 字面为 triggerChainDecision 同步四连（switchTo + quietActive + 计时器 + 日志）；但 switch 行是 play 成功回调异步落
+   **裁量**：**落账移入 switchTo 播放成功回调**（`if (reason === 'quiet') enterQuiet(name)`，:265）——quietActive/计时器/enter 行三者同 tick
+   **依据**：AC33①（switch 行先于 enter 行）/ ②（区间内零其它 switch 行）/ ③（enter→end == PET_QUIET_MS；计时器与 enter 同 tick 才免负数容差）三条同步成立是唯一解；审计轮确认合规
+2. **裁量点**：入静默 switchTo 的 reason 实参；**裁量**：字面 `'quiet'`（非传入的 ended/pre-end）；**依据**：AC33① 判据 `anim switch … reason=quiet loop=1` + §2.14.9 行型表「换段行新增 reason 值 quiet（入静默）」
+3. **裁量点**：`clearQuiet()` 的 end 日志归属；**裁量**：在 clearQuiet 内落（真实清除才落行）；**依据**：幂等句「非静默时零行」+ 回落/重配打断也必须闭合区间（区间锚 = 任何 end 行均收）
+4. **裁量点**：静默段播放失败（play reject）⇒ 不进入静默；**裁量**：enterQuiet 只在 play 成功回调执行；**依据**：静默段没播出来 ⇒ 无静默期（回落链自然续走，零新机制）
+
+**5.4 未落 / 存疑项（如实）**
+
+- **存疑 1（评审 🟡#1，Deferred——需父侧/设计者裁决）**：静默段 `loop=true` 但 `onerror` 仍武装（:235）——播中出错 ⇒ `onPlayFail` → `chainStep('play-fail')` 在静默区间内产 `anim chain`/换段行（违 AC33②），且 `quietActive` 残留 true、30 s 定时器到点在任意段播中再换段。设计 §2.14.9 清除面只列三处，未覆盖此路径（设计缺口）。建议 = `onPlayFail` 入口补 `clearQuiet()`（第四清除点）；未擅自加——超本棒契约，留父侧裁。
+- **存疑 2（评审 🟡#2，Deferred——父侧/设计者面）**：计时退出路径恒 `plan='chain'`（weights.move=0 ⇒ none 不可达）⇒ 实际零 `anim chain` 决策行；设计 AC33② 豁免句与 TC-50「（anim chain 恢复）」的取证字面落空（唯一可见证据 = `reason=quiet-end` 换段行）。实现与设计字面吻合，属设计措辞面。
+- **未落（棒 B-2 域，按分工不属本棒）**：`shell-pet.js` 的 `ESCAPE_LEG_*` 三常量 + doWander escape 分支（R22-①）——注意 `shell-pet.js` 当前工作区已有改动（棒 A 的 petEdgeBounds 消费点），棒 B-2 落地前勿重启实机。
+
+**5.5 审计与代码评审轮次（终态：clean / pass）**
+
+- **轮次 1（explore 偏差审计）**：逐条对照 §2.14.9 契约 ①–⑦ 全合规；四类偏差（PARTIAL / SILENT-SIMPLIFICATION / DOC-DRIFT / OUT-OF-LIST）零命中 ⇒ **CLEAN**。注记 2 条（TC-50 anim chain 字面 / 桩测实跑留父侧复核）——桩测实跑已由本棒自验 68/68。
+- **轮次 2（advisor 代码评审）**：VERDICT = **pass**；发现 🟡×2（播中 error 泄漏静默态 / anim chain 取证字面）
+  + 🟡协调×1（§5.4 滞后，由本段收口）+ 🔵×2（桩测 ROLL 注释 / 文件头函数清单）。裁决：🔵×2 **Fixed**（桩测:62 注释订正；
+  pet-chain.js:5 清单补 enterQuiet·quietExpire·clearQuiet）；🟡×2 **Deferred**（见 5.4 存疑 1/2——超设计契约或属设计措辞面，留父侧）；
+  协调项经本段追加收敛（棒 B-1 已落 / 棒 B-2 仍未落）。修正后复跑桩测 = 68/68 PASS。
+
+### §5 eng-coder 交付（棒 B-2：shell-pet.js 逃跑腿 + 桩测补全 + 运行期取证 + §5 三行压宽；2026-09-19）
+
+**5.1 交付面（与任务书声明一致）**
+
+- `shell-pet.js`（457 → 463 行；≤468 预算；行宽 ≤149）：
+  - 逃跑腿常量（R22-① / §2.14.8）：`ESCAPE_LEG_MIN_DIP=300` / `ESCAPE_LEG_RANGE_DIP=300` / `ESCAPE_LEG_SPEED=0.45` 各恰 1 处定义（:294-296，行首 `^const` 锚定）；
+  - `doWander` escape 分支单点消费：distance（:327）/ speed（:342）；普通跑步（200+rand×300 / 0.34）与走（80+rand×200 / 0.17）分支逐字不变（B21/B26 零回退）；
+  - 散步 y 归位与撞墙判定取 `physics.petEdgeBounds`（:312）——微修轮已落，本棒确认 ✓。
+- `shell-pet-physics.js`：`evaluateArm` 飞行 bounds = `core.petEdgeBounds`（:123）+ 导出键（:327）——微修轮已落，本棒零改动 ✓。
+- `.thincoder/b27-pet-feel-2-stub.mjs`（171 → 260 行）：补 AC34⑤-1…7 + AC23②-1…3 + NFR-19 扫描（128 例 + gravity=0 32 例）；末行 `pass/total PASS`。
+- `docs/batches/B27-pet-feel-2.md` §5 三行压宽（父侧追加顺手面）：L312/L328/L342（压宽时点行号 L320/L336/L350）三处超宽 → 折行（列表项缩进续行 ×2）+ §5.3 决策透明表 4 行表格转编号列表（行文本逐字、表头列名「裁量点/裁量/依据」作铅印）——压宽后本批批次档退出 lint 违例清单。
+
+**5.2 验证（命令 + 结果，原始输出）**
+
+- `node .thincoder/b27-pet-feel-2-stub.mjs` ⇒ **83/83 PASS**。
+- NFR-19 扫描登记（§2.4 强制项；B27 四面边界 {−41,−44,1711,800}）：
+  `total=128 ≤4s=68 4–5s=49 timeout=11 worstRest=5000 档内最坏=2064 maxFirstTouchVy=3914 violation=0`。
+  与 B26 基准（72/46/10）对照：档属按重跑重分类（天花板/侧墙抬高所致）；判据 ①恒界内 ②全部收口（timeout 例落地 maxY + 速度归零）③首触 ≤800 档 ⇒ ≤4 s（violation=0）④gravity=0 ⇒ 收口在地面（32 例）全绿。
+- `node --check shell-pet.js` = OK。
+- `npm run test:full` ⇒ `GATE test:full PASS pass=45 fail=0 skipped=0 ms=1100`。
+- `npm run test:integration` ⇒ `GATE test:integration PASS scenarios=3 pass=3 fail=0`。
+- `npm run lint` ⇒ 压宽后本批批次档退出违例清单；GATE lint FAIL 仅剩他批在飞面 = B22（width 1）+ B29（width 2）——不越域代修，报父侧；本棒档（shell-pet.js / 桩测 / 批次档 §5）零违例。
+- 零改动面机检：15 档逐档 `git diff --stat` **空**（shell-pet-geometry / shell-pet-drag / pet-preload / pet.html / pet.js / shell-pet-work / pet-work-core / main / shell-ipc / package.json / webm/** / pet-new/** / THIRD-PARTY-NOTICES / README / 版本说明.txt）✓；素材本体零 diff ✓。
+- 运行期取证（`BIGFISH_PET_DEBUG=1` 探针长跑 ×2；隔离 userData、仓库外临时驱动、跑完即删）：
+  - AC34②：`anim switch … loop=0 reason=slot-escape` 行在场；触发窗口零 `slot-idle` 行；存活实测 8.86 s ∈ 段长（10.04）− PET_OVERLAP_MS（1.2）± 250 ms ✓；
+  - AC33①：动作段末 ⇒ `anim switch … loop=1 reason=quiet`（实测两次：舞狮头 / 吃大闸蟹）；idle 段末不静默 ✓；
+  - AC33②：静默区间零 `anim chain` / 零其它 switch 行（timer 与 slot 两路均验）✓；
+  - AC33③：timer 路 enter→end = 30.001 s ∈ PET_QUIET_MS + 500 ms ✓；
+  - AC33④：打断 ⇒ `anim quiet end reason=slot` 实测时延 1 ms ≤ 300 ms ✓。
+
+**5.3 决策透明表（实施期裁量，逐条）**
+
+1. §5.3 表格行压宽：markdown 表格行不能跨物理行（门禁按物理行计宽）⇒ 4 行表格转编号列表（行文本逐字、表头列名「裁量点/裁量/依据」作铅印）——父侧「仅换行/缩进续行」在表格形态下的最小可渲染解；L320/L350 列表项直接缩进续行。
+2. NFR-19 扫描 vy_imp 口径 = 落地步积分后（vy += g·dt 后）撞地前 |vy|（恢复系数生效前）——物理语义 = 撞地瞬时速度；口径差 ≤22 px/s，档界 800 判据余量大不受影响。
+3. 运行期取证探针 = 仓库外临时驱动（%TEMP% + 隔离 userData，防污染实机 pet-anim.log），跑完即删（temp glob 零命中）——不改产品代码、不新增探针档。
+4. 探针清 wander 定时器 = 经已导出访问器 getWanderTimer()/setWanderTimer() + 主进程 clearTimeout——AC33③ timer 路需 30 s 零槽位到达，实测散步会打断静默（设计 退出路 ② 行为）。
+
+**5.4 未落 / 存疑项（如实）**
+
+- **未落（运行期面，探针不可达 / 非本棒取证范围）**：AC34③ 折返 hold 运行期行（escape 腿未撞墙——桩测 judgeSwitch 扩展矩阵已静态覆盖）；AC23③ 贴边日志算术（需甩抛至侧/顶边停泊，探针不驱动拖拽甩抛——属验收轮日志面）。
+- **实机标定项（用户目视，如实分列）**：O28 节奏观感 / O29 drag 换段观感 / O30 逃跑时长观感 / O-16 三面 alpha 残差——实机项归主 agent 组织。
+- **评审 🟡 协调项（Deferred，随另派轮收口）**：桩测 AC33-链-5 断言 clearQuiet 调用 === 3，设计修正轮 4 已改「四处调用」（第 4 点 = onPlayFail 入口，批次档 §2.12：由另派 coder 轮落地）——该轮落地时须同轮把桩测断言改 === 4 并更标签。
+
+**5.5 审计与代码评审轮次（终态：clean / pass）**
+
+- **轮次 1（explore 偏差审计）**：判据 7 条 6 PASS + 1 PARTIAL（§5 本棒段缺席 = 审计跑于 §5 落盘前）⇒ 本段即收敛落点；代码面四类偏差（PARTIAL / SILENT-SIMPLIFICATION / DOC-DRIFT / OUT-OF-LIST）零命中。
+- **轮次 2（advisor 代码评审）**：前轮 600 s 超时中断（设计档全文阅读超预算）→ 收窄重跑 ⇒ **VERDICT: pass**；发现 🟡×1 = 上述 AC33-链-5 协调项（Deferred——第 4 清除点代码面归另派轮，桩测现与代码一致）；🔴 零。裁决表：| # | Action | Detail |——| 1 | Deferred | 批次档 §2.12 已定「另派 coder 轮落地」，桩测断言随该轮同轮改 === 4 |
+- **终态**：clean（审计零红黄 + 评审 pass + 协调项已登记待另派轮）。
+
+### §5 eng-coder 交付（B27 棒 B-1 修正微轮：Deferred-1 落地 = 静默第 4 清除点 `onPlayFail` 入口；2026-09-19）
+
+**5.M1 交付摘要（两档，与任务书声明一致；零语义改动）**
+
+- `pet-chain.js`（311 → 312 行；≤500 预算；行宽 ≤223）：
+  - `onPlayFail` 入口加 `clearQuiet();`（`:296`；先于 `failCount += 1` `:297` 与 `chainStep('play-fail')` `:300`）——设计 §2.14.9 第 4 清除点
+    （静默段 `loop=true` 仍武装 `onerror` ⇒ 播中出错路径会在静默区间产链决策行违 AC33② 且残留 `quietActive`/计时器 ⇒ 入口即清：`anim quiet end reason=slot` 先行落账、区间先闭）。
+    形态与既有三处同形（`// B27：…（§2.14.9 清除面第 4 点；非静默时零行）`）。
+    （父侧压行注：本行由主 agent 纯折行——内容逐字、零语义；承 B29 §5 压行先例。）
+  - `clearQuiet()` 档注「三处调用」→「四处调用」（`:193`；补「播中出错（onPlayFail 入口）」——D3 计数纪律，注释面零语义）。实测调用点恰 4 处（`:50` / `:65` / `:103` / `:296`）。
+- `.thincoder/b27-pet-feel-2-stub.mjs`：
+  - `AC33-链-5`「三处」→「四处」（计数 `=== 4` + 四处函数切片在场断言）；`setChannel` 断言加强为下行分支逐字形态（`if (next !== 'video') { clearQuiet();` 在场——评审 🔵#1 采纳，标签与判据等强）。
+  - 新增 `AC33-链-5b`：`onPlayFail` 切片内 `clearQuiet();` 在场且先于 `failCount` 与 `chainStep('play-fail')`（切片锚 = `setChannel('png'); // 初始`，全档唯一 `:303`）。
+
+**5.M2 审计与评审轮次**：内部 explore 分歧审计 1 轮 = **CLEAN**（六项全过：清除点位置/桩测同步/档注同步/零语义回退/越界（仅两档，设计档未动）/尺寸纪律）；内部 advisor 代码评审 1 轮 = **pass**（零 🔴 零 🟡；🔵#1 已 Fixed——见 5.M1；越界观察一条见 5.M3）。终态 = **clean**。
+
+**5.M3 越界观察（不计严重度，报父侧判）**：`pet-chain.js:246` 正常切换就绪回调只摘旧段 `onended`、不摘 `old.onerror`（对比 hold 分支 `:208`/`:216` 摘两者）——淡出窗暂停旧元素仍挂 `onerror`；罕见触发时会以旧段名走 `onPlayFail` 提前结束静默。自 B18/B21 既有、非本微轮改动面；本轮修复后该路径仍良构（`quiet end` 先行、决策行区间外，不违 AC33②）。如需处理 = 新语义，另评。
+
+**5.M4 验证证据**：
+- `node .thincoder/b27-pet-feel-2-stub.mjs` ⇒ `84/84 PASS`（exit 0；原 83 + 新 AC33-链-5b 1 例）。
+- `node --check pet-chain.js` ⇒ Syntax OK。
+- `npm run test:full` ⇒ `GATE test:full PASS pass=51 fail=0 skipped=0 ms=1103`。
+- `npm run lint` ⇒ 本棒两档零违例；唯一 FAIL 源 = `docs/batches/B22-pet-work-six.md` 宽度违例（他批文档，本轮未触碰，如实标注）。
+
 ## §6 验收核销（主 agent）
 
-<!-- 由主 agent 填 -->
+**核销（2026-09-19）**——B27 全链 = 设计封板（评审轮 1 changes-required → 修正轮 1–4 → **复核轮 2 = pass**）→ **用户批准** → 实施五轮（棒 A · 微修轮 · 棒 B-1 · 棒 B-2 · **加固轮 #58**）+ 设计微轮（D-1 / D-2）→ **用户实机验收**（2026-09-19：贴边「解决的很好」✓ · 拖中 / 逃跑 = 正常（三帧图片对证 = 同一支动画 ✓）· 静默节奏数据实证（`reason=quiet` 30.001 s 区间 ✓）· 无退化反馈 ✓）。
+
+**验收证据链（逐面）**：
+
+| 面 | 证据（可复核） |
+|---|---|
+| R21 贴边（上 / 左 / 右 · 四面口径） | `petEdgeBounds`（微修轮三处改名）+ 桩测 **84/84 PASS**（父侧亲跑 ✓）；冻结面 15 档零 diff（#55 报告 ✓） |
+| R22 逃跑表达力 | escape 腿三常量单点（`shell-pet.js:294-296` 定义 · `:327` / `:342` 消费 ✓）；日志取证 = 单遍 ≈8.86 s ∈ 8.84±0.25 ✓ · 打断时延 1 ms ✓ |
+| R23 动作节奏 | 权重 85% → 40% + 30 s 静默（`PET_QUIET_MS=30000` 单点 ✓）；日志实证 `reason=quiet` 区间 30.001 s ✓；清除面**四处**（含加固轮 `onPlayFail` —— `pet-chain.js:296` ✓） |
+| 无退化 | B21 / B26 收口面逐字在场 ✓；三道门全绿（**lint PASS**（全仓首绿 · 2026-09-19）· `test:full` 51 ✓ · `test:integration` 3 ✓） |
+
+**过程中派生登记（D7 同步）**：
+
+- **T52** = `pet-chain.js:246` 只摘 `onended` 不摘 `old.onerror`（加固轮 5.M3 越界观察）——已登台账（随下次动 `pet-chain.js` 的轮次）✓。
+- **T53** = 气泡「我跑！」时机偏早 + 拖中 → 起跑硬切观感（用户实机反馈）——已登台账，归 **B27 后续小轮**（与 T52 同轮）✓。
+- **测试面处置（① 寿命判）**：`.thincoder/b27-pet-feel-2-stub.mjs`（84/84）= 开发期工具 ⇒ **默认退役**（业务可观察面已由实机 + 日志取证承担 ⇒ 不转 ②③）✓。
+- **台账**：**R21 / R22 / R23 → 已核销**（逐条移入 `docs/TODO-archive.md`）✓；地图 B27 行 → 「已收口 + 核销」✓。
+
+**角色表 / 状态行**：设计 = 封板（pass）· 实施 = 交付（五轮）· 验收 = 用户实机 pass · 核销 = 本节 ✓。

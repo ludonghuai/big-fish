@@ -1,8 +1,8 @@
 'use strict';
 /**
- * checks.js — 六条判据实现（A 语法 · B 行宽 · C 行数 · D① 依赖无环 · D② 域模块 fan-out · D③ 接线点唯一）
- * （B16；设计档 docs/design/REPO-CONVENTIONS.md §A.2.2.2）。
- * 判据句权威 = docs/CONVENTIONS.md §四（D①②③）/ §五（B / C）；本档只承载机检口径与实现。
+ * checks.js — 七条判据实现（A 语法 · B 行宽 · C 行数 · D① 依赖无环 · D② 域模块 fan-out · D③ 接线点唯一 · E 样本区零引用）
+ * （B16 + B29；设计档 docs/design/REPO-CONVENTIONS.md §A.2.2.2 + 附 A-续 §A-B29.2.2）。
+ * 判据句权威 = docs/CONVENTIONS.md §四（D①②③ · E）/ §五（B / C）；本档只承载机检口径与实现。
  * 参数化 root / baseline（A.2.2.2 自证夹具隔离面）：缺省 = 仓库根 + scripts/gates/baseline.json。
  * 依赖方向：只依赖 lib.js；被 run.js（真实面）与 selftest.js（夹具面）复用。
  */
@@ -227,6 +227,119 @@ function checkAssembly(files, root, baseline) {
 }
 
 // ---------------------------------------------------------------------------
+// 判据 E：样本区零引用（B29；设计档 docs/design/REPO-CONVENTIONS.md 附 A-续 §A-B29.2.2）
+// E① 引用面零命中（检测三式）+ E② 打包白名单零登记；零命中恒判——不入基线、不冻结、任何命中即红
+// ---------------------------------------------------------------------------
+
+/** E① 扫描面：非文档档（.md/.txt = 规则与定位的声明面）− scripts/gates/ 守卫自身（判据载体）− .gitignore − package.json（归 E② 独占，防同键双报）。 */
+const SAMPLES_DOC_RE = /\.(md|txt)$/i;
+
+/** E① 式①：路径形态（字面子串 samples/ 或 samples\\，含 require('./samples/…')）。 */
+const SAMPLES_PATH_RE = /samples[\\/]/;
+
+/** E① 式②③：引号 / 反引号包裹串且路径末段 = samples（'samples' / `./samples` / '../samples'；式② = 末段为全串的特例）。 */
+const SAMPLES_QUOTED_RE = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\])*)`/g;
+
+/** 某行是否命中 E①（三式任一；同一行多式只记一次）。裸标识符（无引号包裹、无路径分隔）不判——防变量名误报。 */
+function samplesRefHit(line) {
+  if (SAMPLES_PATH_RE.test(line)) return true;
+  SAMPLES_QUOTED_RE.lastIndex = 0;
+  let m;
+  while ((m = SAMPLES_QUOTED_RE.exec(line)) !== null) {
+    const content = m[1] ?? m[2] ?? m[3] ?? '';
+    if (content.split(/[\\/]/).pop() === 'samples') return true;
+  }
+  return false;
+}
+
+/** 截断违规内容（防摘要行超宽）。 */
+function clip(text, max) {
+  const s = String(text);
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+/**
+ * E② 打包白名单核对（只读 package.json）：build.files 每条目 / extraResources 每 from·to 子串 samples 判。
+ * 判据红（pkg-build / pkg-extra）→ 退出 1；错误面 fail-closed → 退出 2（调用方分流）：
+ * pkg-unreadable = 缺档 / JSON.parse 失败；pkg-shape = 非预期形态（build 非对象 / files 非数组或条目非字符串 /
+ * extraResources 非 {from,to} 字符串对）——检测器无法对其做子串判定，不得按「未命中」静默放行。
+ * build / files / extraResources 键缺省 = 零条目零命中（契约字面口径；白名单存在性不属本判据面）。
+ * @param {string} root 仓库根（夹具根）
+ * @returns {Array<{kind: string, message: string}>}
+ */
+function checkPackageSamples(root) {
+  const pkg = [];
+  let raw;
+  try {
+    raw = fs.readFileSync(path.join(root, 'package.json'), 'utf8');
+  } catch {
+    return [{ kind: 'pkg-unreadable', message: 'package.json 缺档或不可读（fail-closed）' }];
+  }
+  let conf;
+  try {
+    conf = JSON.parse(raw);
+  } catch (err) {
+    return [{ kind: 'pkg-unreadable', message: `package.json JSON 解析失败（fail-closed）:: ${clip(err.message, 120)}` }];
+  }
+  // build 存在值但非对象（字符串 / 数组 / 数字 / null 等）⇒ pkg-shape fail-closed（设计档 §A-B29.2.2：不得按「未命中」静默放行）；build 键缺省 ⇒ 不判（保持现行为）
+  let build = null;
+  if (conf && typeof conf === 'object' && conf.build !== undefined) {
+    if (conf.build !== null && typeof conf.build === 'object' && !Array.isArray(conf.build)) {
+      build = conf.build;
+    } else {
+      pkg.push({ kind: 'pkg-shape', message: `build 非对象（形态 = ${Object.prototype.toString.call(conf.build).slice(8, -1)}）⇒ 无法核对白名单（fail-closed）` });
+    }
+  }
+  if (build && Array.isArray(build.files)) {
+    for (const entry of build.files) {
+      if (typeof entry !== 'string') {
+        pkg.push({ kind: 'pkg-shape', message: `build.files 条目非字符串（${clip(JSON.stringify(entry), 80)}）⇒ 无法子串判（fail-closed）` });
+      } else if (entry.includes('samples')) {
+        pkg.push({ kind: 'pkg-build', message: `build.files 登记 "${clip(entry, 120)}"（白名单零登记）` });
+      }
+    }
+  } else if (build && build.files !== undefined) {
+    pkg.push({ kind: 'pkg-shape', message: `build.files 非数组（形态 = ${Object.prototype.toString.call(build.files).slice(8, -1)}）⇒ 无法逐条目判（fail-closed）` });
+  }
+  if (build && Array.isArray(build.extraResources)) {
+    for (const entry of build.extraResources) {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry) || typeof entry.from !== 'string' || typeof entry.to !== 'string') {
+        pkg.push({ kind: 'pkg-shape', message: `extraResources 条目非 {from,to} 字符串对（${clip(JSON.stringify(entry), 80)}）⇒ 无法子串判（fail-closed）` });
+        continue;
+      }
+      if (entry.from.includes('samples')) pkg.push({ kind: 'pkg-extra', message: `extraResources.from "${clip(entry.from, 120)}"（白名单零登记）` });
+      if (entry.to.includes('samples')) pkg.push({ kind: 'pkg-extra', message: `extraResources.to "${clip(entry.to, 120)}"（白名单零登记）` });
+    }
+  } else if (build && build.extraResources !== undefined) {
+    pkg.push({ kind: 'pkg-shape', message: 'extraResources 非数组 ⇒ 无法逐 from/to 判（fail-closed）' });
+  }
+  return pkg;
+}
+
+/**
+ * 判据 E 总入口（E① 引用面 + E② 打包白名单）。
+ * @param {string[]} files 扫描面档（相对路径）
+ * @param {string} root 扫描根
+ * @returns {{refs: Array<{file: string, line: number, content: string}>, pkg: Array<{kind: string, message: string}>}}
+ */
+function checkSamples(files, root) {
+  const refs = [];
+  for (const file of files) {
+    if (SAMPLES_DOC_RE.test(file)) continue;
+    if (file.startsWith('scripts/gates/')) continue;
+    if (path.posix.basename(file) === '.gitignore') continue;
+    if (file === 'package.json') continue;
+    const text = lib.readText(path.join(root, file));
+    if (text === null) continue;
+    const lines = lib.toLines(text);
+    for (let i = 0; i < lines.length; i++) {
+      if (samplesRefHit(lines[i])) refs.push({ file, line: i + 1, content: clip(lines[i].trim(), 160) });
+    }
+  }
+  return { refs, pkg: checkPackageSamples(root) };
+}
+
+// ---------------------------------------------------------------------------
 // 基线判定（A.2.2.6 四条：新增即拦 / 陈腐即红 / 只减不增 / 到期条件逐条写死）
 // ---------------------------------------------------------------------------
 
@@ -257,5 +370,6 @@ module.exports = {
   checkDag,
   checkFanout,
   checkAssembly,
+  checkSamples,
   compareBaseline,
 };

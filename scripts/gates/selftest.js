@@ -1,6 +1,6 @@
 'use strict';
 /**
- * selftest.js — 判据自证夹具（TC-B16-01…14 的结构面）：在 os.tmpdir() 临时档树内造违规面，
+ * selftest.js — 判据自证夹具（TC-B16-01…14 + TC-B29-01…06 的结构面）：在 os.tmpdir() 临时档树内造违规面，
  * 逐一验证判据边界 / 错误面；try/finally 清理；判据函数以参数接收 root 与 baseline。
  * （B16；设计档 docs/design/REPO-CONVENTIONS.md §A.2.2.2 自证面 / §A.3.2 TC-B16-01…14）。
  * 夹具根不在仓库根之下 ⇒ 永不在门禁扫描面内（A.2.2.2 夹具隔离面）。
@@ -16,6 +16,8 @@ const checks = require('./checks.js');
 /** 断言计数与失败收集（非零退出由 run.js 汇总）。 */
 let passed = 0;
 const failures = [];
+/** 仅现状锚（TC-B29-06，liveAnchorOnly）红 = 仓内违规而非门禁坏（run.js 据此分流：落判据 E 块以判据码报告）。 */
+let liveAnchorOnly = false;
 
 function assertOk(cond, label) {
   if (cond) { passed++; }
@@ -101,8 +103,44 @@ function assemblyFixture() {
   return { root, files: lib.listFiles(root) };
 }
 
+/** TC-B29-01…05：samples 判据夹具（E① 违规档 / E② 违规 package.json / 边界档——每例按需造）。 */
+function samplesFixture() {
+  const root = fixtureRoot();
+  // TC-B29-01：a.js = 路径形态（行 2）+ 末段形态（行 3）→ ref ×2
+  writeFile(root, 'a.js', [
+    "'use strict';",
+    "const x = require('./samples/x.js');",
+    "const y = require('./samples');",
+    'module.exports = {};',
+  ].join('\n') + '\n');
+  // TC-B29-02：b.js = 引号形态（行 2）+ 反引号末段形态（行 3）→ ref ×2
+  writeFile(root, 'b.js', [
+    "'use strict';",
+    "const dir = path.join(base, 'samples', name);",
+    'const bare = `./samples`;',
+    'module.exports = {};',
+  ].join('\n') + '\n');
+  // TC-B29-03：违规 package.json（build.files + extraResources.from 登记 samples）→ pkg-build + pkg-extra，无 ref 贡献
+  writeFile(root, 'package.json', JSON.stringify({
+    name: 'fixture',
+    build: {
+      files: ['main.js', 'samples/dsh-pet'],
+      extraResources: [{ from: 'samples', to: 'dsh' }],
+    },
+  }, null, 2) + '\n');
+  // TC-B29-05：边界档（裸标识符 / 末段近似串 / 文档面）→ 不判
+  writeFile(root, 'c.js', [
+    "'use strict';",
+    'const samples = 1;',
+    "const p = 'samples-x';",
+    'module.exports = {};',
+  ].join('\n') + '\n');
+  writeFile(root, 'd.md', '样本区 samples/ 说明（文档面，不属引用面）\n');
+  return root;
+}
+
 // ---------------------------------------------------------------------------
-// 主入口：跑 14 例自证（TC-B16-01…14；每例 = 造夹具 → 调判据 → 断言 → 清理）
+// 主入口：跑 20 例自证（TC-B16-01…14 + TC-B29-01…06；每例 = 造夹具 → 调判据 → 断言 → 清理）
 // ---------------------------------------------------------------------------
 
 function runSelftest() {
@@ -224,12 +262,12 @@ function runSelftest() {
       assertOk(problems.length === 0, `TC-11: D③ 三种红（删调 / 双调 / 解构 fail-closed；问题 = ${problems.join(',') || '无'}）`);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   }
-  // TC-B16-12 真实 main.js ⇒ 13/13 恰一处（免检 2 档）
+  // TC-B16-12 真实 main.js ⇒ 13/13 恰一处（免检 3 档；B31：+affinity-core.js 绑定 1 条 + 免检 1 档）
   {
     const baseline = lib.loadBaseline(path.join(checks.REPO_ROOT, 'scripts', 'gates', 'baseline.json'));
     const res = checks.checkAssembly(lib.listFiles(checks.REPO_ROOT), checks.REPO_ROOT, baseline);
     const ok = res.ok + res.exemptChecked;
-    assertOk(ok === 15 && res.violations.length === 0, `TC-12: 真实 main.js 15 条绑定全合规（13 init + 2 免检）`);
+    assertOk(res.ok === 13 && ok === 16 && res.violations.length === 0, `TC-12: 真实 main.js 16 条绑定全合规（13 init + 3 免检）`);
   }
   // TC-B16-13 基线陈旧：夹具违规已清零而条目未缩减 ⇒ 红
   {
@@ -254,7 +292,64 @@ function runSelftest() {
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   }
 
-  return { passed, failures };
+  // ---- B29 判据 E 自证（TC-B29-01…06；设计档附 A-续 §A-B29.3.2）----
+
+  // TC-B29-01 a.js 路径形态 + 末段形态 ⇒ ref ×2（逐行各一条）
+  {
+    const root = samplesFixture();
+    try {
+      const res = checks.checkSamples(lib.listFiles(root), root);
+      const a = res.refs.filter((r) => r.file === 'a.js');
+      assertOk(a.length === 2 && a[0].line === 2 && a[1].line === 3, `TC-B29-01: 路径/末段形态逐行各一条（实得 ${a.length}）`);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+  // TC-B29-02 b.js 引号形态 + 反引号末段形态 ⇒ ref ×2
+  {
+    const root = samplesFixture();
+    try {
+      const res = checks.checkSamples(lib.listFiles(root), root);
+      const b = res.refs.filter((r) => r.file === 'b.js');
+      assertOk(b.length === 2 && b[0].line === 2 && b[1].line === 3, `TC-B29-02: 引号/反引号末段形态逐行各一条（实得 ${b.length}）`);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+  // TC-B29-03 违规 package.json ⇒ pkg-build + pkg-extra 各 1，该档零 ref 贡献（E① 排除 package.json——防同键双报）
+  {
+    const root = samplesFixture();
+    try {
+      const res = checks.checkSamples(lib.listFiles(root), root);
+      const pkgRedOnly = res.pkg.filter((v) => v.kind === 'pkg-build' || v.kind === 'pkg-extra');
+      const pkgRef = res.refs.filter((r) => r.file === 'package.json');
+      assertOk(pkgRedOnly.length === 2 && pkgRef.length === 0, `TC-B29-03: pkg-build+pkg-extra 各 1 且 package.json 零 ref 贡献（实得 pkg=${pkgRedOnly.length}/pkgRef=${pkgRef.length}）`);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+  // TC-B29-04 夹具根无 package.json ⇒ pkg-unreadable fail-closed（退出 2 由 run.js 分流——本例验 kind）
+  {
+    const root = fixtureRoot();
+    try {
+      writeFile(root, 'clean.js', "'use strict';\nmodule.exports = {};\n");
+      const res = checks.checkSamples(lib.listFiles(root), root);
+      assertOk(res.pkg.length === 1 && res.pkg[0].kind === 'pkg-unreadable', `TC-B29-04: 缺 package.json ⇒ pkg-unreadable（实得 ${res.pkg.map((v) => v.kind).join(',') || '空'}）`);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+  // TC-B29-05 边界：裸标识符 / 末段近似串 / 文档面 ⇒ 不判（变量名不误报）
+  {
+    const root = samplesFixture();
+    try {
+      const res = checks.checkSamples(lib.listFiles(root), root);
+      const c = res.refs.filter((r) => r.file === 'c.js');
+      const d = res.refs.filter((r) => r.file === 'd.md');
+      assertOk(c.length === 0 && d.length === 0, `TC-B29-05: 裸标识符/近似串/文档面不判（实得 c=${c.length} d=${d.length}）`);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+  // TC-B29-06 真实仓库面 ⇒ 0 违规（现状锚：零命中恒绿；红 = 仓内违规非门禁坏 ⇒ liveAnchorOnly，run.js 分流）
+  {
+    const res = checks.checkSamples(lib.listFiles(checks.REPO_ROOT), checks.REPO_ROOT);
+    const cond = res.refs.length === 0 && res.pkg.length === 0;
+    if (cond) passed++;
+    else { failures.push(`TC-B29-06: 现状锚红（refs=${res.refs.length} pkg=${res.pkg.length}——仓内违规或门禁坏）`); liveAnchorOnly = true; }
+  }
+
+  return { passed, failures, total: passed + failures.length, liveAnchorOnly };
 }
 
 module.exports = { runSelftest };

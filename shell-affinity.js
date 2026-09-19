@@ -10,16 +10,19 @@ const backend = require('./shell-backend.js');
 const notifier = require('./shell-notify.js');
 const assets = require('./shell-assets.js');
 
-// 注入面（组合根 main.js 接线）：getPetWindow + pet 状态访问面（pet）/ setQuitting（组合根）/ APP_NAME（常量）
+// 注入面（组合根 main.js 接线）：getPetWindow + pet 状态访问面（pet）/ setQuitting（组合根）/ APP_NAME（常量）/
+//   affinityCore（好感度数值面纯函数核心 affinity-core.js——不新增静态相对 require，判据 D② 扇出保持 3）
 let getPetWindow = null;
 let pet = null;
 let setQuitting = null;
 let APP_NAME = null;
+let affinityCore = null;
 function init(deps) {
   getPetWindow = deps.getPetWindow;
   pet = deps.pet;
   setQuitting = deps.setQuitting;
   APP_NAME = deps.APP_NAME;
+  affinityCore = deps.affinityCore;
 }
 
 // ---------------------------------------------------------------------------
@@ -29,14 +32,8 @@ function init(deps) {
 //           每 AFFINITY_RATE 个 token 得 1 点，按等级阈值升级。
 //   兑换屋：右键鲸鱼娘打开，token → 💴，💴 买食物喂食（喂食加好感）。
 // ---------------------------------------------------------------------------
-const AFFINITY_RATE = 500;       // 每消耗 500 token = 1 好感点（门槛更低，条动得快）
-const EXCHANGE_RATE = 1000;      // 1000 token 兑换 1 💴（门槛更低）
-const LEVEL_THRESHOLDS = [0, 20, 50, 100, 180, 300, 450, 650, 900, 1200];
-const FOODS = [
-  { id: 'fish', name: '小鱼干', price: 1, emoji: '🐟', bonusTokens: 2000, msg: '小鱼干真香~ 好感+4' },
-  { id: 'cake', name: '小蛋糕', price: 2, emoji: '🍰', bonusTokens: 4000, msg: '蛋糕好好吃~ 好感+8' },
-  { id: 'milk', name: '珍珠奶茶', price: 3, emoji: '🧋', bonusTokens: 6000, msg: '奶茶赛高~ 好感+12' },
-];
+// 数值面常量（AFFINITY_RATE / EXCHANGE_RATE / LEVEL_THRESHOLDS / FOODS）已核心化至 affinity-core.js（B31 §2.6）
+//   ——经 init(deps) 注入消费；本档零数值定义（改值只改 core 一处）。
 
 function affinityFile() {
   return path.join(app.getPath('userData'), 'affinity.json');
@@ -134,27 +131,8 @@ let lastTokenSum = null;
 let affinityWatcherTimer = null;
 
 function affinityView() {
-  // 好感 = 终身使用换算 + 喂食加成（只增不减，兑换不影响好感）
-  const points = Math.floor(affinity.usage / AFFINITY_RATE) + affinity.bonus;
-  let level = 1, curThr = LEVEL_THRESHOLDS[0], nextThr = LEVEL_THRESHOLDS[1];
-  for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) {
-    if (points >= LEVEL_THRESHOLDS[i]) { level = i + 1; curThr = LEVEL_THRESHOLDS[i]; nextThr = LEVEL_THRESHOLDS[i + 1]; }
-  }
-  const progress = nextThr === undefined ? 1 : Math.min(1, (points - curThr) / (nextThr - curThr));
-  return {
-    level,
-    points,
-    pointsToNext: nextThr === undefined ? points : nextThr,
-    progress,
-    tokens: affinity.wallet,      // 可兑换余额
-    usage: affinity.usage,        // 终身消耗
-    bonus: affinity.bonus,
-    currency: affinity.currency,
-    food: { ...affinity.food },
-    foods: FOODS.map((f) => ({ ...f, bonusPoints: Math.round(f.bonusTokens / AFFINITY_RATE) })),
-    exchangeRate: EXCHANGE_RATE,
-    affinityRate: AFFINITY_RATE,
-  };
+  // 好感 = 终身使用换算 + 喂食加成（只增不减，兑换不影响好感）——数值面在 affinityCore（B31 §2.6）
+  return affinityCore.buildAffinityView(affinity);
 }
 function broadcastAffinity() {
   if (getPetWindow() && !getPetWindow().isDestroyed()) {
@@ -179,14 +157,13 @@ function startAffinityWatcher() {
       if (s2 > lastTokenSum) {
         const delta = s2 - lastTokenSum;
         lastTokenSum = s2;
+        const before = affinityView().level; // delta 计入前取值（升级播报判据，设计档 §2.4）
         affinity.usage += delta;  // 终身消耗（只增不减）
         affinity.wallet += delta; // 可兑换余额
         saveAffinity();
-        // 每攒够 1 点好感才提示（避免刷屏）
-        if (Math.floor(affinity.usage / AFFINITY_RATE) > Math.floor((affinity.usage - delta) / AFFINITY_RATE)) {
-          const v = affinityView();
-          pet.petSay(`好感 +1，现在是 Lv.${v.level} 啦~`);
-        }
+        // 升级播报：等级严格上升才播一次（满级后等级不可能再升 ⇒ 自然零播报，设计档 §2.4）
+        const v = affinityView();
+        if (affinityCore.shouldAnnounceLevelUp(before, v.level)) pet.petSay(`好感满满，升到 Lv.${v.level} 啦~`);
       } else if (s2 < lastTokenSum) {
         lastTokenSum = s2; // 会话被清理/重建，重新基线
       }
@@ -312,9 +289,9 @@ async function resetConfigKeepSessions() {
 function handleAffinityView() { return affinityView(); }
 
 function handleAffinityExchange() {
-  const gain = Math.floor(affinity.wallet / EXCHANGE_RATE);
-  if (gain <= 0) return { ok: false, message: `还不够兑换 1💴（需 ${EXCHANGE_RATE} token）` };
-  affinity.wallet -= gain * EXCHANGE_RATE; // 只花可兑换余额，不动终身消耗（好感不掉）
+  const gain = Math.floor(affinity.wallet / affinityCore.EXCHANGE_RATE);
+  if (gain <= 0) return { ok: false, message: `还不够兑换 1💴（需 ${affinityCore.EXCHANGE_RATE} token）` };
+  affinity.wallet -= gain * affinityCore.EXCHANGE_RATE; // 只花可兑换余额，不动终身消耗（好感不掉）
   affinity.currency += gain;
   saveAffinity();
   broadcastAffinity();
@@ -322,21 +299,22 @@ function handleAffinityExchange() {
 }
 
 function handleAffinityBuy(_e, foodId) {
-  const food = FOODS.find((f) => f.id === foodId);
-  if (!food) return { ok: false, message: '没有这种食物' };
-  if (affinity.currency < food.price) return { ok: false, message: '💴 不够啦，先去兑换吧' };
-  affinity.currency -= food.price;
-  affinity.food[food.id] = (affinity.food[food.id] || 0) + 1;
-  // 喂食：只加好感点（单向），不产生可兑换 token —— 杜绝"买食物→赚token→再换钱"循环
-  affinity.bonus += Math.round(food.bonusTokens / AFFINITY_RATE);
+  const before = affinityView().level; // bonus 计入前取值（升级播报判据，设计档 §2.4）
+  const r = affinityCore.applyFoodPurchase(affinity, foodId);
+  if (!r.ok) return { ok: false, message: r.message };
+  Object.assign(affinity, r.state); // 购买校验与状态转移（含喂食单向语义）在 core 内（B31 §2.6）
   saveAffinity();
+  const food = affinityCore.FOODS.find((f) => f.id === foodId);
   // 鲸鱼吃播
   pet.petSay(food.msg);
   pet.setPetState('eat');
   clearTimeout(pet.getEatTimer());
   pet.setEatTimer(setTimeout(() => { if (pet.getPetState() === 'eat') pet.setPetState('idle'); }, 2000));
+  // 升级播报（先 food.msg 后本条；bonus 跨档才播一次，满级恒 false ⇒ 零播报，设计档 §2.4）
+  const v = affinityView();
+  if (affinityCore.shouldAnnounceLevelUp(before, v.level)) pet.petSay(`好感满满，升到 Lv.${v.level} 啦~`);
   broadcastAffinity();
-  return { ok: true, message: food.msg, view: affinityView() };
+  return { ok: true, message: food.msg, view: v };
 }
 
 module.exports = {

@@ -7,8 +7,8 @@
  *   petCalibrateSize / petSavePos / petGeomSnapshot / petPosText）+ 经 init(deps) 注入的访问器
  *   （getPetWindow / getPetDrag / getMoveTimer / settings / setPetState）。
  * 禁（NFR-8 / NFR-18）：不自造第二份几何判定、不新增尺寸写入路径；flightTick 体内零 petSavePos / 零 petCalibrateSize / 零 getSize。
- * 地面口径（B26 / §2.2.13）：飞行 bounds = core.groundBounds(geometry.petWorkAreaBounds(...))——物理地面 = 可见身体底沿（原窗口矩形口径只作 maxY 中间量）；
- *   groundBounds 经 module.exports 转暴露（散步 y 归位同口径取用，不新增 require 边）。
+ * 边界口径（B26 / §2.2.13 起地面口径，B27 / §2.2.14 四面推广）：飞行 bounds = core.petEdgeBounds(geometry.petWorkAreaBounds(...))——四面补偿（底面 = 可见身体底沿，原窗口矩形口径只作中间量）；
+ *   petEdgeBounds 经 module.exports 转暴露（散步 y 归位 / 撞墙判定同口径取用，不新增 require 边）。
  */
 
 const { app, screen } = require('electron');
@@ -118,9 +118,9 @@ function handleTrailEnd(_event, reasonRaw) {
 function evaluateArm(seq) {
   const now = performance.now();
   const win = getPetWindow && getPetWindow();
-  // 地面口径（B26 / §2.2.13）：groundBounds 只抬 maxY（可见脚底踩实），null 透传 ⇒ G8 no-bounds 照旧
+  // 边界口径（B26 / §2.2.13 起地面口径，B27 / §2.2.14 四面推广）：petEdgeBounds 四面补偿（底面 = 可见脚底踩实），null 透传 ⇒ G8 no-bounds 照旧
   const waBounds = win && !win.isDestroyed() ? geometry.petWorkAreaBounds(geometry.petCurrentDisplay()) : null;
-  const bounds = core.groundBounds(waBounds);
+  const bounds = core.petEdgeBounds(waBounds);
   const gate = core.armGate({
     enabled: settings.get().petPhysicsEnabled === true,
     windowAlive: !!(win && !win.isDestroyed()),
@@ -324,4 +324,4 @@ function physPos(win) {
   return (win && !win.isDestroyed()) ? geometry.petPosText(win.getPosition()) : 'n/a';
 }
 
-module.exports = { init, isFlying, handlePhysicsToggle, registerScreenStops, quit, stopFlight, handleTrailStart, handleTrailEnd, groundBounds: core.groundBounds };
+module.exports = { init, isFlying, handlePhysicsToggle, registerScreenStops, quit, stopFlight, handleTrailStart, handleTrailEnd, petEdgeBounds: core.petEdgeBounds };

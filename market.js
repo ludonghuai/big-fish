@@ -102,9 +102,8 @@ function normalizePlugin(p, bundled) {
   let installSpec = p.npm;
   let isGitHub = false;
   if (!installSpec && p.install) {
-    // "dsh plugin --profile web add github:user/repo" → github spec
-    const m = String(p.install).match(/add\s+(github:[^\s]+|link:[^\s]+|[^\s]+)/);
-    if (m && m[1].startsWith('github:')) { installSpec = m[1]; isGitHub = true; }
+    const m = String(p.install).match(/^(builtin:[^\s]+)$|add\s+(github:[^\s]+|link:[^\s]+|[^\s]+)/);
+    if (m && (m[1] && m[1].startsWith('builtin:') || m[2] && m[2].startsWith('github:'))) { installSpec = m[1] || m[2]; isGitHub = !!m[2]; }
   }
   if (!installSpec && p.url) {
     const m = String(p.url).match(/github\.com\/([^/]+\/[^/]+)/);
@@ -257,7 +256,6 @@ function renderCard(p) {
   }
   if (p.url) {
     const link = el('a', 'btn', '主页');
-    link.href = p.url;
     link.style.textDecoration = 'none';
     link.onclick = (e) => { e.preventDefault(); api.openExternal(p.url); };
     foot.appendChild(link);

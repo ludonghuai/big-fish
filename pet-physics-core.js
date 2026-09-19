@@ -3,7 +3,7 @@
  * pet-physics-core.js — 桌宠甩抛物理纯函数核心 + 位移仲裁判定 + 地面口径（B20 / B26；设计档 docs/design/PET-MOVEMENT.md §2.2.3 / §2.2.4 / §2.2.5 / §2.2.12 / §2.2.13）。
  * 边界（设计档 §2.2.1）：零 electron / 零 fs / 零定时器 / 零 DOM ⇒ 可被 node 直接装载（NFR-20，桩测装载真实实现）；
  *   渲染层经 pet.html 的 <script src> 装载（window.PetPhysicsCore，挤压曲线单一来源，§2.2.7 / AC4④）。
- * 函数清单：trimTrail · gatePeakSpeed · isQuietPlacement · estimateReleaseVelocity · groundBounds · throwStep ·
+ * 函数清单：trimTrail · gatePeakSpeed · isQuietPlacement · estimateReleaseVelocity · petEdgeBounds · throwStep ·
  *   landingSquash · squashScale · decideOwnership · armGate · canTakeOff；常量表 = PHYSICS + 本仓新增节拍 / 门窗 / 地面常量。
  * 坐标语义：x / y = 窗口左上角 DIP（与冻结面同空间，§2.2.4）；速度 px/s。
  */
@@ -86,8 +86,12 @@ const QUIET_SPAN_MAX_DIP = 5;
 const FEET_ANCHOR_INSET_DIP = 26;
 /** alpha 残差补偿（DIP）：实测视频 ≈4.2 / PNG 动画帧 ≈3.6 取较大者（O-13）；回正路径 = 本常量改 0（U-7；B26）。 */
 const FEET_ALPHA_MARGIN_DIP = 4;
-/** 地面增量唯一消费值（DIP）= 锚点 + 残差；groundBounds 与散步 y 归位上界同取（§2.2.13 / AC21①；B26）。 */
+/** 地面增量唯一消费值（DIP）= 锚点 + 残差；petEdgeBounds（B27 起名；B26 原 groundBounds）与散步 y 归位上界同取（§2.2.13 / AC21①；B26）。 */
 const FEET_INSET_DIP = FEET_ANCHOR_INSET_DIP + FEET_ALPHA_MARGIN_DIP;
+/** 顶边增量（DIP）= 可见身体顶缘：PET_FEET_Y − 目标高 = 244 − 200 = 44（§2.2.14 / AC23①；B27；跨档等式对 PetChainCore 常量求值，桩测核）。 */
+const TOP_EDGE_INSET_DIP = 44;
+/** 侧边增量（DIP）= (250 − hit.w)/2 ≈ 40.79 → 41（§2.2.14 / AC23①；B27；身体画布水平居中 ⇒ 左右同量）。 */
+const SIDE_EDGE_INSET_DIP = 41;
 
 // ---------------------------------------------------------------------------
 // 轨迹（trail）纯函数（设计档 §2.2.5）
@@ -201,10 +205,16 @@ function estimateReleaseVelocity(trail, now, physics) {
   return { vx: (baseVx / baseSpeed) * speed, vy: (baseVy / baseSpeed) * speed };
 }
 
-/** 地面口径（B26 / §2.2.13）：物理地面 = 可见身体底沿 ⇒ 只抬 maxY（+FEET_INSET_DIP，minX/maxX/minY 逐字不变，返回新对象不改入参）；bounds == null ⇒ null（与 G8 no-bounds 同源）；消费点 = 飞行 bounds 与散步 y 归位。 */
-function groundBounds(bounds) {
+/** 边界四面口径（B27 / §2.2.14；B26 原 groundBounds 推广改名——底面语义逐字不变）：边界 = 可见身体盒 ⇒ minX/maxX 外扩 SIDE_EDGE_INSET_DIP、minY 上扩 TOP_EDGE_INSET_DIP、maxY 下扩 FEET_INSET_DIP（返回新对象不改入参）；bounds == null ⇒ null（与 G8 no-bounds 同源）；消费点 = 飞行 bounds 与散步 y 归位（同取）。 */
+function petEdgeBounds(bounds) {
   if (bounds == null) return null;
-  return { ...bounds, maxY: bounds.maxY + FEET_INSET_DIP };
+  return {
+    ...bounds,
+    minX: bounds.minX - SIDE_EDGE_INSET_DIP,
+    maxX: bounds.maxX + SIDE_EDGE_INSET_DIP,
+    minY: bounds.minY - TOP_EDGE_INSET_DIP,
+    maxY: bounds.maxY + FEET_INSET_DIP,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -337,8 +347,8 @@ const PetPhysicsCore = {
   MAX_THROW_SPEED, PEAK_WEIGHT, ACCEL_REF, ACCEL_GAIN_MAX, MAX_STEP_DT, REST_VY, REST_VX,
   SQ_SQUASH, SQ_MAX_SQUASH, SQ_DURATION_MS, SQ_SOFT_SPEED, SQ_HARD_SPEED,
   PHYS_POLL_MS, PHYS_TRAIL_MS, PHYS_MAX_FLIGHT_MS, PHYS_RUN_SPEED, GATE_WINDOW_MS, QUIET_SPAN_MAX_DIP,
-  FEET_ANCHOR_INSET_DIP, FEET_ALPHA_MARGIN_DIP, FEET_INSET_DIP,
-  trimTrail, gatePeakSpeed, isQuietPlacement, canTakeOff, estimateReleaseVelocity, groundBounds, throwStep,
+  FEET_ANCHOR_INSET_DIP, FEET_ALPHA_MARGIN_DIP, FEET_INSET_DIP, TOP_EDGE_INSET_DIP, SIDE_EDGE_INSET_DIP,
+  trimTrail, gatePeakSpeed, isQuietPlacement, canTakeOff, estimateReleaseVelocity, petEdgeBounds, throwStep,
   landingSquash, squashScale, decideOwnership, armGate,
 };
 

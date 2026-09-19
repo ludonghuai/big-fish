@@ -185,7 +185,7 @@ function browserUrl() {
 function cleanupStaleDsh() {
   try {
     if (process.platform === 'win32') {
-      const script = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*dsh/lib/bin.js*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+      const script = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { ($_.CommandLine -like '*dsh/lib/bin.js*' -or $_.CommandLine -like '*dsh\\lib\\bin.js*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
       // -WindowStyle Hidden：彻底不弹 PowerShell 黑窗
       spawn('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', script], { stdio: 'ignore', windowsHide: true });
     } else {

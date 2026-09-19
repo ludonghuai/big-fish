@@ -20,6 +20,8 @@ const PET_STAGE_W = 250;
 const SEG_MAX_BYTES = 1.5 * 1024 * 1024;
 /** B21 衔接提前量（段末前多少毫秒起下一段；NFR-23 单点定义单点消费；初值 = 临时值，实机标定后定值）。 */
 const PET_OVERLAP_MS = 1200;
+/** B27 真·静默期（ms）：动作类段（action / turn）末进入静默，静默内零链决策（§2.14.2 / §2.14.9；U-1 = 40% / 30 s，实机标定路径 = 本常量一处）。 */
+const PET_QUIET_MS = 30000;
 
 // ---- 链决策（设计档 §2.2.4）----
 /** 按权重掷骰：roll ∈ [0,1) ⇒ 'idle' | 'turn' | 'move' | 'action'（余量全归 action，见档内「权重余量」契约）。 */
@@ -76,7 +78,8 @@ function pickChainNext(input) {
   return { kind: 'action', name: pick(cat.actions, cur), mirror: facing === 'right' && !cat.noMirror, category: cat.id };
 }
 
-/** B21 段末决策（设计档 §2.13.4）：输入池/权重/掷骰/当前档位/正播段/朝向 ⇒ 输出三类计划（rotate/chain/none；roll 注入保确定性）。 */
+/** B21 段末决策（设计档 §2.13.4；B27 扩展 = §2.14.9）：输入池/权重/掷骰/当前档位/正播段/朝向/静默标记 ⇒ 输出四类计划（rotate/quiet/chain/none；roll 注入保确定性）。
+ * 判定次序（§2.14.9）：① rotate（事件段多候选轮换，逐字不变）→ ② 静默判定 → ③ 链掷骰（逐字不变）。 */
 function decideNext(input) {
   const { pool, weights, roll, slot, playing, cur, facing } = input;
   // 事件段仍在同档且有多个候选 ⇒ 档内轮换（复用 nextInSlot，其契约不改）
@@ -84,16 +87,23 @@ function decideNext(input) {
     const next = nextInSlot(pool.events[slot], playing.name);
     if (next) return { plan: 'rotate', name: next, mirror: false };
   }
+  // B27 静默判定（§2.14.9 ②）：只在 idle 槽 ∧ 非静默中 ∧ 正播段为动作类（action / turn）时进入；
+  // turn 段的翻转在调用方（pet-chain.js triggerChainDecision）先行执行、与本计划类型解耦（§2.14.9——翻转照执行，不因 quiet 被吞）。
+  if (slot === 'idle' && !input.quiet && playing && (playing.kind === 'action' || playing.kind === 'turn')) {
+    const quietSegs = pool.events && pool.events.quiet !== undefined ? pool.events.quiet : null;
+    return { plan: 'quiet', name: quietSegs ? pickSlot(quietSegs, cur) : pool.idle[0], mirror: false };
+  }
   const d = pickChainNext({ weights, pool, cur, facing, roll });
   if (d.name === null) return { plan: 'none' };
   return { plan: 'chain', name: d.name, mirror: d.mirror, kind: d.kind, category: d.category };
 }
 
-/** B21 R1/R2 选段修正（设计档 §2.13.5）：输入当前播放状态/目标段名/镜像 ⇒ 输出 reload/hold-same/hold-mirror。 */
+/** B21 R1/R2 选段修正（设计档 §2.13.5；B27 作用域扩展 = §2.14.9）：输入当前播放状态/目标段名/镜像 ⇒ 输出 reload/hold-same/hold-mirror。
+ * 作用域前提（B27 扩展）：`playing.loop === true ∨ String(playing.slotKey).startsWith('escape-')`——escape 档自 B27 起为 loop=false 单遍段，折返 / 同段重入仍不重启段；其余（一次性反馈段）照常 reload。 */
 function judgeSwitch(input) {
   const { playing, name, mirror } = input;
-  // 未在播或 loop=false ⇒ reload（一次性反馈段照常重播；R1/R2 只作用于 loop=true 持续档）
-  if (!playing || !playing.loop) return 'reload';
+  // 未在播 ⇒ reload；loop=true 持续档或 escape-* 单遍段（B27 扩展）⇒ 进 hold 判定；其余 loop=false ⇒ reload（一次性反馈段照常重播）
+  if (!playing || !(playing.loop === true || String(playing.slotKey).startsWith('escape-'))) return 'reload';
   if (name === playing.name && mirror === playing.mirror) return 'hold-same';   // R1：同段同镜像不重播
   if (name === playing.name) return 'hold-mirror';                              // R2：仅镜像变化只改 transform
   return 'reload';
@@ -209,7 +219,7 @@ function parsePool(text, probe) {
 
 const PetChainCore = {
   rollKind, pick, pickWeightedCategory, pickSlot, nextInSlot, pickChainNext, decideNext, judgeSwitch, mediaBox, segSrc, parsePool, validatePool,
-  PET_MEDIA_CANVAS, PET_MEDIA_BODY, PET_BODY_TARGET_H, PET_FEET_Y, PET_STAGE_W, SEG_MAX_BYTES, PET_OVERLAP_MS,
+  PET_MEDIA_CANVAS, PET_MEDIA_BODY, PET_BODY_TARGET_H, PET_FEET_Y, PET_STAGE_W, SEG_MAX_BYTES, PET_OVERLAP_MS, PET_QUIET_MS,
 };
 
 // 双环境导出尾巴：node（桩测 / 主进程 require）与浏览器（<script> 全局）同源装载。

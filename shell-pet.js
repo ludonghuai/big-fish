@@ -290,6 +290,11 @@ function scheduleWander() {
   }, 15000 + Math.random() * 20000);
 }
 
+// 逃跑腿专用常量（B27 / R22-①；docs/design/PET-ANIMATION.md §2.14.8 常量表）：定义单点、doWander escape 分支单点消费（AC34⑤）。
+const ESCAPE_LEG_MIN_DIP = 300;   // px：逃跑腿最短腿长（腿长 = MIN + rand×RANGE ⇒ 300~600）
+const ESCAPE_LEG_RANGE_DIP = 300; // px：随机腿长增量
+const ESCAPE_LEG_SPEED = 0.45;    // px/ms：逃跑移速（普通跑 0.34 / 走 0.17）
+
 /**
  * 散步/跑步：随机走一段距离就停下休息（不必走完全程）。
  * 只有中途碰到墙壁才折返，折返 petBounceLeft 次后歇着。
@@ -303,8 +308,8 @@ function doWander() {
     scheduleWander();
     return;
   }
-  // 段起点算一次边界（所在屏口径），段内不重算；y 归位上界取地面口径（B26 / §2.2.13：groundBounds 只抬 maxY，判空与 petWorkAreaBounds 同源）
-  const bounds = physics.groundBounds(geometry.petWorkAreaBounds(geometry.petCurrentDisplay()));
+  // 段起点算一次边界（所在屏口径），段内不重算；y 归位与撞墙判定取边界口径（B26 / §2.2.13 起地面口径，B27 / §2.2.14 四面推广；判空与 petWorkAreaBounds 同源）
+  const bounds = physics.petEdgeBounds(geometry.petWorkAreaBounds(geometry.petCurrentDisplay()));
   if (!bounds) {
     scheduleWander();
     return;
@@ -318,8 +323,8 @@ function doWander() {
   // B21：petForceRun 为真时用 escape 档名（US-31）
   const escape = petForceRun;
   petForceRun = false;
-  // 随机走一段（不一定到墙）
-  const distance = run ? 200 + Math.random() * 300 : 80 + Math.random() * 200;
+  // 随机走一段（不一定到墙）；B27：逃跑分支取专用腿参数（R22-①，§2.14.8——不改普通跑步分支）
+  const distance = escape ? ESCAPE_LEG_MIN_DIP + Math.random() * ESCAPE_LEG_RANGE_DIP : (run ? 200 + Math.random() * 300 : 80 + Math.random() * 200);
   let targetX = petWanderDir === 'left' ? x - distance : x + distance;
   const hitWall = petWanderDir === 'left' ? targetX <= bounds.minX : targetX >= bounds.maxX;
   if (hitWall) {
@@ -334,7 +339,7 @@ function doWander() {
     doWander();
     return;
   }
-  const speed = run ? 0.34 : 0.17; // px/ms
+  const speed = escape ? ESCAPE_LEG_SPEED : (run ? 0.34 : 0.17); // px/ms；B27：escape 单点消费 ESCAPE_LEG_SPEED
   const duration = Math.max(250, dist / speed);
   setPetState((escape ? 'escape-' : (run ? 'run-' : 'walk-')) + petWanderDir);
   const startX = x;

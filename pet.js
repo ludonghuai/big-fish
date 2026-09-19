@@ -181,7 +181,7 @@ window.petAPI.onPhysicsSquash((depth) => playSquash(depth));
 window.petAPI.onAffinity((a) => {
   if (a && affinityFill && affinityLabel) {
     affinityFill.style.width = Math.round((a.progress || 0) * 100) + '%';
-    affinityLabel.textContent = 'Lv.' + a.level + ' 好感 ' + a.points + '/' + a.pointsToNext;
+    affinityLabel.textContent = a.maxed ? 'Lv.' + a.level + ' 好感 MAX' : 'Lv.' + a.level + ' 好感 ' + a.points + '/' + a.pointsToNext;
   }
 });
 

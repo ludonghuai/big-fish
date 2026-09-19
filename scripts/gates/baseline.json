@@ -28,7 +28,8 @@
   "cycles": 0,
   "assemblyExempt": [
     { "file": "shell-settings.js", "why": "工具档，无 init 导出（settings 载入/保存/访问器）" },
-    { "file": "shell-ipc.js", "why": "以 register() 接线（通道→域处理器薄绑定），无 init" }
+    { "file": "shell-ipc.js", "why": "以 register() 接线（通道→域处理器薄绑定），无 init" },
+    { "file": "affinity-core.js", "why": "数值面纯函数核心（双环境导出），无 init 导出——经 main.js init(deps) 注入 shell-affinity.js 消费（B31）" }
   ],
   "expires": {
     "width": "随 T13 消解路径逐档归零（活文档面随 B14 修正；批次档历史段随该档下次被合法动笔）⇒ 条目归零即删",

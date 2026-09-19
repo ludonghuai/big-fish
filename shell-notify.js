@@ -1,8 +1,8 @@
 'use strict';
 /**
  * shell-notify.js — 系统通知 + 任务完成提醒（B06 F6 拆分；设计档 docs/design/SHELL-UX.md §2.2.6）。
- * 属主状态：completionWatcherTimer / lastBusyAt / notifiedForCycle / completionGate*（判定面，B09 §2.2.12）——
- * 跨模块写经 setLastBusyAt / setNotifiedForCycle。
+ * 属主状态：completionWatcherTimer / lastBusyAt / notifiedForCycle / completionGate*（判定面，B09 / B30 §2.2.12）
+ *   / waitingNotifiedTurn（等待确认节流，B30 §2.2.12）——跨模块写经 setLastBusyAt / setNotifiedForCycle。
  */
 
 const { Notification } = require('electron');
@@ -19,14 +19,17 @@ const NOTIFY_SUPPRESSED = process.env.BIGFISH_TEST_NO_NOTIFY === '1';
 // 依赖方向合规：同层（L1）+ 无环（shell-backend.js 只 require electron / node 内置 / harness-store.js）。
 const backend = require('./shell-backend.js');
 
-// 注入面（组合根 main.js 接线）：getDshHome（backend）/ petSay（pet）/ IDLE_NOTIFY_MS + IDLE_NOTIFY_FALLBACK_MS（常量）
+// 注入面（组合根 main.js 接线）：getDshHome（backend）/ petSay（pet）/
+//   IDLE_NOTIFY_MS + IDLE_NOTIFY_FALLBACK_MS + WAITING_NOTIFY_MS（常量；末键 B30 增）
 let getDshHome = null;
 let petSay = null;
 let IDLE_NOTIFY_MS = 0;
 let IDLE_NOTIFY_FALLBACK_MS = 0;
+let WAITING_NOTIFY_MS = 0; // B30（US-17 / §2.2.12 判据句②）：等待确认阈值
 function init(deps) {
   getDshHome = deps.getDshHome; petSay = deps.petSay;
   IDLE_NOTIFY_MS = deps.IDLE_NOTIFY_MS; IDLE_NOTIFY_FALLBACK_MS = deps.IDLE_NOTIFY_FALLBACK_MS;
+  WAITING_NOTIFY_MS = deps.WAITING_NOTIFY_MS;
 }
 
 let completionWatcherTimer = null;
@@ -42,10 +45,12 @@ const GATE_TURN_BOUNDARY_VER = 2;                    // 规则② rows.turnBound
 const GATE_STALE_MAX_MS = 30 * 1000;                 // 规则③′ stale 抑制上界（持续 stale ⇒ 按 unavailable 处置）
 const SESSION_LOG_NAME = 'session.v3.jsonl.zstd';    // 规则① 具名谓词：深度 3 段 + 文件名写死（不做目录递归遍历）
 const PROJCACHE_SEGMENTS = ['storages', 'session_projcache', 'sessions'];
-let completionGateMemo = { lastBusyAt: 0, verdict: null, staleSince: 0 }; // 按末次写入时刻记忆 + stale 上界起算点
+// B30：记忆扩两键（`lastStepStartSeq` / `lastTurn`）——等待面复用同一次 probe 结果（全键五键；§2.2.12 判据句②尾注）
+let completionGateMemo = { lastBusyAt: 0, verdict: null, staleSince: 0, lastStepStartSeq: null, lastTurn: null };
 let completionGateProbeRunning = false;              // 判定在途标记（防重叠；与 fallbackScanRunning 同形）
 let completionGateDiagLogged = false;                // 降级诊断行至多一条 / 监视器生命周期
 let completionGateStaleLogged = false;               // stale 诊断行至多一条 / 监视器生命周期
+let waitingNotifiedTurn = null;                      // B30（US-17）：等待提醒的回合号记忆（每回合至多一次；随监视器生命周期重置）
 
 // ---------------------------------------------------------------------------
 // Notifications
@@ -112,13 +117,15 @@ async function latestMtimeAsync(dir, relPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * 完成判定（规则 ①–⑤）：一次性给出 `done` / `open` / `stale` / `unavailable` 四态之一。
+ * 完成判定（规则 ①–⑤）：一次性给出 `done` / `open` / `stale` / `unavailable` 四态之一；
+ * 返回 `{ verdict, lastStepStartSeq, lastTurn }`（B30：后两键供等待面复用——同一读面，零新增读）。
  * 取档（规则① 具名谓词）：L = `<dshHome>/sessions/<项目段>/<会话段>/session.v3.jsonl.zstd` 中 mtime 最大者
  *   （深度 3 段 + 文件名写死，**无 `**` 无界写法、不做目录递归遍历**——按会话段数计，不按文件数计）；
  *   C = `<dshHome>/storages/session_projcache/sessions/*.json` 中 mtime 最大者。
  * 全程 fs.promises（调用处无同步 I/O）；全包 try/catch（读失败不抛出——不新增失败面）。
  * 规则②：L 读不出 / C 缺失 / 不可解析 / 无 `record.rows.turnBoundary` / `ver !== 2` / 无 `val` ⇒ unavailable；
- * 规则③：`mtime(C) + GATE_FRESH_TOLERANCE_MS < mtime(L)` ⇒ stale；规则④：`openTurnStartSeq !== null` ⇒ open。
+ * 规则③：`mtime(C) + GATE_FRESH_TOLERANCE_MS < mtime(L)` ⇒ stale；规则④：`openTurnStartSeq !== null` ⇒ open；
+ * 规则⑤（B30 收紧）：`openTurnStartSeq === null` ∧ 有回合历史（`lastStepStartSeq !== null`）⇒ done；无历史 ⇒ 按 open 同处置。
  */
 async function completionGate() {
   try {
@@ -139,10 +146,10 @@ async function completionGate() {
         } catch { /* 该会话段无日志档 ⇒ 跳过（不递归） */ }
       }
     }
-    if (logMtime === null) return 'unavailable'; // 判据不完整（读不出）⇒ 降级，不误报
+    if (logMtime === null) return { verdict: 'unavailable', lastStepStartSeq: null, lastTurn: null }; // 判据不完整（读不出）⇒ 降级，不误报
     const projDir = path.join(home, ...PROJCACHE_SEGMENTS);
     let entries;
-    try { entries = await fs.promises.readdir(projDir, { withFileTypes: true }); } catch { return 'unavailable'; }
+    try { entries = await fs.promises.readdir(projDir, { withFileTypes: true }); } catch { return { verdict: 'unavailable', lastStepStartSeq: null, lastTurn: null }; }
     let newest = null;
     for (const e of entries) {
       if (!e.isFile() || !e.name.endsWith('.json')) continue; // `.json.bak.<stamp>` 类天然排除
@@ -151,16 +158,17 @@ async function completionGate() {
       try { mtime = (await fs.promises.stat(full)).mtimeMs; } catch { continue; }
       if (newest === null || mtime > newest.mtime) newest = { mtime, full };
     }
-    if (newest === null) return 'unavailable';
+    if (newest === null) return { verdict: 'unavailable', lastStepStartSeq: null, lastTurn: null };
     let doc = null;
     try { doc = JSON.parse(await fs.promises.readFile(newest.full, 'utf8')); } catch { doc = null; }
     const rows = doc && doc.record && doc.record.rows;
     const tb = rows && rows.turnBoundary;
-    if (!tb || tb.ver !== GATE_TURN_BOUNDARY_VER || !tb.val) return 'unavailable'; // 规则②：形态不符 / 换代
-    if (newest.mtime + GATE_FRESH_TOLERANCE_MS < logMtime) return 'stale'; // 规则③：快照落后 ⇒ 本轮不提醒
-    if (tb.val.openTurnStartSeq !== null) return 'open'; // 规则④：回合在途 ⇒ 不提醒
-    return 'done'; // 规则⑤ ⇒ 提醒一次
-  } catch { return 'unavailable'; }
+    if (!tb || tb.ver !== GATE_TURN_BOUNDARY_VER || !tb.val) return { verdict: 'unavailable', lastStepStartSeq: null, lastTurn: null }; // 规则②：形态不符 / 换代
+    if (newest.mtime + GATE_FRESH_TOLERANCE_MS < logMtime) return { verdict: 'stale', lastStepStartSeq: tb.val.lastStepStartSeq, lastTurn: tb.val.lastTurn }; // 规则③：快照落后 ⇒ 本轮不提醒
+    if (tb.val.openTurnStartSeq !== null) return { verdict: 'open', lastStepStartSeq: tb.val.lastStepStartSeq, lastTurn: tb.val.lastTurn }; // 规则④：回合在途 ⇒ 不提醒
+    if (tb.val.lastStepStartSeq === null) return { verdict: 'open', lastStepStartSeq: null, lastTurn: tb.val.lastTurn }; // B30 判据句①：无回合历史 ⇒ 按 open 同处置（不提醒）
+    return { verdict: 'done', lastStepStartSeq: tb.val.lastStepStartSeq, lastTurn: tb.val.lastTurn }; // 规则⑤（B30 收紧：会话有回合历史）⇒ 提醒一次
+  } catch { return { verdict: 'unavailable', lastStepStartSeq: null, lastTurn: null }; }
 }
 
 /** 降级诊断行（规则② / ③′）：每监视器生命周期至多一条（`completionGateDiagLogged` 封口）。 */
@@ -204,6 +212,27 @@ function completionGateDue() {
 }
 
 /**
+ * 等待确认的处置（B30 / US-17；判据句② 的纯算术面——无 I/O，与 `completionGateDue()` 同形）：本轮是否应发等待提醒。
+ * 读记忆四键（`lastBusyAt` / `verdict` / `lastStepStartSeq` / `lastTurn`；`staleSince` 仅完成面 ③′ 用）；
+ * `notifiedForCycle` 不参与（独立旗标 ⇒ 与「一个活动周期一次提醒」解耦）；与「完成」互斥由 verdict 单值保证。
+ */
+function completionGateWaitingDue() {
+  const memo = completionGateMemo;
+  if (lastBusyAt === 0 || memo.lastBusyAt !== lastBusyAt) return false;
+  if (memo.verdict !== 'open' || memo.lastStepStartSeq === null) return false;
+  if (waitingNotifiedTurn === memo.lastTurn) return false;
+  return Date.now() - lastBusyAt > WAITING_NOTIFY_MS;
+}
+
+/** 等待确认提醒一次（B30 / US-17）：既有 `notify()` + `petSay()`；按回合号记忆 ⇒ 每回合至多一次。 */
+function completionGateWaitingFire() {
+  const msg = 'Bigfish 可能正在等你确认';
+  notify(msg, '助手已静默片刻；若它没有在跑长任务，回来看看吧');
+  petSay('等你确认哦！');
+  waitingNotifiedTurn = completionGateMemo.lastTurn;
+}
+
+/**
  * 判定准入（每静默窗至多一次读）：异步 + 防重叠；结果按发起时的 `lastBusyAt` 记忆——任何新写入
  * （含 `setLastBusyAt` 跨模块清零）自动失效重判。判定不抛（内部 try/catch），catch 仅作兜底。
  */
@@ -211,14 +240,17 @@ function completionGateProbe() {
   if (completionGateProbeRunning) return;
   completionGateProbeRunning = true;
   const at = lastBusyAt;
-  completionGate().then((verdict) => {
+  completionGate().then((result) => {
     // 监视器已停（退出路径 / before-quit）⇒ 在途判定结果不再消费（不新增「退出期提醒」面）
     if (!completionWatcherTimer) return;
+    const verdict = result.verdict;
     completionGateMemo.lastBusyAt = at;
     completionGateMemo.staleSince = verdict !== 'stale'
       ? 0
       : (completionGateMemo.verdict === 'stale' && completionGateMemo.staleSince > 0 ? completionGateMemo.staleSince : Date.now());
     completionGateMemo.verdict = verdict;
+    completionGateMemo.lastStepStartSeq = result.lastStepStartSeq; // B30：返回三键写回（等待面复用）
+    completionGateMemo.lastTurn = result.lastTurn;
     if (verdict === 'unavailable') completionGateLogDiag();
     else if (verdict === 'stale') completionGateLogStale();
     if (completionGateDue()) completionGateFire();
@@ -237,6 +269,8 @@ function completionGateProbe() {
  * B09（§2.2.12）判定面：静默达阈值后先过 `completionGate()`（读 Harness 会话投影缓存的回合边界 +
  *   会话日志 mtime 新鲜度，四态 open / stale / unavailable / done）——done ⇒ 提醒一次；open（回合在途）/
  *   stale（快照落后）⇒ 本轮不提醒（非降级）；unavailable ⇒ 退回 IDLE_NOTIFY_FALLBACK_MS（30 s = 现状语义）+ 一条诊断行。
+ * B30（§2.2.12 判据句①②）：done 另须「会话有回合历史」（T40 启动零误报——新建会话按 open 处置）；
+ *   静默达 WAITING_NOTIFY_MS 且 verdict = open 且有历史 ⇒ 「等待确认」提醒一次（每回合至多一次，独立于完成面）。
  *   判定为 fs.promises 异步、按 lastBusyAt 记忆（每静默窗至多一次读）⇒ 5 s 回调内仍无同步 I/O。
  * 事件过滤（watch 与回落同谓词 = isIgnoredPath）：路径任一段落为 profiles / node_modules 的变动不算 busy
  *   （= 旧实现的 skip 语义原样）。
@@ -244,7 +278,8 @@ function completionGateProbe() {
 function startCompletionWatcher() {
   stopCompletionWatcher();
   // 判定面随监视器生命周期重置（诊断行「每生命周期至多一条」的口径 = 本处重置）
-  completionGateMemo = { lastBusyAt: 0, verdict: null, staleSince: 0 };
+  completionGateMemo = { lastBusyAt: 0, verdict: null, staleSince: 0, lastStepStartSeq: null, lastTurn: null };
+  waitingNotifiedTurn = null; // B30：等待面节流同处重置（与记忆同处）
   completionGateDiagLogged = false;
   completionGateStaleLogged = false;
   let useWatch = false;
@@ -286,6 +321,8 @@ function startCompletionWatcher() {
       // 处置面：done ⇒ 提醒一次；open / stale ⇒ 本轮不提醒；unavailable ⇒ 退回 30 s（现状语义）
       if (completionGateDue()) completionGateFire();
     }
+    // B30（US-17）等待面：判据句②（open ∧ 有历史 ∧ 静默达标 ∧ 本回合未提醒）——独立旗标，与完成面互斥由 verdict 保证
+    if (completionGateWaitingDue()) completionGateWaitingFire();
   }, 5000);
 }
 

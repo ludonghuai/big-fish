@@ -55,6 +55,7 @@
       "shell-pet-physics.js",
       "pet-work-core.js",
       "shell-pet-work.js",
+      "affinity-core.js",
       "shell-affinity.js",
       "shell-mode.js",
       "shell-plugins.js",

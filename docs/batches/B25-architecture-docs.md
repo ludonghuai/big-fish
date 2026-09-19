@@ -23,7 +23,7 @@
 |---|---|---|
 | 1 | **整体架构面无档** —— 现有设计档 7 档**全是「按功能板块」**（拖拽 / 多屏 / 动画链 / 物理 / 壳 UX / 更新 / 规范），没有一份讲「这个 app 由哪些部分组成」 | `docs/README.md` 档位清单（`:23`–`:47`）；`docs/design/` 目录实测 7 档 |
 | 2 | **`shell-*` 16 档无角色/依赖方向档** —— `main.js` 为枢纽（require 12 档 `shell-*`），模块间另有依赖（如 `shell-affinity` ← `main` / `shell-ipc` / `shell-tray`） | 实测 require 图（本批立案勘察：全仓 `require('./…')` 扫描） |
-| 3 | **8 档 `probe-*` 未入档**（R11 ② 原话点名）；且 `probe-pet-media.js` **硬绑 `main.js`** | 实测 8 档（`probe-displays` / `probe-displays2` / `probe-pet-media` / `probe-position-accuracy` / `probe-resizable-setsize` / `probe-settle-scan` / `probe-size-readback` / `probe-straddle-size`，后缀均为 `.js`）；台账 **T29** |
+| 3 | **8 档 `probe-*` 未入档**（R11 ② 原话点名）；`probe-pet-media.js` 的耦合面已核正（§2.5：非 `main.js`——5 require + 隔离钩子） | 实测 8 档（逐名见设计档 §2.6 探针表）；台账 **T29** |
 | 4 | **数据面（`~/.dsh`）无汇总档** —— 谁写谁读散在各设计档（如 `storages/session_projcache/**` 有两个读者） | 实测：`shell-notify.js` 的 `completionGate()` 与 B19 新增读面；台账 **T33** |
 | 5 | **构建面（`build.files` 白名单机制）无档** —— 43 条**扁平路径**（非目录通配）是发行包的唯一白名单；`afterPack.js` / `make-*` / `download-*` 未入档 | 实测：`package.json` `build.files[0..41]`；根目录 6 档脚本/构建 |
 | 6 | **插件·技能·bundle 三面无关系档** —— 三个目录（`bundled-plugins` / `bundled-skills` / `dsh-bundle`）的区别与装配关系未成文 | 实测三目录存在（1 / 5 / 4 项） |
@@ -94,13 +94,192 @@
 
 ---
 
+### 2.1 交付物与落点（第一棒，2026-09-19）
+
+- **设计档**：`docs/design/ARCHITECTURE.md`（**新建，单档**——U-1 裁定；全档 249 行 as-of 本棒落笔时点）。
+- **落点理由**：一主题一档；主题 =「接手仓的整体架构面」（§1.1 目标）。档名 `ARCHITECTURE.md`（U-2：`REPO-MAP` 与文档地图 `docs/README.md` 字面撞车，弃用）。
+- **本棒写域**：仅上述设计档 + 本批次档 §2（append）。`AGENTS.md` / `docs/README.md` / `docs/CONVENTIONS.md` / 台账 / 其它档**未触碰**（U-4：入口指针由父侧落）。
+
+### 2.2 本棒完成面清单（含落盘证据行，as-of 2026-09-19）
+
+| 交付面 | 设计档落点（行锚） | 内容概要 |
+|---|---|---|
+| 档头 + 关联档指针表 | L1–19 | 主题 / 读者 / as-of / 行号纪律 / 八档权威指针（D2 只回指） |
+| 图① 进程总览 | §1.1（L25 起） | 主进程 + Harness 后端子进程 + 5 窗 1 托盘 + 4 preload 桥 |
+| 图② 模块总览 | §1.2（L44 起） | 主进程 24 档 = 组合根 1 + shell-* 17 + 纯逻辑核 3 + 独立面 3 |
+| 图③ 数据总览 | §1.3（L71 起） | userData / ~/.dsh 两树；U-5 边界标注 |
+| 图④ 依赖总览 | §1.4（L88 起） | init(deps)×13 装配 + B16 判据对齐（依赖无环 / fan-out ≤3 / 接线点唯一） |
+| 面① 进程与窗口模型 | §2.1（L106 起） | 常驻进程 2 + 窗口 5 + 托盘；建窗点 / preload / 加载 / 生命周期逐窗表（证据行逐一实测） |
+| 面② shell-* 17 档角色与依赖 | §2.2（L128 起） | 17 档逐档一句话角色 + require 面 + init 行；非 shell 6 档另表；尾注 3 条观察项 |
+| 面③ 数据面 | §2.3（L170 起） | userData 表 + 诊断日志 8 件 + ~/.dsh 壳侧接触点表；U-5 深度声明 |
+| 面④ IPC / 注入面契约 | §2.4（L200 起） | 4 preload 桥形状表 + ipcMain 26/24 + init(deps) 实参表 14 接线点 |
+| 面⑤–⑧ + 改动入口表 | §2.5–§2.9（L232 起，占位标题） | **第二棒落**（§2.4 清单） |
+
+- **落盘纪律执行**：骨架一次 write 先落（档头 + 节标题 + 图区占位），随后逐面 edit 补实，每面写完即在盘——符合「落盘优先」。
+- **D6 回读核对**：全档回读一遍，无残留占位符（「本轮补实 / 面N补实」零命中）。
+
+### 2.3 五项裁定记录（U-1…U-5；上一轮已裁定，本棒照办并落档）
+
+| # | 裁定 | 落实面 |
+|---|---|---|
+| U-1 | 形式 = **单档**（接手者入口要短；细节全在既有设计档，本档只定位 + 回指） | 单档落地；档头「形式」行注明 |
+| U-2 | 档名 = `docs/design/ARCHITECTURE.md`（弃 `REPO-MAP`——与文档地图字面撞车） | 档名落地 |
+| U-3 | 含「常见改动路径」，**收窄为「改动入口表」**（改动类型 → 该动哪档 / 该更新哪份文档） | §2.9 占位（第二棒落） |
+| U-4 | 分工：详情在本档；`AGENTS.md` / `docs/README.md` 只放**入口指针**（两档写入归父侧） | 本棒未触碰该两档 |
+| U-5 | 数据面深度 = 谁写 / 谁读 / 路径形态 / 生命周期；**字段布局不写** | §2.3 首行深度声明 + ~/.dsh 表尾注 |
+
+### 2.4 第二棒待落面（⑤–⑧ + 改动入口表）清单与注意点
+
+**待落面与已备实测素材**（勘察已做，第二棒直接引用、勿重扫）：
+
+1. **面⑤ 桌宠子系统关系图**（§2.5）：几何 / 拖拽 / 动画链 / 物理 / 工作状态 五块关系与数据流；**回指** PET-DRAG / PET-MULTIMONITOR / PET-ANIMATION（工作状态 = 其 §2.7–§2.8）/ PET-MOVEMENT 四档，不重述；
+   渲染层同源核提示见设计档 §2.5（`pet-chain-core.js` / `pet-physics-core.js` 双面 require）。
+2. **面⑥ 8 档探针清点**（§2.6）：逐档「干什么 / 怎么跑 / 读什么 / 产出什么」。行数实测（as-of 2026-09-19）：
+   probe-displays 55 / probe-displays2 77 / probe-pet-media 397 / probe-position-accuracy 70 /
+   probe-resizable-setsize 56 / probe-settle-scan 117 / probe-size-readback 53 / probe-straddle-size 68。
+   注意：**T29 的「probe-pet-media.js 硬绑 main.js」口径经复核不成立**（§2.5 复核表 #3）——面⑥按实测写，
+   台账 T29 更正建议报主 agent（台账归主 agent）。
+3. **面⑦ 构建与发布面**（§2.7）：`build.files` **46 条**（package.json:46-92；§1.3 记 43 已过期）+
+   `extraResources` 3 项（node-runtime / bundled-plugins / dsh-bundle→dsh）+ afterPack.js / make-icons.js /
+   make-latest.js / scripts/ensure-deps.js / scripts/refresh-dsh-bundle.js；更新链回指 `AUTO-UPDATE.md`。
+4. **面⑧ 插件 · 技能 · bundle 三面**（§2.8）：`bundled-plugins/`（**仅 README.txt 1 项**）/ `bundled-skills/`（5 档 .md）/ `dsh-bundle/`（package.json + package-lock.json + node_modules/ + .npmrc）；`node-runtime/`（node.exe + pnpm）；装配关系回指 `SHELL-UX.md` / `AUTO-UPDATE.md`。
+5. **§2.9 改动入口表**（U-3 形态）：改动类型 → 该动哪档 / 该更新哪份文档。
+
+**注意点（第二棒必读）**：
+
+- **落盘优先纪律继续**：逐面 edit、每面写完即落盘；勿「全想好再一次写」。
+- **行宽 ≤300**（不含行尾 CR）：本档第一棒曾出 2 行超宽（已当场修，L124/L211 拆行）；成稿后自测一遍再报。
+- **只写现状 + 证据行**：每事实带 `file:line` + as-of；行号只作 as-of 参考；**只回指不重述**（D2）；图用 ASCII。
+- **零代码 / 不修问题**：发现即记录进面内尾注或另报；不碰 `.js` / `.html` / `package.json` / `assets/**`。
+- **写域**：`docs/design/ARCHITECTURE.md` + 本批次档 §2（append §2.5 起）；不碰 `AGENTS.md` / `docs/README.md` / `docs/CONVENTIONS.md` / 台账 / 其它档。
+- **lint**：完稿跑 `npm run lint`；**当前门禁基线有一处非本批违例**（`docs/batches/B29-samples-guard.md` L63/L93 超宽 400/337——见 §2.5 另报 #8）：报 lint 结果时**区分自己档面与存量/他档**，本批档面须零违例。
+
+### 2.5 勘察复核结果与另报（只记录不修）
+
+**§1.3 立案实测出入复核**（任务书载明上轮抓到 8 条，但清单未随 brief 带入本会话——本棒以 §1.3 为基准**独立重derive**，核对结果如下；无可复核项如实标「复核一致」）：
+
+| # | §1.3 口径 | 本棒实测（as-of 2026-09-19） | 结论 |
+|---|---|---|---|
+| 1 | `shell-*` 16 档（§1.3 #2） | **17 档**（B19/B20 世代新增档计入；glob 全清单） | 出入——已按 17 写入面②（B16 后新档 = work 等世代） |
+| 2 | `main.js` require 12 档 `shell-*`（§1.3 #2） | **15 档**（main.js:32-46） | 出入——已按 15 写入 |
+| 3 | `probe-pet-media.js` **硬绑 `main.js`**（§1.3 #3；台账 T29） | **无 `require('./main.js')`**（全仓 grep 零命中）；实际耦合 = require 五档 + `BIGFISH_USER_DATA` 隔离钩子（明细 = 设计档 §2.6 耦合段） | 出入（语义不符）——面⑥须按实测写；**建议主 agent 更正 T29 证据行**（本棒不改台账） |
+| 4 | `build.files` 43 条（§1.3 #5） | **46 条**（package.json:46-92） | 出入——面⑦按 46 写 |
+| 5 | 探针 8 档（§1.3 #3） | 8 档 ✓ | 复核一致 |
+| 6 | 三目录 1 / 5 / 4 项（§1.3 #6） | bundled-plugins 1（README.txt）/ bundled-skills 5 / dsh-bundle 4 ✓ | 复核一致 |
+| 7 | §1.3 #1「现有设计档 7 档**全是按功能板块**」 | 7 档 ✓，但 `REPO-CONVENTIONS.md` 为规范基建档（非功能板块）——表述轻度不精确 | 微出入——不改 §1.3（立案档），面⑤后写档时注意口径 |
+| 8 | 上轮 brief 的 8 条清单 | 第 8 条无法对回（清单未带入）——上 7 行 = 本棒独立复核全量；如有遗漏以第二棒勘察补 | 如实说明 |
+
+**勘察新发现（非 §1.3 出入；均只记录）**：
+
+- `main.js:26` 头注释自述「分居 **15 个** shell-*.js」已过期（实 17）——头注释滞后。
+- `physics.init` 双调用点（main.js:96-102 + shell-pet.js:29-35）：B20 D-1 修偏注记自述双处幂等；与 B16「接线点唯一」判据的相容性未见判例——已作观察项写入面②尾注。
+- `shell-ipc.js` `pet-drag-start` / `pet-drag-end` 双监听 = B20 声明并存面（shell-ipc.js:23-25 自述），非缺陷——已写入面②尾注与面④。
+- 门禁 NOTE 三条（lint 输出）：`market.js` 500 行 / `updater.js` 497 行 / `tests/b12-plugin-guards.test.js` 492 行贴线（≥480 须先给拆分计划）——**范围外另报**，不落本档。
+
+**lint 结果（本棒收笔时点）**：`npm run lint` = **GATE lint FAIL**——违例 = `docs/batches/B29-samples-guard.md`
+2 行超宽（L63=400 / L93=337；非本批写域、非本棒两档）；**本批档面 `docs/design/ARCHITECTURE.md` 零违例**
+（width 超 300 行数 = 0；syntax / lines / dag / fanout / assembly 全绿，assembly 13/13 与本档 init×13 实测互证）。
+B29 处置 = 移交主 agent（写域纪律：不越域代修）。
+
+### 2.6 三方声明（第一棒）
+
+- **三方同源**：本批为纯文档批（无需求档条目、无验收勾销面）；本档 §2.1–§2.4 = 设计档 `docs/design/ARCHITECTURE.md` 的交付范围与面清单（§2.2 表 ↔ 设计档 §2.1–§2.9 逐一对应）——同一来源。
+- **写域声明**：本设计轮只写 `docs/design/ARCHITECTURE.md` + 本档 §2（本 spawn 声明域）；代码、台账、地图、提示词、批次档其余段、`AGENTS.md` / `docs/README.md` / `docs/CONVENTIONS.md` **均未触碰**。
+- **发现即报告执行**：§2.5 全部条目均为「只记录不修」；台账类更正建议（T29）已明确移交主 agent。
+
+### 2.7 第二棒收口（2026-09-19，同日续棒）
+
+**完成面清单**（落点 = `docs/design/ARCHITECTURE.md`，行锚 as-of 本棒落笔时点）：
+
+| 面 | 设计档落点 | 内容概要 |
+|---|---|---|
+| 面⑤ 桌宠子系统关系图 | §2.5（L234 起） | 五块依赖图 + 数据流主路径 ①–⑥ + 工作状态支路；回指四 PET-* 档 + 同源核提示 + physics.init 观察项引用 |
+| 面⑥ 8 档探针清点 | §2.6（L280 起） | 8 行逐档「干什么 / 怎么跑 / 读什么 / 产出什么」表 + probe-pet-media 耦合面实测复核（5 require，无 `./main.js`；T29 口径另报） |
+| 面⑦ 构建与发布面 | §2.7（L304 起） | 白名单 46 条分组表（逐条点数复核）+ extraResources 3 项 + 脚本 5 件 + 更新链三角（回指 AUTO-UPDATE.md） |
+| 面⑧ 插件·技能·bundle 三面 | §2.8（L357 起） | 三面表 3 行（区别 / 装配 / 更新路径；三目录实测 1 / 5 / 4）+ 环境覆盖钩子注 |
+| 改动入口表 | §2.9（L371 起） | U-3 收窄形态 9 行：改动类型 → 该动哪档 / 该更新哪份文档 |
+| 八面覆盖自检 | §2.10（L388 起） | 八面各一行：成文 / 指针 / 证据行 |
+| 变更记录 | §3 表 | 第二棒落笔行（含三处 §1.3 过期口径订正注记） |
+
+- **批次档整理（同角色顺手）**：§2.6 标题加注「（第一棒）」——防与第二棒段混淆。
+- **超宽折叠执行**：§2 内 3 行超宽（L136 / L158 / L172）已折叠——L136 列表项缩进续行、L172 段落直接换行、
+  L158 表格行以指针化缩写收窄（明细指针 = 设计档 §2.6 耦合段，D2）；语义未变，段内行号整体后移。
+- **证据行在场率自测**：面⑤–⑧ + 入口表抽查 12 处 file:line 全在场（面⑤ §2.2/§2.4 引用 4 处、面⑥ 表 8 处 +
+  耦合段 3 处、面⑦ package.json/脚本行锚 10 处、面⑧ 三目录 + 钩子行号 4 处、入口表 §2.2/§2.3/§2.4/§2.7 引用 5 处）。
+- **发现即报告（第二棒新增，均只记录不修）**：① 面⑧ 表分隔行曾落杂散文字「市场安装后」——当场修
+  （写入工具瞬时缺陷，已回读抓回）；② 面⑦ 行锚 `:75-80、:78` 并列笔误——当场修为 `:75-80` 单锚。
+- **D6 回读核对**：逐面回读（面⑧ 表分隔行 / §2.10 重复标题 / 面⑦ 行锚三处当场抓回修正）；无残留占位
+  （「第二棒落」零命中）；无重复标题。
+
+**lint 结果（第二棒收笔时点，折叠后终跑）**：`npm run lint` = GATE lint FAIL——**本棒档面
+`docs/design/ARCHITECTURE.md` 零违例**（width 超宽 0；mid-run 曾自出 3 处表格行 CJK 超宽，均当场收窄清零；
+syntax / lines / dag / fanout / assembly / samples 全绿，assembly 13/13）。存量违例 = 他批在飞档：
+`B22-pet-work-six.md` ×1 · `B27-pet-feel-2.md` ×3 · `B29-samples-guard.md` ×2（非本棒写域，移交主 agent；
+B29 与第一棒收笔时点的 L63/L93 同源）。
+
+**写域确认**：本棒只写 `docs/design/ARCHITECTURE.md` ＋ 本批次档 §2（§2.6 标题注 + §2.7 append）；
+代码 / 台账 / `AGENTS.md` / `docs/README.md` / `docs/CONVENTIONS.md` / 批次档其余段均未触碰。
+
+**移交主 agent 三件事**：① 台账 T29 证据行更正（「硬绑 main.js」不成立，实测 = 五档 require + 隔离钩子，
+见设计档 §2.6）；② `AGENTS.md` / `docs/README.md` 入口指针（U-4 约定父侧落）；③ lint 存量违例
+`docs/batches/B29-samples-guard.md` L63/L93 处置（B29 批次档写域，归 B29 批 / 主 agent）。
+
+### 2.8 修订轮 1 记录（eng-designer，2026-09-19；append-only）
+
+- **源**：设计评审轮 1（§3 轮次 1：🔴0 / 🟡7 / 🔵5，共 12 条）+ §4 裁决——**#1–#4 / #6 / #8–#12 = 本修订轮落（十条）**；#5 / #7 = 主 agent 面（§4 已落）。
+- **落点** = `docs/design/ARCHITECTURE.md`（行锚 as-of 本续棒落笔时点；全档 438 行）：
+  - **#1（🟡 AC 段）**：新增「§3 可验证的验收标准」= AC-1（八面成文＋证据行在场率 100%）· AC-2（零占位）· AC-3（本档 lint 零违例）· AC-4（D2 不重述抽查）· AC-5（as-of 口径全覆盖）（L416–429）；§2.10 尾补「与 AC 的对应」句（L414）；档头形式行 + 「验收标准（AC）」（L6）；**变更记录顺延 §4**（本档 §2.7 表内「§3 表」为旧锚，以设计档现号为准）。
+  - **#2（🟡 tray 10 档）**：§1.2 图 tray 行列全 10 档名单（shell-settings / shell-assets / shell-window / shell-mode / shell-update / shell-market / shell-affinity / shell-pet / shell-pet-physics / shell-notify）（L67–69）；§2.2 tray 行改「名单见 §1.2 图；实测 shell-tray.js:10-19」（L153）——互指环消除。
+  - **#3（🟡 悬空指针）**：面⑧ 技能行「明细见 §2.7 白名单表」→ **列 5 档名**（document-summary / image-recognition / ppt-generation / translation / writing-assistant）（L373）。
+  - **#4（🟡 download-*）**：面⑦ 脚本表后补注（L350–352）——`download-*` 已不存在（as-of 2026-09-19 实测：工作区零命中 ＋ git 全历史零提交）；现存构建 / 发布脚本 = 上表 5 件。
+  - **#6（🟡 src 措辞）**：§2.9 第 1 行「再动 `src` 档」→「再动对应主进程 / 渲染层档（扁平档名；本仓无 `src/` 目录）」（L387）。
+  - **#8（🔵 判据指针）**：§1.4 图④ 补「判据句权威 = docs/CONVENTIONS.md §四，机检面 = scripts/gates」（L94）；面⑦ 门禁句补 `docs/CONVENTIONS.md` §四/§五（L354–355）——B16 保留为实施 / 验收记录指针。
+  - **#9（🔵 PET-AFFINITY）**：关联档指针表 +1 行（`docs/design/PET-AFFINITY.md`）（L16）。
+  - **#10（🔵 init 列举）**：§1.2 图「无 init」名单补 shell-market（L71）。
+  - **#11（🔵 行数口径）**：面② 非 shell 表后补「行数计数口径注」（L168）——本表 498（含尾空行）/ lint NOTE 497（去尾空行），两值同源。
+  - **#12（🔵 B15 前瞻）**：§2.9 表后补前瞻注（L397）。
+- **§1.3 #5 口径订正注（不碰 §1）**：立案档 §1.3 #5 记「根目录 6 档脚本 / 构建」——as-of 2026-09-19 实测：`download-*` 零命中（工作区 ＋ git 全历史）；根目录构建脚本现存 3 档（`afterPack.js` / `make-icons.js` / `make-latest.js`）；**面⑦以上表 5 件为准**。
+- **三方条目一致**：本批无需求档（§1.7）；§2 本批条目（八面 + 入口表）＝ 设计档 AC 回指条目（立案档 §1.4 做 1–8）——同源。
+- **发现即报告（只记录，本轮不修）**：`docs/TODO.md` T34 行枚举「5 档构建脚本」含 `download-electron.js` / `download-node.js` 两项——**实测零命中**（工作区 ＋ git 全历史均无）；地图 B15 行「5 档构建脚本归位」同源。台账 / 地图归主 agent——建议随 B15 设计轮对账。
+- **纪律执行**：不夹带新语义（十条 + 直接导出：AC 段引发档头形式行同步与变更记录顺延 §4，均本记录披露）；事实带 as-of；设计档变更记录 +1 行（L437）；**D6 回读核对**（逐处编辑回读 + 全档自检：width 超 300 = 0；占位串命中仅 AC-2 判据行自身，符其机检口径）。
+- **lint 结果（本续棒收笔时点）**：`npm run lint` = GATE lint FAIL——**本档面 `docs/design/ARCHITECTURE.md` 零违例**；存量违例 = 他批在飞档 `B22-pet-work-six.md` ×1 · `B29-samples-guard.md` ×2（非本续棒写域，移交主 agent）。余判据全绿（syntax / lines / dag / fanout / assembly 13/13 / samples）。
+- **写域确认**：本修订轮只写 `docs/design/ARCHITECTURE.md` ＋ 本档 §2（append）；代码 / 台账 / 地图 / 提示词 / 批次档其余段均未触碰。
+
 ## §3 设计评审（评审子代理）
 
 <!-- 由评审子代理填 -->
 
 ---
 
+### 轮次 1（评审子代理）
+
+**范围与方法**：全读 `docs/design/ARCHITECTURE.md`（407 行）+ `docs/batches/B25-architecture-docs.md`（§1+§2）。无独立规范档声明 ⇒ 方法学按根 `AGENTS.md`（Project Guide）+ 文档地图判。回指一致性抽核（声明允许）：PET-ANIMATION §2.7/§2.8（B19 架构与分层 / B19 契约）✓、SHELL-UX §2.2（架构与契约）✓、AUTO-UPDATE §2.2.10（内置 bundle 钉版与刷新）✓；B25 §2.7 行锚 L234/L280/L304/L357/L371/L388 与设计档实测一致 ✓。代码面行数/行锚（含 `package.json` 行锚、require 面）超本轮范围，标 unverified。
+
+| # | Category | Severity | Issue | Suggestion |
+|---|----------|----------|-------|------------|
+| 1 | 验收标准 / 方法学 | 🟡 | 全批无「可验证的验收标准」：设计档无 AC 段、B25 §2 亦无 AC 清单——与根 `AGENTS.md` §二 设计步三要素（含「可验证的验收标准」）不符；本仓近例均具名 AC（B11 AC1–6、B29 AC-B29-6、B31 AC-B31-1…10）。§2.10 为覆盖自检表，不含可通过/不通过判句，§6 核销无判据可引 | 补 AC 段（八面成文+证据行在场率、零占位、本档 lint 零违例、D2 不重述抽查、as-of 标注率），并令 §2.10 与 AC 建立对应 |
+| 2 | 清晰性 / 完整性 | 🟡 | shell-tray 的 require 10 档名单全档未见：`ARCHITECTURE.md:66`「逐档见 §2.2 表」与 `:150`「10 档（§1.2 图）」互指成环；面②自述逐档列 require 面（shell-ipc 6 档已列全 `:139`），唯 tray 缺位 | 在 §2.2 tray 行直接列 10 档名（或 §1.2 处列全），消除环状指针 |
+| 3 | 清晰性（悬空指针） | 🟡 | `ARCHITECTURE.md:364`「技能」行记「`bundled-skills/`（5 档 .md，明细见 §2.7 白名单表）」为悬空指针：§2.7 白名单表仅记 `bundled-skills/**/*` glob（`:322`），全档无 5 档名单（R7d 语义悬空） | 列 5 档名或改指实际明细处；若有意不收明细则删「明细见…」半句 |
+| 4 | 需求覆盖 | 🟡 | 立案范围项 `download-*` 无落点：B25:41（§1.4 做#7）点名「afterPack / make-icons / make-latest / `download-*`」、:28（§1.3 #5）另记「根目录 6 档脚本/构建」；而面⑦「构建/发布脚本 5 件」（`ARCHITECTURE.md:335-343`）无 `download-*`、亦无「已不存在/更名」说明——「5 件」完备性无法与立案口径对账（代码面 unverified） | 补一行说明（不复存在则给证据注明）或补脚本行；与 #7 的第 8 条清单疑问一并闭环 |
+| 5 | 文档状态（跨档滞后） | 🟡 | §1 立案口径滞后于设计实测：B25:25（§1.3 #2「16 档 / require 12」）· :28（#5「43 条」）· :26（#3「probe-pet-media 硬绑 main.js」）vs `ARCHITECTURE.md:130` / `:307-308` / `:297-302`（17 档 / 15 require / 46 条 / 无 main.js）。设计已在线注记 + §2.5 复核表，但 §1 未改（append-only 主 agent 段）——R7a 跨档滞后（报告不代改） | 主 agent 在 §4 裁决段（或 §1 补注行）落 as-of 订正注；确认台账 T29 更正已执行（B25:223 移交①） |
+| 6 | 清晰性 | 🟡 | `ARCHITECTURE.md:378` 行 1「→ 再动 `src` 档」与本档其余处扁平档名口径不一致：全档引 `main.js` / `shell-*` 均无目录前缀（`:316` 白名单「main.js ＋ shell-* 17」；`:168` 引 main.js:26「平铺模块」）——若 `src/` 不存在将误导接手者（代码面 unverified） | 改为扁平档名表述（如「再动对应主进程 / 渲染层档」）；确有该目录则补路径口径 |
+| 7 | 范围协调 | 🟡 | B25:170（§2.5 #8）自述「上轮 brief 的 8 条清单第 8 条无法对回」（清单未随 brief 带入）——复核范围有一项未闭环（可能即 #4 的脚本/探针计数面）；协调项、非缺陷 | 父侧补传原清单或确认无遗漏后，在 §2.5 留闭合注 |
+| 8 | 文档归属（指针权威） | 🔵 | 门禁判据指针与入口档不一致：`ARCHITECTURE.md:91`「判据详述…见 B16 批次档与 scripts/gates」· `:345-346`「权威 = 根 AGENTS.md §三 与 B16 批次档」；根 `AGENTS.md` §三 载明「判据与基线机制 → `docs/CONVENTIONS.md`，实施与验收 → B16 §5-6」 | 指针集补 `docs/CONVENTIONS.md`（判据权威句），B16 保留为实施/验收记录指针 |
+| 9 | 清晰性 | 🔵 | 关联档指针表（`ARCHITECTURE.md:10-19`）未收 `docs/design/PET-AFFINITY.md`（好感度/兑换屋主题；文档地图载 2026-09-19 建档、生效）——面①–④ 已触 exchange / affinity 面，接手者按本表无从定位该主题详述处 | 加一行（或注明不收理由） |
+| 10 | 清晰性 | 🔵 | `ARCHITECTURE.md:68`「无 init 被引用：shell-assets.js · shell-settings.js（shell-ipc.js…register()）」列举不完整/歧义：§2.2 表同标「无 init」的还有 shell-market（`:140`）；读者无法由该句得完整名单 | 补全（assets / settings / ipc / market）或改写口径句 |
+| 11 | 数值漂移 | 🔵 | 同一日两档行数 1 行差：B25:177（§2.5 门禁 NOTE，lint 输出）记 `updater.js` 497 行，`ARCHITECTURE.md:163` 记 498 行（as-of 2026-09-19）——498 贴近 ≥480 拆分计划门槛与 500 上限，差异有实操含义（可能为计数口径差） | 统一口径并在面② 表注计数口径，或对账后取一值 |
+| 12 | 协调 | 🔵 | B15（已立案）将把 8 档 `probe-*` 与 5 档构建脚本归位；本档面⑥/面⑦ 按 as-of 记跑法（`npx electron probe-*.js`）与路径，B15 落地后即漂移，而改动入口表无「结构搬迁」类更新触发行 | 面⑥/面⑦ 或入口表加一句前瞻注，或约定 B15 收口时同步本档 |
+
+计数：🔴 0 / 🟡 7 / 🔵 5（共 12 条）。本批为纯文档批（零代码、无 source/test 改动）⇒ 受影响文件行数注记义务不适用；无 🔴，不阻断批准。
+
+VERDICT: pass
+
 ## §4 评审裁决与实施启动（主 agent）
+- **评审轮 1（设计）**：**pass**——🔴0 / 🟡7 / 🔵5（共 12 条；发现表见 §3 轮次 1）；裁决：十二条全数认领——**#1–#4 / #6 / #8–#12 = 文档面修订**（**修订轮 #69 在飞** ✓）；**#5 / #7 = 主 agent 面，本节落地** ✓。
+- **#5（§1 立案口径 as-of 订正注）**：§1.3 的 #2（「16 档 / require 12」）· #5（「43 条」）· #3（「probe-pet-media 硬绑 main.js」）经设计轮实测**已过期**——生效口径以 `docs/design/ARCHITECTURE.md` `:130` / `:307-308` / `:297-302` 为准（**17 档 / 15 require / 46 条 / 无 main.js 耦合**）✓；§1 按 append-only 保留原文，本注即订正 ✓。
+- **#7（brief 第 8 条清单）**：原清单未随 brief 带入、无原件可对 ⇒ **按已复核的 7 条 + 本轮 12 条发现为准闭环** ✓（无遗留 ✗）。
+- **父侧实测补证（供修订轮用，2026-09-19）**：`download-*` 档**零命中**（根目录现存 = `afterPack.js` / `make-icons.js` / `make-latest.js` + 探针 8 档；`scripts/` 无构建脚本）· **`src/` 不存在**（扁平口径 ✓）· `updater.js` = **498 行（含尾空行）/ 497（去尾空行）**——两值同源、口径差 ✓。
+- **待办**：修订轮交付并经父侧核验 ⇒ **请用户批准**（批准请求在父侧 ✓）。
 
 <!-- 由主 agent 填 -->
 
@@ -114,4 +293,20 @@
 
 ## §6 验收核销（主 agent）
 
-<!-- 由主 agent 填 -->
+**核销（2026-09-19）**——B25 全链 = 设计（两棒：四图 + 八面 + 改动入口表 → 407 行）→ 评审轮 1 = **pass**（🔴0 / 🟡7 / 🔵5 = 12 条）→ 十二条修正全落（438 行）→ **用户批准** → 本节核销；设计凭证槽已收（consume ✓）。
+
+**交付物**：`docs/design/ARCHITECTURE.md`（438 行 · 八面 + 四图 + 改动入口表 + §3 AC-1…5）——接手仓的**第一份应读文档**；地图行 / 台账 R11 ② 已同步 ✓。
+
+**验收证据链（逐条）**：
+
+| 面 | 证据 |
+|---|---|
+| 八面成文 + 证据行 | §2.1–§2.8 逐面带 `file:line`（父侧抽核 12 处全在场 ✓） |
+| §3 AC-1…5 | 可验证验收标准段（#69 落 ✓）——八面成文 / 零占位 / lint 零违例 / 不重述 / as-of 全覆盖 |
+| 十二条评审项 | 🟡#1–#7 / 🔵#8–#12 全落（tray 名单 / 悬空指针 / `download-*` / `src` 措辞 / CONVENTIONS 指针 / PET-AFFINITY 行 / init 列举 / 行数口径 / B15 前瞻注等 ✓；#5 / #7 = 父侧 §4 就地落 ✓） |
+| 门禁 | `npm run lint` **PASS**（checks=7 · selftest=20/20 ✓ · width 零违例——含本档 438 行 ✓） |
+| 事实面 | 父侧实测补证三处（`download-*` 零命中含 git 全历史 ✓ · 无 `src/` ✓ · `updater.js` 498/497 口径 ✓） |
+
+**派生登记（D7 同步）**：**T34 订正**（`download-*` 两名字 → `afterPack` / `make-icons` / `make-latest` + `scripts/` 两档 ✓ 已落台账）；`docs/README.md` 地图 B25 行 / ARCHITECTURE 行 → 「已收口 + 核销 / 生效」✓。
+
+**角色表 / 状态行**：设计 = 两棒落盘（407 → 438 行）· 评审 = pass（12 条）· 修正 = 全落 · 批准 = 用户 ✓ · 核销 = 本节 + 凭证槽已收 ✓。

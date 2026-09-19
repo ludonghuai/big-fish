@@ -19,7 +19,7 @@ function render() {
   if (!view) return;
   document.getElementById('usage').textContent = fmt(view.usage);
   document.getElementById('tokens').textContent = fmt(view.tokens);
-  document.getElementById('affinity').textContent = `Lv.${view.level} · ${view.points} 点`;
+  document.getElementById('affinity').textContent = view.maxed ? `Lv.${view.level} · MAX` : `Lv.${view.level} · ${view.points} 点`;
   document.getElementById('currency').textContent = fmt(view.currency);
   // 汇率独立展示（不嵌在按钮里，避免重写按钮 textContent 时把子元素抹掉）
   document.getElementById('rate-hint').textContent = `${fmt(view.exchangeRate)} token = 1💴`;

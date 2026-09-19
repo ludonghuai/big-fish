@@ -85,7 +85,7 @@ async function marketList() {
   const disabled = plugins.listDisabledPlugins(ctx);
   const bundledNames = [];
   try {
-    bundledNames.push(...fs.readdirSync(plugins.bundledPluginsDir()));
+    bundledNames.push(...fs.readdirSync(plugins.bundledPluginsDir()).filter((n) => fs.statSync(path.join(plugins.bundledPluginsDir(), n)).isDirectory()));
   } catch { /* no bundled dir */ }
   const updates = plugins.computePluginUpdates(registry.plugins, ctx);
   return { registry, installed, disabled, bundledNames, updates, profileDir: plugins.profileDir(), dshHome: backend.dshHome() };
@@ -98,7 +98,7 @@ function marketState() {
   return ({
   installed: plugins.listInstalledPlugins(ctx),
   disabled: plugins.listDisabledPlugins(ctx),
-  bundledNames: (() => { try { return fs.readdirSync(plugins.bundledPluginsDir()); } catch { return []; } })(),
+  bundledNames: (() => { try { return fs.readdirSync(plugins.bundledPluginsDir()).filter((n) => fs.statSync(path.join(plugins.bundledPluginsDir(), n)).isDirectory()); } catch { return []; } })(),
   updates: plugins.computePluginUpdates((marketRegistryCache && marketRegistryCache.plugins) || [], ctx),
   });
 }
@@ -126,11 +126,9 @@ async function marketDisable(_e, pkg) {
 
 async function marketEnable(_e, pkg) {
   const real = plugins.resolveInstalledName(pkg);
-  console.log('[bigfish] market:enable input=', JSON.stringify(pkg), 'resolved=', real, 'disabled=', JSON.stringify(plugins.listDisabledPlugins()));
   if (!real) return { ok: false, message: '无法解析插件包名：' + String(pkg).slice(0, 60) };
   if (!plugins.isPlainPackageName(real)) return { ok: false, message: '非法包名：' + real };
   const added = plugins.addBundle(real);
-  console.log('[bigfish] market:enable added=', added, 'bundles=', JSON.stringify(plugins.profileBundles()));
   return { ok: added, message: added ? `已启用 ${real}（重启后生效）` : `写入失败：${real}` };
 }
 

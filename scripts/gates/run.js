@@ -1,8 +1,8 @@
 'use strict';
 /**
- * run.js — lint 门入口：自证 → 六条判据 → 摘要行 → 退出码（0 绿 / 1 判据红 / 2 门禁自身无法完成）
- * （B16；设计档 docs/design/REPO-CONVENTIONS.md §A.2.2.1）。
- * 摘要行（机器可 grep）：`GATE lint PASS checks=6 selftest=14/14` / 六条各一行 `CHECK <名> PASS …`。
+ * run.js — lint 门入口：自证 → 七条判据 → 摘要行 → 退出码（0 绿 / 1 判据红 / 2 门禁自身无法完成）
+ * （B16 + B29；设计档 docs/design/REPO-CONVENTIONS.md §A.2.2.1 + 附 A-续 §A-B29.2.2）。
+ * 摘要行（机器可 grep）：`GATE lint PASS checks=7 selftest=20/20` / 七条各一行 `CHECK <名> PASS …`（分母动态化——DD-A18）。
  * 依赖方向：lib.js / checks.js / selftest.js；无 CLI 形参（`npm run lint` 直调）。
  */
 
@@ -22,18 +22,29 @@ function main() {
     process.exit(2);
   }
 
-  // 1) 自证（TC-B16-01…14；每次 lint 跑——DD-A6）
+  // 1) 自证（TC-B16-01…14 + TC-B29-01…06；每次 lint 跑——DD-A6）
+  // 失败分流（B29 红面口径，AC-B29-2/3）：夹具类失败 = 门禁自身健康存疑 ⇒ 退出 2；
+  // 仅现状锚（TC-B29-06，liveAnchorOnly）红 = 仓内违规而非门禁坏 ⇒ 落入判据 E 块以判据退出码报告
+  // （红面 = 退出 1 + VIOLATION samples…；fail-closed 面仍 2）。锚红但判据复检未见（瞬态竞态）⇒ 仍 2。
   const self = selftest.runSelftest();
-  if (self.failures.length > 0) {
-    lib.say(`GATE lint FAIL reason=selftest-failed pass=${self.passed}/14`);
+  const selfSum = `${self.passed}/${self.total}`;
+  let anchorRed = false;
+  // 混合失败面（锚红 + 其他夹具例同红）⇒ 一律按夹具类失败退出 2——分流仅限「仅锚红」
+  const anchorOnly = self.liveAnchorOnly && self.failures.length === 1;
+  if (self.failures.length > 0 && !anchorOnly) {
+    lib.say(`GATE lint FAIL reason=selftest-failed pass=${selfSum}`);
     for (const f of self.failures) lib.say(`SELFTEST-FAIL ${f}`);
     process.exit(2);
+  }
+  if (self.failures.length > 0) {
+    anchorRed = true;
+    for (const f of self.failures) lib.say(`SELFTEST-FAIL ${f}`);
   }
 
   // 2) 扫描面
   const files = lib.listFiles(ROOT);
 
-  // 3) 六条判据（A·B·C·D①·D②·D③）
+  // 3) 七条判据（A·B·C·D①·D②·D③·E）
   let red = false;
 
   // A 语法
@@ -98,18 +109,40 @@ function main() {
     for (const v of assembly.violations) lib.say(`VIOLATION assembly ${v.kind} :: ${v.message}`);
   } else {
     // 摘要串与设计档 A.3.1 AC-B16-8 钉死的机器 grep 串同形：(N/N) = N 条 init 绑定恰一处；免检另计一行
-    // N 动态取真实值（免检归零后串随实况，防陈旧）——当前实测 N = 13（15 绑定 − 2 免检）
+    // N 动态取真实值（免检归零后串随实况，防陈旧）——当前实测 N = 13（16 绑定 − 3 免检；B31）
     lib.say(`CHECK assembly PASS (${assembly.ok}/${assembly.ok})`);
     lib.say(`CHECK assembly exempt=${assembly.exemptChecked} (面内无 init 导出的免检档，理由在 baseline.json)`);
   }
 
+  // E 样本区零引用（B29：零命中恒判——不入基线；ref/pkg-build/pkg-extra = 判据红 1，pkg-unreadable/pkg-shape = fail-closed 2）
+  const samples = checks.checkSamples(files, ROOT);
+  const pkgFailClosed = samples.pkg.filter((v) => v.kind === 'pkg-unreadable' || v.kind === 'pkg-shape');
+  if (samples.refs.length > 0 || samples.pkg.length > 0) {
+    red = true;
+    lib.say(`CHECK samples FAIL refs=${samples.refs.length} pkg=${samples.pkg.length}`);
+    for (const r of samples.refs) lib.say(`VIOLATION samples ref ${r.file}:${r.line} :: ${r.content}`);
+    for (const v of samples.pkg) lib.say(`VIOLATION samples ${v.kind} package.json :: ${v.message}`);
+    if (pkgFailClosed.length > 0) {
+      // fail-closed：门禁自身无法完成（E② 错误面）——优先于判据红退出 2
+      lib.say(`GATE lint FAIL checks=7 selftest=${selfSum} reason=samples-pkg-fail-closed`);
+      process.exit(2);
+    }
+  } else {
+    lib.say(`CHECK samples PASS refs=0 pkg=0`);
+    if (anchorRed) {
+      // 现状锚红但判据复检未见（两次扫描间档面变化）⇒ 门禁存疑 fail-closed
+      lib.say(`GATE lint FAIL checks=7 selftest=${selfSum} reason=selftest-anchor-red-unconfirmed`);
+      process.exit(2);
+    }
+  }
+
   // 4) 摘要行 + 退出码
-  const checkCount = 6;
+  const checkCount = 7;
   if (red) {
-    lib.say(`GATE lint FAIL checks=${checkCount} selftest=${self.passed}/14`);
+    lib.say(`GATE lint FAIL checks=${checkCount} selftest=${selfSum}`);
     process.exit(1);
   }
-  lib.say(`GATE lint PASS checks=${checkCount} selftest=${self.passed}/14`);
+  lib.say(`GATE lint PASS checks=${checkCount} selftest=${selfSum}`);
   process.exit(0);
 }
 

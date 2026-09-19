@@ -110,15 +110,17 @@
 - **`init(deps)` 形态**：15 个 `shell-*.js` 中 **11 档**具名导出 `function init(deps)`：
   - 具名 `init`：`shell-affinity` · `shell-backend` · `shell-mode` · `shell-notify` · `shell-pet-drag` · `shell-pet-geometry` · `shell-pet` · `shell-plugins` · `shell-tray` · `shell-update` · `shell-window`。
   - 无 `init` 的 4 档：`shell-ipc.js` 用 `register()`（通道 → 域处理器薄绑定）；`shell-assets.js` / `shell-settings.js` 为工具档；`shell-market.js` 为域实现档（经 `shell-ipc.js` 接线，无跨模块状态注入）。
-- **结构判据三条**（成文判据；**本表 = 判据句权威** —— 附 A §A.2.2.2 只承载机检口径与回指，不复述判据句；机检面 = `npm run lint` 的判据 D①②③，机检**已落地**（2026-09-19）——设计与基线契约见 `docs/design/REPO-CONVENTIONS.md` 附 A §A.2.2.2 / §A.2.2.6`）：
+- **结构判据三条 + 样本解耦判据一条（E）**（成文判据；**本表 = 判据句权威** —— 附 A §A.2.2.2 / 附 A-续 §A-B29.2.2 只承载机检口径与回指，不复述判据句；机检面 = `npm run lint` 的判据 D①②③ + E，机检**已落地**（2026-09-19）——设计与基线契约见 `docs/design/REPO-CONVENTIONS.md` 附 A §A.2.2.2 / §A.2.2.6）：
 
 | # | 判据 | 判据句 | 口径与免检 |
 |---|---|---|---|
 | D① | 依赖无环 | 自研档的静态相对依赖图必须是 **DAG（0 环）** | 只认字面量 `require('.<相对路径>')`；边 = 解析到仓库内自研档 |
 | D② | 域模块扇出 | **域模块**的静态相对 `require` **出度 ≤3** | 域模块 = 仓库内自研 `.js` / `.mjs` 去掉 `tests/` · `scripts/` · `probe-*` 后的档；组合根 `main.js` **免判**（装配面天然高扇出） |
-| D③ | 接线点唯一（= §1.4-5 的 **T39 ②「装配面唯一」**） | 组合根 `main.js` 的每个绑定 `const <名> = require('<相对>')` 须有**恰一处** `<名>.init(` 调用 | **覆盖面 = 组合根绑定面**（未被 `main.js` 绑定者不入清单：实测其 15 条 require 之外 = `shell-assets.js` / `shell-market.js`）；面内不导出 `init` 的档列入**免检清单**（含理由）；未解析的 `require` 形态 = **红**（fail-closed） |
+| D③ | 接线点唯一（= §1.4-5 的 **T39 ②「装配面唯一」**） | 组合根 `main.js` 的每个绑定 `const <名> = require('<相对>')` 须有**恰一处** `<名>.init(` 调用 | **覆盖面 = 组合根绑定面**（未被 `main.js` 绑定者不入清单：实测其 16 条 require 之外 = `shell-assets.js` / `shell-market.js`）；面内不导出 `init` 的档列入**免检清单**（含理由）；未解析的 `require` 形态 = **红**（fail-closed） |
+| E | 样本区解耦（B29） | **全仓引用面零命中 `samples/`（三式检测）+ `package.json` 的 `build.files` / `extraResources` 零登记 `samples`**；零命中恒判、不进基线 | 扫描面与三式细则 → `docs/design/REPO-CONVENTIONS.md` 附 A-续 §A-B29.2.2（机检口径，不复述）；错误面 fail-closed（退出 2）；裸标识符不判 |
 
-**现状（实测，as-of 2026-09-18）**：D① **0 环**；D② 超限 **6 档** = `shell-tray` **10** · `shell-ipc` **6** · `shell-pet` / `shell-update` / `shell-window` 各 **5** · `shell-market` **4**；D③ **13/13 恰一处**，免检 **2 档** = `shell-settings.js`（工具档，无 `init` 导出）· `shell-ipc.js`（以 `register()` 接线）。
+**现状（实测，as-of 2026-09-18；D③ 数随 B31 同步 as-of 2026-09-19）**：D① **0 环**；D② 超限 **6 档** = `shell-tray` **10** · `shell-ipc` **6** · `shell-pet` / `shell-update` / `shell-window` 各 **5** · `shell-market` **4**；
+D③ **13/13 恰一处**，免检 **3 档** = `shell-settings.js`（工具档，无 `init` 导出）· `shell-ipc.js`（以 `register()` 接线）· `affinity-core.js`（B31 新增，无 `init` 导出——结构性免检）。
 **基线处理**（已落地生效：`scripts/gates/baseline.json`——冻结 + 只拦新增 + 陈腐即红）：存量违规**冻结 + 只拦新增**；上调冻结值须登记理由与**新到期条件**；**陈腐即红**（违规已清零而基条目未缩减 ⇒ 红）；**基线不是豁免面**，到期条件逐条写死（契约 = `docs/design/REPO-CONVENTIONS.md` §A.2.2.6）。
 
 - **依赖方向与拆分纪律**的唯一详述处 = `docs/design/SHELL-UX.md` §2.2.6（本档只给指针，不重述）。
@@ -189,3 +191,5 @@
 | 2026-09-18 | **B16 落笔轮**（主 agent 裁定：规范档写权 = eng-designer）：§四 增**结构判据三条**（D① 依赖无环 · D② 域模块扇出 ≤3 · D③ 接线点唯一）+ 口径与免检清单 + 现状实测（as-of 2026-09-18）+ 基线处理；§五 的「升门禁句」行改为**门禁句**（判据 B / C + 口径 + 豁免面 + 基线冻结）。机检**随 B16 实施落地**（设计 = `docs/design/REPO-CONVENTIONS.md` 附 A）。**既有条文与计数未动。** |
 | 2026-09-18 | **B16 修正轮 1**（设计评审轮 1 pass 后）：§四 标**判据句权威 = 本档**（附 A §A.2.2.2 只留机检口径 + 回指）+ D③ 覆盖面写为**组合根绑定面**（未被 `main.js` 绑定的 `shell-assets` / `shell-market` 不入免检清单）+ D③ = T39 ② 的机检落点；§五 豁免面补**归档档**并写明**计数不含归档档**（裁决 D1）+ 标注判据句权威 = 本档。**判据句与既有计数未动。** |
 | 2026-09-19 | **B16 收口轮（门禁现状同步）**：§零 门禁计数 **0/3 → 3/3**；§四 / §五 「随 B16 实施落地」→「已落地」×2；§四 基线处理行改「已落地生效」；§五 行宽债计数与基线对齐 **92 行 / 16 档 → 15 档 / 93 行**（计数权威 = `scripts/gates/baseline.json`；余 13 档 → 12 档同步）。依据 = `docs/batches/B16-test-gates.md` §5 / §6。 |
+| 2026-09-19 | **B29 实施轮（判据 E 判据句落笔）**：§四 表头注「结构判据三条」→「+ 样本解耦判据一条（E）」+ 表增 **E 行**（判据句权威 = 本档；零命中恒判、不进基线）+ 表头注机检面补 E；顺手修表头注行尾既有游离反引号。判据句细则与机检口径 → `docs/design/REPO-CONVENTIONS.md` 附 A-续 §A-B29.2.2（不复述）。依据 = 批次档 `docs/batches/B29-samples-guard.md` §2 · AC-B29-6。 |
+| 2026-09-19 | **B31 收口轮（文档层折账；源 = `docs/batches/B31-affinity-balance.md` §5.2）**：§四 D③ 覆盖面「15 条 require」→ **16**；现状行「免检 **2 档**」→ **3 档**（枚举同步 + `affinity-core.js`——结构性免检，D3）——随 B31 `assemblyExempt` +1 生效（as-of 2026-09-19）。**判据句本体零动。** |

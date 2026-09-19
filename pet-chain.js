@@ -1,8 +1,8 @@
 'use strict';
 /**
- * pet-chain.js — 双缓冲视频播放器 + 动画链运转 + 三级回落 + 链日志（B18 + B21 衔接 + R1/R2 + drag/escape）。
+ * pet-chain.js — 双缓冲视频播放器 + 动画链运转 + 三级回落 + 链日志（B18 + B21 衔接 + R1/R2 + drag/escape + B27 静默）。
  * 边界（设计档 §2.2.1）：零 fs / 零 fetch——池数据只来自主进程的 `pet-chain-config`；本档不碰窗口几何。
- * 函数清单：onConfig · setSlot · setDragging · startSlot · chainStep · switchTo · handleEnded · requestMove · onPlayFail · setChannel · applyMediaBox · log。
+ * 函数清单：onConfig · setSlot · setDragging · startSlot · chainStep · enterQuiet · quietExpire · clearQuiet · switchTo · handleEnded · requestMove · onPlayFail · setChannel · applyMediaBox · log。
  * 全局出口（渲染层内部接口，承设计档 §2.2.1）：window.petChain = { videoActive, hitRect, setSlot, setDragging }。
  */
 
@@ -20,6 +20,7 @@ let pending = null, playing = null;  // { name, loop, gen } / { name, kind, loop
 let cur = null;             // 当前段名（链的「避开连播」基准）
 let failCount = 0, moveWait = null, blocked = false;   // 级③ 回落判据 / 散步请求观测定时器 / 整体回落标志
 let preEndTimer = null, pauseTimer = null, dragActive = false;  // B21：预触发定时器 / 淡出窗末 pause 定时器 / 拖动在途（避 pet.js 同名 let）
+let quietActive = false, quietTimer = null;  // B27 静默运行期状态（§2.14.9）：动作类段末进入；计时到点或槽位到达退出
 const lastPick = {};        // 池键 → 上一次该档抽中的段（避开连播，US-17 / AC6）
 
 const box = core.mediaBox({
@@ -46,7 +47,7 @@ function setChannel(next) {
   entering = false;
   if (els.stage) els.stage.style.display = next === 'video' ? '' : 'none';
   if (els.img) els.img.style.display = next === 'video' ? 'none' : '';
-  if (next !== 'video') { clearPreEndTimer(); clearPauseTimer(); for (const el of els.media) { el.onended = null; el.pause(); } pending = null; playing = null; }   // B21：回落时清预触发 / 淡出窗定时器
+  if (next !== 'video') { clearQuiet(); clearPreEndTimer(); clearPauseTimer(); for (const el of els.media) { el.onended = null; el.pause(); } pending = null; playing = null; }   // B21：回落时清预触发 / 淡出窗定时器；B27：静默打断（§2.14.9 清除面）
 }
 
 /** 进视频通道的准备态：媒体盒就位、PNG 仍在场（入场窗口内窗口内容不为空）。 */
@@ -61,6 +62,7 @@ function onConfig(config) {
   debug = !!config.debug;
   if (!config.ok) { log('anim fallback reason=pool'); return; }
   if (els.media.length !== 2) { log('anim fallback reason=media-count'); return; } // 运行期不变量（NFR-10）
+  clearQuiet();   // B27：池重配打断静默（§2.14.9 清除面；非静默时零行）
   pool = config.pool;
   blocked = false;
   enterVideo();
@@ -98,6 +100,7 @@ function toVideo() { if (mode !== 'video') enterVideo(); }
 
 /** 档位 → 池键（§2.2.3 的 11 档映射表 + B21 drag/escape）。 */
 function startSlot(s) {
+  clearQuiet();   // B27：任何槽位到达即打断静默（§2.14.9 退出路 ②；非静默时零行）
   if (!pool || blocked) return;
   if (s === 'idle') { toVideo(); chainStep('slot-idle'); return; }
   if (s === 'walk-left' || s === 'walk-right') { toVideo(); switchTo(pickFor('moves.walk', pool.moves.walk), true, 'slot-walk', facing === 'right', 'walk'); return; }
@@ -107,12 +110,12 @@ function startSlot(s) {
     switchTo(pickFor('moves.run', pool.moves.run), true, 'slot-run', facing === 'right', 'run');
     return;
   }
-  if (s === 'escape-left' || s === 'escape-right' || s === 'drag') {   // B21：escape / drag 交互档（单候选 ⇒ loop=true）
+  if (s === 'escape-left' || s === 'escape-right' || s === 'drag') {   // B21：escape / drag 交互档；B27：escape = loop=false 单遍（drag 仍 true）
     const key = s === 'drag' ? 'drag' : 'escape';
     const sv = pool.events[key];
     toVideo();
     if (!sv) { log('anim slot-miss slot=events.' + key + ' fallback=png'); setChannel('png'); return; }
-    switchTo(pickFor('events.' + key, sv), true, s === 'drag' ? 'slot-drag' : 'slot-escape', s === 'drag' ? false : facing === 'right', 'event');
+    switchTo(pickFor('events.' + key, sv), s === 'drag', s === 'drag' ? 'slot-drag' : 'slot-escape', s === 'drag' ? false : facing === 'right', 'event');
     return;
   }
   const slotVal = pool.events[s];
@@ -162,12 +165,37 @@ function schedulePreEnd(el, dur) {
 /** B21 段末决策统一入口（ended / 预触发共用 decideNext——决策同源，防两处漂移）。 */
 function triggerChainDecision(reason, overlap) {
   if (mode !== 'video' || !pool || !playing) return;
-  if (playing.kind === 'turn') facing = facing === 'right' ? 'left' : 'right';   // 翻转由本档执行（§2.13.4；B18 同款）
-  const d = core.decideNext({ pool, weights: pool.weights, roll: Math.random(), slot, playing, cur, facing });
+  if (playing.kind === 'turn') facing = facing === 'right' ? 'left' : 'right';   // 翻转由本档执行（§2.13.4；B18 同款）；B27：先于 decideNext、与下一计划类型解耦（§2.14.9）
+  const d = core.decideNext({ pool, weights: pool.weights, roll: Math.random(), slot, playing, cur, facing, quiet: quietActive });
   if (d.plan === 'rotate') { lastPick['events.' + slot] = d.name; switchTo(d.name, false, reason, d.mirror, 'event', overlap); return; }
+  if (d.plan === 'quiet') { switchTo(d.name, true, 'quiet', false, 'quiet', overlap); return; }   // B27：静默段循环（§2.14.9）；quietActive/计时器/enter 行落账 = 播放成功回调（AC33①②③）
   if (d.plan === 'chain') { switchTo(d.name, chainPoolSize(d) <= 1, reason, d.mirror, d.kind === 'turn' ? 'turn' : d.kind, overlap); return; }
   requestMove();   // plan === 'none'（= 掷出 move）：发散步请求后回链重掷
   chainStep(reason, false);
+}
+
+/** B27 静默进入落账（§2.14.9 进入面；由 switchTo 播放成功回调调用）：enter 行落在 switch 行之后（AC33①② 区间锚）、与计时器武装同 tick（AC33③ 时长）。 */
+function enterQuiet(name) {
+  const dur = core.PET_QUIET_MS;   // 单点消费（§2.14.8 常量表：计时器与 enter dur 字段同源一处读取）
+  quietActive = true;
+  quietTimer = setTimeout(quietExpire, dur);
+  log('anim quiet enter name=' + name + ' dur=' + dur);
+}
+
+/** B27 静默计时到点（§2.14.9 退出路 ①）：先落 end 行、再回链重掷——决策行在 quiet end 之后、区间外（AC33② 显式豁免）。 */
+function quietExpire() {
+  quietTimer = null;
+  quietActive = false;
+  log('anim quiet end reason=timer');
+  triggerChainDecision('quiet-end', 0);
+}
+
+/** B27 静默清除面（§2.14.9 退出路 ②）：非 idle 槽进入（startSlot 首行）/ 通道回落（setChannel 下行）/ 池重配（onConfig）/ 播中出错（onPlayFail 入口）四处调用；幂等——非静默时零行零日志。 */
+function clearQuiet() {
+  if (!quietActive) return;
+  if (quietTimer) { clearTimeout(quietTimer); quietTimer = null; }
+  quietActive = false;
+  log('anim quiet end reason=slot');
 }
 
 /** 切换序列（§2.2.5 五步 + B21 衔接 + R1/R2）：写 back 位 → 等就绪 → 校验代次 → 换前台 → play。 */
@@ -234,6 +262,7 @@ function switchTo(name, loop, reason, mirror, kind, overlap) {
       failCount = 0;
       log('anim switch anim=' + name + ' from=' + (from === null ? '-' : from) + ' t0=' + t0 + ' ready=' + tReady + ' shown=' + now()
         + ' readyState=' + el.readyState + ' loop=' + (loop ? 1 : 0) + ' reason=' + reason + ' overlap=' + overlapMs);
+      if (reason === 'quiet') enterQuiet(name);   // B27：静默落账在 switch 行之后（§2.14.9；AC33①②③）
       if (!loop && Number.isFinite(el.duration) && el.duration > 0) schedulePreEnd(el, el.duration * 1000);   // B21：loop=false 段武装预触发
     }).catch((err) => onPlayFail(name, String(err)));
   };
@@ -264,6 +293,7 @@ function requestMove() {
 
 /** 播放失败（级③）：逐段跳过；连续 ≥3 段失败 ⇒ 整体回落 PNG（不静默）。 */
 function onPlayFail(name, err) {
+  clearQuiet();   // B27：播中出错短路静默（§2.14.9 清除面第 4 点；非静默时零行）
   failCount += 1;
   log('anim play-fail anim=' + name + ' err=' + err + ' n=' + failCount);
   if (failCount >= 3) { blocked = true; log('anim fallback reason=play-failed'); setChannel('png'); return; }
