@@ -4,6 +4,7 @@
 > 回指：批次档 `docs/batches/B11-conventions.md` §1（立案 · §1.3 体检实证 · §1.6 AC1–AC6）与 §2（任务书）。
 > **附 A = B16 面**（测试分层与门禁）：回指批次档 `docs/batches/B16-test-gates.md` §1（三方同源 = §1.4 五件 + §1.5 硬约束）；B11 面 = §一–§三（节号与指针零改动）。
 > **附 A-续 = B29 面**（`samples/` 解耦判据 E 与定位收口）：回指批次档 `docs/batches/B29-samples-guard.md` §1（三方同源 = §1.4「做」三项 + §1.5 硬约束）；B16 面 = 附 A（A.1–A.3，节号与指针零改动）。
+> **附 B = B15 面**（仓库卫生：EOL 固化 / 散档归位 / 垃圾清点 / 迁移守卫）：回指批次档 `docs/batches/B15-repo-hygiene.md` §1（三方同源 = §1.4「做」四条 + §1.5 硬约束）；B11 / B16 / B29 面（§一–§三 · 附 A · 附 A-续）节号与指针零改动。
 > 需求来源 = 台账 R11「接手项目规范化」① 规范载体——**工程/流程类需求，本仓无对应需求档**：需求条文由批次档 §1 承载（三方同源 = `docs/batches/B11-conventions.md` §1.6 的 AC1–AC6）。
 > 落点约定（层与清单）→ `docs/README.md`；本档不重述。
 
@@ -885,6 +886,298 @@ docs/CONVENTIONS.md
 
 ---
 
+## 附 B —— B15 面：仓库卫生（EOL 固化 / 散档归位 / 垃圾清点 / 迁移守卫）
+
+> 本附节 = **B15 批次**的完整设计（需求层 / 设计层 / 测试层）。
+> 回指批次档 `docs/batches/B15-repo-hygiene.md` §1（立案：含 as-of 2026-09-18 的现状实测与范围）；**工程/流程类需求，本仓无对应需求档**（依 B11 / B16 / B29 先例）——三方同源 = 台账 **T24 / T34 / T35**（本批处置）+ **T36**（立场）+ **T29**（连带面，已由 B25 §2.5 订正）。
+> 主题 = 仓库结构形态（EOL 口径固化 · 非包内散档归位 · 垃圾清点 · 迁移守卫）——与 B11「规范载体」同族（EOL 口径 = `docs/CONVENTIONS.md` §六 的仓库级补件；归位布局 = 目录与归位约定）⇒ **续写本档、不新建档**（DD-B15-10；地图零新增行）。
+> 现状实测（本设计者勘验，as-of **2026-09-20**）：`git ls-files` 跟踪 **326** 档；**索引 EOL 全 LF（158 文本 + 168 二进制；`i/crlf` = 0）**，工作区 154 档 CRLF（本机 `core.autocrlf = true` 面）；`build.files` **49 条**、零 probe 条目；根目录**非包内**平铺 **26 档**（11 档可搬迁面 + 配置 / 元数据 / 文档 / 其余散档）。
+> **立案档三处口径订正**（不改 §1 原文，以本附节为准）：① §1.3-1「8 档 `probe-*` + **5** 档构建脚本」⇒ 实测 = **8 + 3**（`download-electron.js` / `download-node.js` 零命中——B25 §2.5 订正注；`scripts/ensure-deps.js` / `scripts/refresh-dsh-bundle.js` 已在位）。
+> ② §1.3-6「`probe-pet-media.js` 硬绑 `main.js`」⇒ 已订正（实际 = 5 档相对 require + 隔离钩子）；③ §1.3-4「存在 `测试-更新功能/`」⇒ **实测不在盘**（as-of 2026-09-20 双查零命中）⇒ T35 处置对象消失（见 B.2.1 组 3）。
+
+### B.1 需求层
+
+#### B.1.1 总体需求
+
+为**接手本仓的人与 AI 代理**解决三个具体问题：EOL 口径只依赖本机 git 配置（跨机漂移面）；根目录混着 11 档「不进包、也不该住根」的开发面文件（噪音）；一个用途未入档的测试遗留目录。本批把 EOL 口径**固化到仓库**、把非包面散档**归位到 `scripts/`**、把遗留目录**查清**——且**绝不改变任何运行时行为**（T36 立场：白名单内 49 档一根不动）。
+
+#### B.1.2 功能性需求（逐条回指台账条目）
+
+| # | 需求 | 范围边界（明确不做什么） |
+|---|---|---|
+| F1 | **EOL 固化**（T24）：新增根 `.gitattributes`，口径 = `* text=auto eol=lf`（与 `.editorconfig` 的 LF 声明同源） | 只声明口径；**不做** `git add --renormalize .`（仓内索引已全 LF ⇒ 无面可归一；若实测非零 ⇒ 停下报告——NFR-B15-7）；不改 `.editorconfig` 既有行 |
+| F2 | **散档归位**（T34；订正后 **11 档**）：8 档 `probe-*` → `scripts/probes/`；`afterPack` / `make-icons` / `make-latest` → `scripts/`；连带 = ① `require` 深度 ② 基准（`ROOT` / `__dirname`） ③ 头指针 ④ `package.json` 三行 | **不搬**白名单内 49 档（T36）与其余根散档（`debug-pet.cmd` 等）；不改探针输出与构建脚本行为 |
+| F3 | **垃圾目录清点**（T35）：`测试-更新功能/` 清点 + 三选一处置 | 实测无对象 ⇒ 无删 / 搬 / 归档动作；`.gitignore:22` 条目保留（预防性声明，DD-B15-6）；台账核销 = 主 agent |
+| F4 | **迁移机械守卫**（防回潮）：① `build.files` 集合零变化且零 probe ② 全仓 `require` / 跑法面旧路径零残留 ③ 应用能起 + 既有桩测全绿 + 三条门绿 | 守卫 = 交付时点机检（不新写门禁判据——不扩 B16 门面，DD-B15-7） |
+| F5 | **文档同步面**：搬迁波及的**活文档**逐处同步（命令串 / 位置陈述 / 入口表 / 规范档 §六 §八 §1.1） | 历史段与名称级引用不追溯（DD-B15-8）；不写台账 / 地图 / `CHANGELOG.md`（主 agent 面——只给建议行） |
+
+#### B.1.3 非功能性需求
+
+| # | 约束 | 度量方式 |
+|---|---|---|
+| NFR-B15-1 | 零行为变更 | 运行时代码面（白名单各档）`git diff` 为空；11 档 diff 仅注释与路径基准（逐行核对） |
+| NFR-B15-2 | 白名单面零动 | `build.files` 条目**集合**前后逐条相同（排序集比对）；依赖块零 diff；零新依赖 |
+| NFR-B15-3 | 规则句可机检 | 每条验收标准给出可执行命令（B.3.1） |
+| NFR-B15-4 | 单一权威源（D2） | EOL 口径详述处 = `docs/CONVENTIONS.md` §六（唯一）；归位布局详述处 = 本附节 B.2.2；`.gitattributes` 本体只含声明 |
+| NFR-B15-5 | 与实测相容 | 凡陈述现状带 as-of 口径；行号只作 as-of 参考（D4） |
+| NFR-B15-6 | 文档可读性 | 本批新增 / 修改档无 >300 字符单行；写入后回读核实（D6） |
+| NFR-B15-7 | `.gitattributes` 只声明 | 落档后 `git status --porcelain` **空（除 `.gitattributes` 自身暂存条目外）**；索引面 `git ls-files --eol` 前后零变化；如需 renormalize ⇒ 单独步骤 + 事先报告（§1.5-4） |
+| NFR-B15-8 | 排期隔离 | 实施 = **B35 收口之后**（`package.json` 冻结面解冻——**以 `docs/batches/B35-pet-gallery-ui.md` §2.2 为准**；§1.5-7 仅作下限，其文本含 B19 / B20 前置、已被 B35 面取代）；开工前核工作区干净 |
+
+#### B.1.4 回指
+
+- 验收标准 = B.3.1 的 **AC-B15-1…AC-B15-11**，逐条回指 F1–F5 与批「不做」四条 / T36 立场。
+- 台账承载：**T24 / T34 / T35**（本批处置）+ **T36**（不动作）+ **T29**（连带面已订正）；**T25** 的迁移面因本批提前完成 10 档 ⇒ 计数同步（20 → 10）= 建议行（主 agent）。
+- 需求档：无新增（工程/流程类，依 B11 / B16 / B29 先例）。
+
+### B.2 设计层
+
+#### B.2.1 方案选型对比（判据来自 B.1；被否决候选逐条写否决理由）
+
+**组 1 — 归位目标（候选 4）**
+
+| # | 候选 | 判据逐项评估 | 取舍（选定代价） | 结论 |
+|---|---|---|---|---|
+| 1 | **`scripts/probes/`（探针 8）+ `scripts/`（构建 3）** | `scripts/` 已存在并已承载开发工具（`ensure-deps` / `refresh-dsh-bundle` / 测试运行器 / `gates/`）；探针成家族入子目录（`scripts/gates/` 子目录先例同形）；不新增顶层目录；门禁 D②「去掉 `tests/` · `scripts/` · `probe-*`」对两族天然覆盖 | 代价：`scripts/` 平铺面 4 → 7 档（仍低） | **选定**（= §1.6 U-1 ① 推荐形态） |
+| 2 | 新建顶层 `tools/`（探针 + 构建全入） | 语义直白；但 `scripts/` 已是既有约定（§八 / 门禁跳过清单 / 各档引用面全部以 `scripts/` 为锚）⇒ 新顶层目录 = 多一个命名面 + 引用面重指 | — | **否决** |
+| 3 | `scripts/` 平铺（11 档不分家族） | 少一层目录；但 8 档探针与构建脚本混层、家族归属不可读；`scripts/` 平铺面 4 → 15 档 | — | **否决** |
+| 4 | 探针留根、只搬构建脚本 | 零 require / `ROOT` 改动面；但 T34 点名的主噪音（8 档 `probe-*`）原样留根 ⇒ 需求未达 | — | **否决** |
+
+**组 2 — 三个构建脚本的处置（候选 3）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **三档全入 `scripts/`**（`build.afterPack` 改指 + `__dirname` 基准修正） | 与既有两档构建脚本同层收齐（5 件一处）；钩子路径解析实测可改（见组 2 证据注）⇒ 配置改一行即可；风险 = 打包面 ⇒ **`npm run pack` 实机复测**（`afterPack.js:19-22` **静默跳过**分支 ⇒ 不实跑 = 未验证） | 代价：+1 行配置 + 一次 pack 实跑 | **选定** |
+| 2 | `afterPack.js` 留根（配置面零动） | 零配置风险；但构建脚本 5 件分裂两处（根 1 + scripts 4——形态不统一须逐处解释）；T34「构建脚本归位」半条不完整 | — | **否决** |
+| 3 | 只搬 `make-icons.js` / `make-latest.js`（afterPack 留根） | 同候选 2 的分裂面（且 afterPack 的 `__dirname` 本来就对——留根无需改） | — | **否决** |
+
+**组 2 证据注**：electron-builder 的 `afterPack` 路径解析 = **cwd 相对**（源码 = `node_modules/app-builder-lib/out/util/resolve.js:30-53`：`path.resolve(p)`）；npm script 恒以仓根为 cwd ⇒ `scripts/afterPack.js` 可达。**实机复核 = AC-B15-6（pack 证据行）**。
+**解析链实读（评审轮 1 #7）**：`.` 前缀值走 `path.resolve(p)` **显式分支**、非 `.` 前缀先 `require.resolve` 失败后**回落** `path.resolve`（`node_modules/app-builder-lib/out/util/resolve.js:35-44`）⇒ **配置值取 `./scripts/afterPack.js` 形式**（走显式分支，不依赖回落）。
+
+**组 3 — T35 处置（候选 3 + 实测订正）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | 删 | 实测无对象（目录不在盘）⇒ 动作不成立 | — | 不适用 |
+| 2 | 归位 `tests/` | 同上（无对象） | — | 不适用 |
+| 3 | 归档 | 同上（无对象） | — | 不适用 |
+| 4 | **实测订正：对象已不存在** | `dir /b /a` 全根清单 + `ls` 双查（as-of 2026-09-20）零命中；`.gitignore:22` 条目 = 预防性声明（与 `.test-userdata*/` 同族）⇒ 保留 | 处置动作 = **无**；台账 T35 核销建议（主 agent / 用户裁定） | **选定（订正口径）** |
+
+**组 4 — EOL 策略（候选 3；承 B11 §2.1.2 / DD-3）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **`.gitattributes` = `* text=auto eol=lf`** | 与仓库真值一致（索引 158 文本档**全 LF**、`i/crlf` = 0 ⇒ 重归一化预计 **0 diff**）；跨机（无 `core.autocrlf` 的克隆 / CI runner）行为固化；`text=auto` 自动识别二进制（168 档 `i/-text` 不受影响——webm / png / jpg 实测均非文本） | 代价：无（工作区 CRLF 档在下次签出转 LF——工作区字节面变化、git 面零 diff） | **选定**（= T24 口径） |
+| 2 | `* text=auto`（不指定 eol） | 仍不固化方向（取决于平台 / 配置）⇒ 未解决「口径只依赖本机」的原始问题 | — | **否决** |
+| 3 | 逐扩展名枚举（`*.js` / `*.md` / … 一条一型） | 枚举面易腐（新扩展名漏网即回到漂移）；与 `.editorconfig` 的 `[*]` 全量口径不同形 | — | **否决** |
+
+**组 5 — 搬迁档头指针处理（候选 3）**
+
+| # | 候选 | 判据逐项评估 | 取舍 | 结论 |
+|---|---|---|---|---|
+| 1 | **按 §一 标准形迁移（11 档）** | 搬迁档必经手（跑法注释 / require 深度 / 基准必改）⇒ 边际成本 = 头重排 + JSDoc 指针；一次清掉「探针未入档」（R11 ② 点名面）；不产生「有指针 + 头形非标准」第三态；**T25 迁移面同步缩减 10 档**（建议行） | 代价：11 档头重排（注释级，零行为） | **选定** |
+| 2 | 只加指针行（头形不动） | 满足 §1.4-2③ 字面；但制造第三态（既不合 §一 判据、也不属前世代），分类更乱 | — | **否决** |
+| 3 | 头面全不动（指针归 T25 / B17） | §1.4-2③ 点名要改；且探针跑法注释**必改**（路径变了）⇒ 头面不可能全不动 | — | **否决** |
+
+#### B.2.2 契约与结构
+
+**① 归位后布局契约（归位后唯一详述处）**
+
+```
+scripts/
+  ensure-deps.js · refresh-dsh-bundle.js       （既有：依赖自检 / bundle 刷新）
+  afterPack.js                                 （B15 迁入：electron-builder afterPack 钩子）
+  make-icons.js · make-latest.js               （B15 迁入：图标产出 / 发布侧清单）
+  test-run.js · test-integration.js · gates/   （既有：测试运行器 / 门禁）
+  probes/                                      （B15 新建：8 档探针）
+    probe-displays.js · probe-displays2.js · probe-pet-media.js · probe-position-accuracy.js
+    probe-resizable-setsize.js · probe-settle-scan.js · probe-size-readback.js · probe-straddle-size.js
+```
+
+- **根目录保留**（显式）：白名单内 49 档（T36）；配置 / 元数据 / 文档档（`.editorconfig` / `.gitignore` / `.npmrc` / `AGENTS.md` / `CHANGELOG.md` / `README.md` / `latest.json` / `package*.json` / 3 中文文档）。
+- 另保留：`debug-pet.cmd`（Windows 一键调试——`docs/CONVENTIONS.md` §八 同节口径）；`setup-linux.sh` / `install-desktop-entry.sh`（§1.4 范围外；如日后归位须另裁）。
+- **命名**：全部保持原名（§1.6 U-5 已裁；`afterPack.js` 的 camelCase 例外继续成立——上游钩子名约定）。
+- **后续新增**：新探针落 `scripts/probes/`；新构建 / 发布脚本落 `scripts/`（该约定随同步写入 `docs/CONVENTIONS.md` §八 与 `ARCHITECTURE.md` §2.9 入口表）。
+
+**② 逐档修正点契约（11 档）**
+
+| 档（新位） | 行数（as-of 2026-09-20） | 必改点 | 头指针目标 |
+|---|---|---|---|
+| `scripts/probes/probe-pet-media.js` | 397 | ① 5+1 处相对 `require` → `'../../…'`（`:22` / `:138-141`）；② `ROOT` 基准 → 仓库根（`:31`）；③ 跑法行（`:12`） | 保留 `docs/design/PET-ANIMATION.md §3.3` 指针 |
+| 7 档几何 / 扫描探针（`probe-*`：displays · displays2 · size-readback · straddle-size · position-accuracy · resizable-setsize · settle-scan） | — | 跑法行改新路径；头重排为标准形（`'use strict';` 第 1 行 + JSDoc 块） | `docs/design/PET-MULTIMONITOR.md`（§2.2 / §2.5——按实证归属取节） |
+| `scripts/afterPack.js` | 39 | `path.join(__dirname, 'build', …)` ×2（`:17-18`）→ `'..'` 基准；JSDoc 补指针 | `docs/design/ARCHITECTURE.md §2.7（面⑦）` |
+| `scripts/make-icons.js` | 72 | `__dirname` ×3（`:11-13`）→ `'..'` 基准；头重排 + JSDoc 指针 | `docs/design/ARCHITECTURE.md §2.7（面⑦）` |
+| `scripts/make-latest.js` | 93 | `__dirname` ×4（`:41` / `:51` / `:69` / `:79`）→ `'..'` 基准；头相对指针「设计档 §2.2.8」→ 全路径；用法行全路径 | `docs/design/AUTO-UPDATE.md §2.2.8`（发版流程唯一详述处） |
+
+**② 证据注（`probe-pet-media.js` 耦合面，as-of 2026-09-20）**：相对 `require` = `pet-chain-core`（`:22`）+ 惰性 `shell-settings` / `shell-pet-geometry` / `shell-pet-drag` / `shell-pet`（`:138-141`）；`ROOT` 基准修正后 `pet.html` / `pet-preload.js` / `assets/pet-anim/pool.json` 全可达（无 `main.js` 耦合——B25 §2.5 复核）。
+
+**③ `package.json` 三行契约**（在位替换、行数不变；`build.files` 条目集合与其余块零动——唯一例外 = `:62` 缩进一行级修正，见下注）
+
+| 行 | 现值 | 新值 |
+|---|---|---|
+| `:22` scripts.icons | `"node make-icons.js"` | `"node scripts/make-icons.js"` |
+| `:23` scripts.make-latest | `"node make-latest.js"` | `"node scripts/make-latest.js"` |
+| `:44` build.afterPack | `"afterPack.js"` | `"./scripts/afterPack.js"`（`.` 前缀走显式 cwd 分支——组 2 证据注） |
+
+（解析语义 = electron-builder 以 cwd 相对解析——证据 = `node_modules/app-builder-lib/out/util/resolve.js:30-53`；npm script 恒以仓根为 cwd。行号 as-of 2026-09-20。）
+- **另**：`:62` 缩进一行级修正（`"shell-plugin-fetch.js"` 4 空格 → 6 空格，随邻居）——零语义、行数不变；评审轮 1 #8 裁定纳入本批（登记见 B.2.7 ⑤）。
+
+**④ 守卫判据（F4 机检面；交付时点执行）**
+
+| # | 判据 | 命令 / 口径 |
+|---|---|---|
+| G1 | `build.files` 集合逐条相同 | 实施前后各取 `build.files` 排序 JSON 比对（零 diff）；零 probe 条目双向核 |
+| G2 | 旧路径零残留（引用面） | `git grep -nE "require\(['\"]\./(probe-|afterPack|make-icons|make-latest)"` = 0 |
+| G3 | 相对 `require` 全解析 | 11 档内全部字面量相对 `require` 解析到存在档（0 未解析）；全仓扫描面同跑 |
+| G4 | 跑法残留（活文档面） | 活文档面（`docs/design/**` + `docs/CONVENTIONS.md` + `AGENTS.md` + `README.md`）内 `npx electron probe-` / `node make-latest\.js` / `node make-icons\.js` = 0（`docs/batches/**` 与 `samples/**` 排除——历史段） |
+| G5 | 三条门 + 冒烟 | `npm run lint` / `test:full` / `test:integration` 三绿；`npm start` 冒烟（或引用 S1 PASS 行） |
+| G6 | 打包钩子实机 | `npm run pack` stdout 含 `[afterPack] applied icon + version to`（**拒收** `skipping exe edit` 分支） |
+| G7 | 探针抽跑实机 | `npx electron scripts/probes/probe-pet-media.js`（耦合面）+ `scripts/probes/probe-displays.js`（零依赖面）实跑正常 |
+
+**⑤ `.gitattributes` 契约**
+
+```
+# EOL 口径固化（B15；口径详述 = docs/CONVENTIONS.md §六；设计 = docs/design/REPO-CONVENTIONS.md 附 B）
+# 本档只声明口径、不改写任何文件；如需重归一化（git add --renormalize .）须单独步骤 + 事先报告。
+* text=auto eol=lf
+```
+
+- 步骤：新建 → `git add .gitattributes` → `git status --porcelain` 应空（除该档自身暂存条目外；实测口径：索引 158 文本档全 LF ⇒ 零重归一化 diff；工作区 154 CRLF 档不产 status 面变化）。
+- `git ls-files --eol` 前后比对：索引面零变化（机检）。
+- **不做** `--renormalize`；若实施日实测出现 `i/crlf` 文本档（非 0）⇒ 停下报告（§1.5-4）。
+
+#### B.2.3 受影响文件全清单（新建 1 · 迁移 11 · 配置 1 · 文档 7 · 运行时代码 0）
+
+**新建 / 迁移（eng-coder）**
+
+| 文件 | 现状（行数 as-of 2026-09-20） | 本批动作 | 预计 Δ |
+|---|---|---|---|
+| `.gitattributes` | 不存在 | 新建（⑤ 契约） | ≈ 6 行 |
+| 8 档探针（根目录） | `displays` 55 · `displays2` 77 · `pet-media` 397 · `position-accuracy` 70 · `resizable-setsize` 56 · `settle-scan` 117 · `size-readback` 53 · `straddle-size` 68（映射见 `docs/design/ARCHITECTURE.md` §2.6） | `git mv` → `scripts/probes/` + ② 表修正 | 7 档 +2~+5（头重排）；`probe-pet-media` ±1 |
+| `afterPack.js` / `make-icons.js` / `make-latest.js`（根目录） | 39 / 72 / 93 | `git mv` → `scripts/` + ② 表修正 | ≈ +2 / +3 / +2 |
+| `package.json` | 144 | 三行在位替换（③ 表）+ `:62` 缩进一行级修正 | 0 |
+
+**文档同步（eng-designer；口径 = DD-B15-8）**
+
+| 文件 | 现状行数 | 同步点（as-of 2026-09-20 行锚） | 预计 Δ |
+|---|---|---|---|
+| `docs/CONVENTIONS.md` | 196 | §六：补 `.gitattributes` 固化条 + 「已知局限」改写；§八：位置改写 + 8 档计数 + 例（`:175-176`）；§1.1：补 B15 as-of 注；变更记录 1 行 | ≈ +10 |
+| `docs/design/ARCHITECTURE.md` | 438 | §2.6：定位语（`:287`）+ 8 行跑法 / 行锚 + 耦合面注（`:302-307`）；§2.7：3 行位置（`:344-346`）；§2.9：入口表 2 行（`:392` / `:394`）；§2.10 前瞻注（`:397`）改「已落地」；变更记录 1 行 | ≈ +10 |
+| `docs/design/PET-ANIMATION.md` | 1590 | 跑法命令 6 处（`:1315` / `:1336` / `:1361` / `:1472` / `:1499` / `:1547`）；变更记录 1 行 | ≈ +2 |
+| `docs/design/PET-MULTIMONITOR.md` | 1244 | 位置陈述 2 处（`:237` / `:900` F7 归口——补 B15 落地注）；变更记录 1 行 | ≈ +3 |
+| `docs/design/PET-MOVEMENT.md` | 840 | 跑法命令 1 处（`:698`）；变更记录 1 行 | ≈ +2 |
+| `docs/design/AUTO-UPDATE.md` | 1058 | 命令面 5 处（`:507` 命令块 / `:518` scripts 值 / `:866` AC11 / `:944-945` TC-21·22）；变更记录 1 行 | ≈ +5 |
+| `docs/design/REPO-CONVENTIONS.md` | 904 | 本附节（B15 面）+ 顶注 1 行 + 变更记录 1 行（**本设计轮已落**） | +本附节 |
+
+**主 agent 面（只给建议行，本设计者不落）**：台账 T24 / T34 / T35 状态 + T25 计数（20 → 10）+ T29 注 + 新发现登记；`docs/README.md` B15 行；`CHANGELOG.md` 条目。
+
+**不改面（显式，含理由）**
+
+| 面 | 理由 |
+|---|---|
+| 白名单内 49 档 + 运行时代码 | T36 立场（§1.4 不做第一条） |
+| `docs/design/SHELL-UX.md`（9 处提及）· `docs/requirements/PET.md:771` · `SHELL.md:134` · `docs/batches/**` · `pet-chain-core.js:11` | 历史段 / 名称级引用（DD-B15-8；名称未变、行锚有 as-of 惯例） |
+| `.gitignore` / `scripts/gates/lib.js` 的死者条目（`probe-electron.js` / `download-*` / `测试-更新功能/`） | 预防性声明（DD-B15-6） |
+| `debug-pet.cmd` / `setup-linux.sh` / `install-desktop-entry.sh` | §1.4 范围外（DD-B15-9） |
+
+**贴线档 / 超限档拆分计划**：无（11 档均 <500 行；本批不改 ≥480 档）。
+**300 档结论（评审轮 1 #1）**：`probe-pet-media.js`（397 行，迁移后 `scripts/probes/`）跨 300 行但**无需拆分**——职责单一（单档探针：视频通道取证）+ 本批增量为 `git mv` + 注释 / 基准级改动（Δ ±1，零行为面）+ 无新职责引入；行数唯一口径 = 判据 C（480 提示 / 500 上限，回指 `docs/CONVENTIONS.md` §五），拆分只会切碎单一职责 ⇒ 维持单档。
+
+#### B.2.4 关键决策记录
+
+| # | 决策 | 理由 | 否决备选 |
+|---|---|---|---|
+| DD-B15-1 | 归位 = `scripts/probes/`（8 探针）+ `scripts/`（3 构建） | 组 1：既有 `scripts/` 约定 + 家族子目录先例 + 门禁天然覆盖 | 顶层 `tools/` / 平铺 / 探针留根 |
+| DD-B15-2 | `afterPack.js` **迁移**（`build.afterPack` 改一行） | 组 2：解析语义可改（cwd 相对，源码证据）；静默跳过分支 ⇒ `npm run pack` 实机封口 | 留根 / 只搬两档 |
+| DD-B15-3 | T35 = **实测订正（无对象）** | 组 3：双查零命中；无删除风险面 | 三选一（动作均不成立） |
+| DD-B15-4 | EOL = `* text=auto eol=lf`（单条） | 组 4：与索引真值一致（零 diff 预测）；与 `.editorconfig` 同源 | 不指定 eol / 扩展名枚举 |
+| DD-B15-5 | 搬迁档头 = **标准形迁移**（11 档） | 组 5：必经手；清「探针未入档」；不造第三态 | 只加指针 / 全不动 |
+| DD-B15-6 | `.gitignore` / 门禁跳过清单死者条目**保留** | 预防性声明（「若出现则不提交 / 不扫描」）与 `dist/`、`.test-*` 条目同族；清理零收益且动门禁档无必要 | 清死者条目（动 `scripts/gates/**` 无收益） |
+| DD-B15-7 | 守卫**不接入门禁**（交付时点机检） | §1.4-4 守卫 = 一次性核对；新判据 = 扩门面（须自证 / 基线配套）⇒ 超本批范围 | G1–G4 永久化（另批裁定） |
+| DD-B15-8 | 文档同步口径 = **命令串 / 位置陈述更新；历史段与名称级引用不追溯** | 残留即示范 vs 历史不可改写——按「可执行性 + 位置陈述」划界 | 全量改写（越界）/ 全不动（跑法失真） |
+| DD-B15-9 | `debug-pet.cmd` 等三档根散档**原地保留** | §1.4 范围（仅 probe + 构建脚本）；如归位须另裁 | 顺带归位（越出批范围） |
+| DD-B15-10 | 本设计落点 = **本档附 B**（续写，不新建档） | 主题同族（EOL 口径 / 目录归位约定 = 仓库规范面）+ 附 A / 附 A-续 先例 + §1.7 立案已定 ⇒ 地图零新增行 | 新建 `docs/design/REPO-HYGIENE.md`（拆散「规范」族 + 地图 +1 行） |
+
+#### B.2.5 边界（本设计不做的事）
+
+- 不改任何运行时代码（白名单各档零 diff）；不改 `build.files` 集合；零新依赖。
+- 不搬白名单内 49 档（T36）；不搬 `debug-pet.cmd` 等其余根散档。
+- 不做 `git add --renormalize .`（如需 ⇒ 单独步骤 + 先报）。
+- 不新写门禁判据 / 不改 `scripts/gates/**`；不写台账 / 地图 / `CHANGELOG.md`（主 agent 面，只给建议行）。
+- 不改 `docs/batches/**` 他人段；不改 `docs/design/SHELL-UX.md` 等历史段（DD-B15-8）。
+- 不修 `make-icons.js` 的 `sharp` 缺依赖（发现项，见 B.2.7 ②）。
+
+#### B.2.6 UI / 交互决策
+
+**N/A（本批无界面、无交互路径改动）**——显式声明，非遗漏：运行时代码面零改动；「交互」仅为文件系统布局与 CLI 跑法，无 open 项。
+
+#### B.2.7 待确认 / open + 发现登记
+
+| # | 项 | 影响面 |
+|---|---|---|
+| ① | 地图 / 台账 / `CHANGELOG.md` 同步（T24 / T34 / T35 状态 + T25 计数 20 → 10 + B15 行） | 主 agent（建议行见批次档 §2.8） |
+| ② | **发现**：`make-icons.js` 的 `sharp` **不在依赖树**（`package-lock.json` 零命中、`node_modules` 无）⇒ `npm run icons` 现即不可跑（**非 B15 引入**）；B15 搬迁后亦无法实跑该档（验证降级 = 静态面 + `node --check`）⇒ 建议另立技术待办（补 devDependency / 注明手动安装 / 裁定弃用） | 建议行（主 agent） |
+| ③ | **发现**：`docs/CONVENTIONS.md` §1.1 / §零 三分计数（22 / 3 / 17 = 42）已过期（实测跟踪码档 **68**；`probe-pet-media.js` 未被三清单收录——计数与枚举不符）⇒ 本批只加 as-of 注（不重算全域）；全量重算 = 建议归 T31 / B14 对账族 | `docs/CONVENTIONS.md`（eng-designer）+ 台账 |
+| ④ | **发现**：`build.files` 白名单计数族过期（**43 / 46 → 49**）——`ARCHITECTURE.md` §2.7 记 **46 条**、地图 B15 行（`docs/README.md:49`）与立案档 §1.3-2（`docs/batches/B15-repo-hygiene.md:25`）记 **43**，实测 **49 条**（差额 = 09-19 后各批加档）——非 B15 波及面，随 ③ 同族对账 | `docs/design/ARCHITECTURE.md`；地图 / 立案档属主 agent 面 |
+| ⑤ | **发现（微）**：`package.json:62` 缩进异常（`"shell-plugin-fetch.js"` 4 空格 vs 邻居 6 空格）——**已裁：纳入本批**（评审轮 1 #8；一行级修正、零语义、行数不变）⇒ 落点 = B.2.2 ③ 注 / B.2.3 / B.3.3 ④ | `package.json` |
+| ⑥ | 地图 B15 行仍记「8 档 probe / 5 档构建脚本」（现口径 = 8 + 3）与「不搬 **43** 档白名单面」（现口径 = **49**，同 ④ 族）——随 ① 一并同步 | 主 agent |
+
+### B.3 测试层
+
+#### B.3.1 验收标准（逐条回指 B.1）
+
+| # | 验收标准（回指） | 判据（可机检） |
+|---|---|---|
+| AC-B15-1 | **`.gitattributes` 落档且口径正确**（F1 / T24） | `test -f .gitattributes`；含逐字 `* text=auto eol=lf`；落档 + `git add` 后 `git status --porcelain` 空（除 `.gitattributes` 自身暂存条目外）；索引面零变化：`git ls-files --eol` 实施前后文本档 `i/crlf` / `i/mixed` / `i/none` = 0（双向）；无 renormalize 提交 |
+| AC-B15-2 | **11 档归位（`git mv` 保史）**（F2 / T34） | `git status` 呈现 11 条 rename（非删 + 增）；旧路径逐档不存在；新路径逐档在场；根目录非包内松散档 **26 → 15**（口径 = `git ls-files` 顶层档 − `build.files` 无通配顶层条目） |
+| AC-B15-3 | **搬迁档内部修正闭环**（F2 连带） | ① 11 档 `node --check` 全过；② 相对 `require` 解析扫描 0 未解析（11 档 + 全仓面）；③ `probe-pet-media.js` 的 `ROOT` 基准断言（`pet.html` / `pet-preload.js` / `pool.json` 可达）；④ 构建脚本基准（rcedit / 源 PNG / `package.json` / `latest.json` / `dist`）+ make-latest 沙箱跑（正例退 0 / 负例退 1；%TEMP% 副本） |
+| AC-B15-4 | **`package.json` 三行 + 白名单集合零动**（F2 / T36 / NFR-B15-2） | 三行 = ③ 表新值（+ `:62` 缩进一行级修正，零语义）；`build.files` 排序集比对零 diff；依赖块零 diff；行数不变（按 `\n` 计数 = 144） |
+| AC-B15-5 | **旧路径零残留（引用 + 跑法）**（F4 / G2 + G4） | G2 命令 = 0；活文档面内 `npx electron probe-` / `node make-latest\.js` / `node make-icons\.js` = 0（`docs/batches/**` / `samples/**` 排除口径） |
+| AC-B15-6 | **打包钩子实机复测**（F2 / DD-B15-2） | `npm run pack` 退出 0 且 stdout 含 `[afterPack] applied icon + version to`（不含 `skipping exe edit`） |
+| AC-B15-7 | **探针抽跑实机**（F4 / G7） | `npx electron scripts/probes/probe-pet-media.js` 无 MODULE_NOT_FOUND、达正常读数（含 5 档 require 耦合面）；`npx electron scripts/probes/probe-displays.js` 正常出读数 |
+| AC-B15-8 | **文档同步面落地**（F5） | `CONVENTIONS.md` §六 含 `.gitattributes` 固化条（且不再声称「无 `.gitattributes` / 建议另批加」）；§八 位置 = 新路径 + 8 档计数；`ARCHITECTURE.md` §2.6 跑法 8 命中 `npx electron scripts/probes/`、§2.7 三行位置新路径、`:397` 前瞻注改「已落地」；`PET-ANIMATION` / `PET-MOVEMENT` / `AUTO-UPDATE` 命令面新路径；6 档变更记录各 1 行 |
+| AC-B15-9 | **零行为变更 + 门禁全绿**（NFR-B15-1 / §1.5-1） | 运行时代码面 `git diff` 空；11 档 diff 仅注释 / 路径基准（逐行核对记录）；`npm run lint` PASS（checks=7）+ `test:full` + `test:integration` 三绿；冒烟（`npm start` 或 S1 PASS 行引用） |
+| AC-B15-10 | **T35 订正登记**（F3） | 批次档 §5 记「实测不存在（as-of 日期 + 命令证据）」；`.gitignore:22` 条目保留注；台账核销建议行在场（主 agent 面） |
+| AC-B15-11 | **T36 立场核验（不做面）** | 白名单 49 档 `git diff` 空；根其余散档（`debug-pet.cmd` / `setup-linux.sh` / `install-desktop-entry.sh` / 配置与文档档）`git status` 零改动 |
+
+#### B.3.2 用例表（正常 / 边界 / 错误 —— 输入 / 期望输出 / 映射）
+
+| # | 类型 | 输入 | 期望输出 | 断言面 | 映射 |
+|---|---|---|---|---|---|
+| TC-B15-01 | 正常 | 新建 `.gitattributes` + `git add` 后 `git status --porcelain` | 仅该档 1 条（`A`）；零 EOL 重归一化 diff | 行为面 | AC-B15-1 |
+| TC-B15-02 | 边界 | `git ls-files --eol` 实施前后比对（158 文本档面） | 索引面零变化；`i/crlf` 恒 0 | 结构面 | AC-B15-1 |
+| TC-B15-03 | 错误 | 夹具（临时副本 / clone）：向某档索引注入 CRLF ⇒ 跑检测命令 | `i/crlf` 命中 ⇒ 触发「停下报告」分流（不静默 renormalize） | 结构面 | AC-B15-1 / NFR-B15-7 |
+| TC-B15-04 | 正常 | `git mv` 11 档后 `git status` | 11 条 rename（R）——非删 + 增 | 行为面 | AC-B15-2 |
+| TC-B15-05 | 错误 | 注入：把 `probe-pet-media.js` 某条相对 require 改回旧深度（`./pet-chain-core.js`）后跑解析扫描 | 扫描报红点名档:行（证明扫描非空转）；恢复后 0 命中 | 结构面 | AC-B15-3 |
+| TC-B15-06 | 错误 | 注入：`probe-pet-media.js` 的 `ROOT` 改回 `__dirname` | 基准断言报红（`pet.html` 等不可达）；恢复后过 | 结构面 | AC-B15-3 |
+| TC-B15-07 | 正常 | 实施前后各跑 `build.files` 排序 JSON 取值 | 两次输出逐字相同 | 结构面 | AC-B15-4 |
+| TC-B15-08 | 错误 | 夹具：副本 `package.json` 的 `build.files` 注入 `"probe-displays.js"` | 集比对报红（+1 差异；证明集合判据有效） | 结构面 | AC-B15-4 / G1 |
+| TC-B15-09 | 错误 | 注入：活文档面一行 `npx electron probe-displays.js`（临时，try / finally 清除） | G4 grep 报 1 命中 ⇒ 红；清除后 0 | 结构面 | AC-B15-5 |
+| TC-B15-10 | 正常 | `npm run pack`（Windows） | `[afterPack] applied icon + version to …` 在场；退出 0 | 行为面 | AC-B15-6 |
+| TC-B15-11 | 错误 | 若 pack stdout 出现 `[afterPack] rcedit or icon missing`（静默跳过分支） | 判红（钩子未生效 = 未验证）——拒收 | 行为面 | AC-B15-6 |
+| TC-B15-12 | 正常 | `npx electron scripts/probes/probe-pet-media.js` | 正常读数、无 MODULE_NOT_FOUND | 行为面 | AC-B15-7 |
+| TC-B15-13 | 边界 | `npx electron scripts/probes/probe-displays.js`（零相对依赖档） | 正常出读数 | 行为面 | AC-B15-7 |
+| TC-B15-14 | 正常 | 三条门 + 冒烟 | `GATE lint PASS checks=7` + `test:full` 绿 + `test:integration` 绿 + 起动正常 | 行为面 | AC-B15-9 |
+
+- **N/A 声明**：本批 UI / 交互用例 = 无（B.2.6）。
+- **时长**：机检面 < 2 min；`npm run pack` 分钟级；探针 2 档实跑 1–3 min。
+
+#### B.3.3 实施步序（步序契约）
+
+① `.gitattributes`（AC-B15-1 取证）→ ② `git mv` 11 档一批（AC-B15-2）→ ③ 逐档修正（B.2.2 ② 表；AC-B15-3）→ ④ `package.json` 三行 + `:62` 缩进修正（AC-B15-4）→ ⑤ 机检守卫 G1–G5 + TC 注入 / 移除双向（AC-B15-5 / 9）→ ⑥ 实机（`npm run pack` + 探针 2 档；AC-B15-6 / 7）→ ⑦ 文档同步轮（eng-designer 落 6 档；AC-B15-8）→ ⑧ 主 agent：台账 / 地图 / CHANGELOG + §6 核销。
+
+- **提交建议**（§七「一次提交一件事」）：两次提交（① EOL 固化；② 归位 + 连带修正 + 文档）或单提交（批次单元）均可——提交信息含 `B15`。
+- **顺序理由**：EOL 独立先行（零依赖、零风险面）；移动一次成型（避免中间态）；文档同步放实机之后（跑法注释以实机验证过的路径为准）。
+
+#### B.3.4 限制与如实声明
+
+- `make-icons.js` **不实跑**（`sharp` 缺依赖，B.2.7 ②）——验证 = `node --check` + 基准断言；该档行为面未取证（如实声明，非静默省略）。
+- `make-latest.js` **不在仓内实跑**（会覆盖 `latest.json`——`docs/TODO.md` T8 / B04 禁令面）；验证 = 静态基准 + %TEMP% 沙箱正负例。
+- 其余 6 档探针**不逐档实跑**（搬迁面 = 注释 + 零相对依赖；`node --check` 覆盖）；抽跑 2 档覆盖「有依赖」与「零依赖」两形态。
+- `git log --follow` 抽验 1 档（blame 连续性）为可选加强项。
+
+---
+
 ## 四、变更记录
 
 | 日期 | 变更点 |
@@ -901,3 +1194,5 @@ docs/CONVENTIONS.md
 | 2026-09-19 | **B29 设计微修（代码轮裁决后文档面收口）**：§A-B29.2.2 补锚红分流规则（仅锚红按判据码报告 / 混合失败与锚红未确认退 2 / `SELFTEST-FAIL` 行不静默）+ `build` 非对象归 `pkg-shape` fail-closed（退 2）+ 反引号末段转义不判口径（`\\` 转义残留边界随下次扩展收口）+ 自证 TC 集固定 6 例（`pkg-shape` 例随扩展补）；TC-B29-06 期望行同步。依据 = 批次档 §5 代码轮报告（🟡#1 + 🔵#3/#4/#6）。 |
 | 2026-09-19 | **B31 收口轮（文档层折账；源 = `docs/batches/B31-affinity-balance.md` §5.2）**：附 A §A.2.2.2 D③ 覆盖面「`main.js:32-46` 共 15 条」→ **`:32-47` 共 16 条**；`assemblyExempt` **2 档 → 3 档**（枚举同步 + `affinity-core.js`，D3）；各判据现状 D③ 行同改（as-of 2026-09-19）。**判据句与机检口径零动。** |
 | 2026-09-20 | **B23 实施后文档同步轮（附 A §A.2.2.2 D③ 折账；源 = `docs/batches/B23-pet-action-unlock.md` §5.6 / §5.7）**：覆盖面「`main.js:32-47` 共 16 条」→ **`:32-48` 共 17 条**；`assemblyExempt` **3 档 → 4 档**（枚举同步 + `pet-unlock-core.js`，D3）；各判据现状 D③ 行同改（免检 3 → 4，as-of 2026-09-20）。**判据句与机检口径零动。** |
+| 2026-09-20 | **B15 面设计落档（附 B）**：仓库卫生设计——EOL 固化（`.gitattributes` = `* text=auto eol=lf`）· 散档归位（8 档探针 → `scripts/probes/` + 3 档构建脚本 → `scripts/`；实测订正 = 11 档）· T35 实测订正（目录不在盘）· 迁移守卫（G1–G7）+ 文档同步面（6 档活文档）；DD-B15-1…10；AC-B15-1…11 + TC-B15-01…14；回指 `docs/batches/B15-repo-hygiene.md` §1。 |
+| 2026-09-20 | **B15 修正轮 1**（评审轮 1 pass 后；🔴0 / 🟡3 / 🔵6 = 9 条：8 修 + 1 免动）：补 300 档结论 · `git status` 空态三处统一 · NFR-B15-8 排期改以 B35 §2.2 为准 · B.2.7 ④ / ⑥ 补白名单计数族 43 / 46 → 49 · AC-B15-4 补 `\n` = 144 口径 · B.2.3 探针行数按档名对位 · 组 2 证据注补回落链 ⇒ `./scripts/afterPack.js` · `:62` 缩进纳入本批。依据 = 批次档 §3 轮次 1。 |
