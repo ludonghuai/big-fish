@@ -504,7 +504,7 @@ market:update-all → 重新 fetchPluginRegistry() 重算 updates → 逐个 ins
 #### 2.2.8 发布脚本契约（make-latest.js）
 
 ```
-node make-latest.js [--version <v>] [--note <文本>]
+node scripts/make-latest.js [--version <v>] [--note <文本>]
   version 缺省读 package.json.version
   产物扫描 dist/：Bigfish.Setup.{v}.exe / Bigfish-{v}-arm64.dmg / Bigfish-{v}.AppImage
   对存在的文件算 sha256 → 组装 latest.json（version/note/urls[Gitee Releases]/sha256）写仓库根
@@ -515,7 +515,7 @@ node make-latest.js [--version <v>] [--note <文本>]
   退出码：0 成功 / 1 参数或产物缺失错误
 ```
 
-- `make-latest.js` 为发布侧工具，**不进** `build.files`（不随包分发）；`package.json` scripts 新增 `"make-latest": "node make-latest.js"`。
+- `scripts/make-latest.js`（B15 归位）为发布侧工具，**不进** `build.files`（不随包分发）；`package.json` scripts 条目 = `"make-latest": "node scripts/make-latest.js"`。
 
 #### 2.2.9 诊断日志契约（updater.log）
 
@@ -863,7 +863,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 | AC9（B04 重定义判定面） | US-6 | 打包版真机：激活后 `dshBinPath()` 解析到 **userData 副本**（非出厂路径）、该副本 `package.json.version` = 目标、后端以该副本重启成功 | 半机检（日志 + fs 断言；真实更新人判）——逐条判定面见下表后「注 B04-1」 |
 | AC9-b（B04） | US-6 | **无静默假成功路径**：激活后对活跃路径复测（解析存在性 + 版本读数 + 冒烟），任一不满足即记 `phase=activate ok=0` 并回滚 | **机检（单元故障注入 + 日志断言 + fs 断言）**——注 B04-2 |
 | AC10 | US-7 | 假注册表条目 version 高于已装 → 市场「已安装」视图出现「可更新」徽标；单个更新 → `plugin update spec=… result=ok` + 后端重启；全部更新 → 逐项日志 + 一次重启；github: 条目按原 installSpec 重装（日志 spec 前缀 `github:`）；前置：`updateSpec` 过 B12 插件标识入参门（`docs/design/SHELL-UX.md` §2.2.14——T21 补记 2026-09-20） | 半机检（日志；徽标/按钮人判） |
-| AC11 | US-8 | 发版演练：`node make-latest.js --note "…"` → latest.json 生成（三平台 URL + sha256 与文件实测一致）→ 打印上传清单；`node make-latest.js`（无产物）→ 退出码 1 + 明确错误 | 人判（发版演练）+ 机检（sha256 与 `certutil`/`sha256sum` 对照） |
+| AC11 | US-8 | 发版演练：`node scripts/make-latest.js --note "…"` → latest.json 生成（三平台 URL + sha256 与文件实测一致）→ 打印上传清单；`node scripts/make-latest.js`（无产物）→ 退出码 1 + 明确错误 | 人判（发版演练）+ 机检（sha256 与 `certutil`/`sha256sum` 对照） |
 | AC12 | US-9 | 更新演练前后对 `~/.dsh` **关键面**做快照对比（profiles/web、sessions/、已装插件目录）→ 无差异；`~/.dsh/pnpm-store` 写入新依赖树为 Harness 更新的**预期增量**（共享 store 的正常写入面），不计破坏性差异（评审 #9） | 人判（快照对比） |
 | AC13（B04） | US-6 | 回滚可用：激活后若后端重启失败 → 回滚到旧副本，旧版能正常启动；`startupCleanup` 不误删现行副本 | 机检（单元 + 日志 + fs 断言）——注 B04-3 |
 | AC14（B04） | US-1…US-9、NFR-1…NFR-4 | 修复不破坏 B02 已通过项（AC1…AC8、AC10…AC12 语义零回退） | 半机检（AC6/AC8 全机检；其余真机抽测）——注 B04-4 |
@@ -941,8 +941,8 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 | TC-18 | 正常 | 假注册表条目 version > 已装 → 市场已安装视图 | 「可更新」徽标 + 更新按钮；更新后日志 `plugin update … ok` + 后端重启 | US-7 / AC10 |
 | TC-19 | 正常 | 多个可更新插件 → 「全部更新 (N)」 | 逐项执行、汇总 toast、一次重启 | US-7 / AC10 |
 | TC-20 | 边界 | github: 源插件更新 | 按原 installSpec 重装（日志 spec 前缀 github:） | US-7 / AC10 |
-| TC-21 | 正常 | `node make-latest.js --note "…"`（产物齐全） | latest.json 含三平台 sha256 + 上传清单打印 | US-8 / AC11 |
-| TC-22 | 边界 | `node make-latest.js`（产物缺失） | 缺失平台跳过；全缺 → 退出码 1 + 错误 | US-8 / AC11 |
+| TC-21 | 正常 | `node scripts/make-latest.js --note "…"`（产物齐全） | latest.json 含三平台 sha256 + 上传清单打印 | US-8 / AC11 |
+| TC-22 | 边界 | `node scripts/make-latest.js`（产物缺失） | 缺失平台跳过；全缺 → 退出码 1 + 错误 | US-8 / AC11 |
 | TC-23 | 正常 | App + Harness 更新演练后快照对比 `~/.dsh` | 配置/会话/插件文件无差异（pnpm-store 新依赖树为预期增量，不计） | US-9 / AC12 |
 | TC-24 | 错误 | update-stub 组合路由：npmmirror 元数据路由 404 + 兜底（npmjs）路由正常 | Harness 元数据获取按设计回退：npmmirror 失败 → npmjs 兜底成功 → 判定有更新 | US-6 / AC8 |
 | TC-25（B04 改写） | 错误 | 激活失败：① 指针写入失败；② 目标目录不可解析；③ 目标目录 == 活跃目录（重装守卫，落 prepare）；④ 提交点（写指针）后的取消 | ① `phase=activate ok=0 detail=pointer-fail:…`（无 rollback 行）；② `verify-fail:resolve` + `rollback ok=1`；③ `prepare ok=0 detail=guard-active-dir`；④ 取消不生效（不删活跃目录、不回写指针）。共同：现行副本未动、旧版照常、可重试 | US-6 / AC9 |
@@ -1055,3 +1055,4 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 |  | ① 明细：§一 C11 `:23` → `:27` · §3.1 AC20 `:25` → `:27` · §3.3 手段 5 `:25` → `:27` · §2.2.10 对象行 `:81-94` → `:83-96` · 复制块 `:91-93` → `:93-94`（2 处：§2.2.10 关系行 / 产物链行）· `runAfterFinish` `:85` → `:110`（3 处：§2.2.4 先例行 / §2.4 DD-14 / §3.1 AC5）· §2.5 O7 所引 T4 行补现行值 `:13-26`。 |
 |  | ② 明细：锁 **8573 行 / 348,259 字节**（diff **8463 变更行** = +4486 / −3977，超预估区间）· 脚本 **290 行** · 基准数更正 `packages` 1106 → **554**、缺 `integrity` 767 → **215**（同步 §2.3 基准块 / §2.5 L13 / O9）。 |
 |  | ③ 明细：`--check` 面取值 = `none` / `refresh` / `repair`（不新增第五值）+ 失败面 退出码 2 + `detail=<原因>`；冒烟判据窄面 = 子串匹配（仅「锁自洽 + 异版本含该串」一窄面）。 |
+| 2026-09-20 | **B15 实施后文档同步轮**：`make-latest.js` 命令面 5 处 → `node scripts/make-latest.js`（§2.2.8 命令块 / scripts 值 · AC11 · TC-21 · TC-22；B15 归位）。**判据 / 计数零改动。** 依据 = `docs/batches/B15-repo-hygiene.md` §5。 |

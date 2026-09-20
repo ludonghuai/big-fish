@@ -14,6 +14,7 @@
 - 右键弹窗重做与动作图鉴卡片化（新功能）：兑换窗**可调整大小**（默认 720×560、记住尺寸）· 喂养面重排（头部卡 + 食品卡）；图鉴升级**视频卡片墙**（每个动作一张卡、可见即播 / 离屏即停、顶部收集进度）；图鉴内可**喜欢**动作（♥ 星标、更常出现、置顶成组、「只看喜欢」开关）与**屏蔽**动作（随机池与事件触发都不再出现；拖动 / 逃跑 / 待机三个事件独占段不可屏蔽）；**满级（Lv.10）特权**：节日与三餐动作无视时间限制随时可演（默认开、托盘可关——`docs/batches/B35-pet-gallery-ui.md`）
 
 ### Changed
+- 仓库卫生（工程）：散档归位——8 档探针 → `scripts/probes/`、3 档构建 / 发布脚本（`afterPack` / `make-icons` / `make-latest`）→ `scripts/`（相对引用 / `ROOT`·`__dirname` 基准 / 跑法面连带修正；`build.files` 零改动）；新增根 `.gitattributes`（`* text=auto eol=lf`，EOL 口径仓库内固化）——`docs/batches/B15-repo-hygiene.md`
 
 - 桌宠动作节奏放缓：动作占比 85% → 40%，且动作之后有 30 秒静默期（不再「一直忙着切换动作」——`docs/batches/B27-pet-feel-2.md`）
 - 插件市场卡片「主页」不再直接跳转（导航守卫——`docs/batches/B28-plugin-fixes.md`）

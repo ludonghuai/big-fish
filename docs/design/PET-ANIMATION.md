@@ -1312,7 +1312,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 | AC14 | NFR-12 | 署名：`THIRD-PARTY-NOTICES.md` / `README.md` / `版本说明.txt` 三处命中「PC2005-cloud」+ GitHub 地址 + 禁商用与消解路径；`package.json` 的 `build.files` 仍含 `THIRD-PARTY-NOTICES.md`（T31 订正 2026-09-20：原锚 `:78` 为 as-of 记录，实测 `:92`） | 机检（静态文本核对） |
 | AC15 | NFR-13 | 不回退与规范：`shell-pet-geometry.js` 零 diff；`package.json` 依赖段零 diff；新增档行宽 ≤ 300 / 行数 ≤ 500；全仓零 `require`·`import` 指向 `samples/**`；既有验收清单（US-1…US-14 / NFR-1…NFR-8）逐条复核 | 机检（静态核对）；**补充证据（前置待修）** = B03 桩测全绿（§2.5 D1） |
 
-**注 A —— AC3 判据细目（行为面活性；取证口径 = 保持清醒的 600 s 探针：`npx electron probe-pet-media.js --chain 600`）**
+**注 A —— AC3 判据细目（行为面活性；取证口径 = 保持清醒的 600 s 探针：`npx electron scripts/probes/probe-pet-media.js --chain 600`）**
 
 - **口径依据**：该探针路径不经 `main.js:182` 的 `pet.scheduleSleep()` ⇒ 入睡计时器不入场，链全程不停摆（与「完整应用」口径的分野见末条）；
 - **① 链不停摆**：相邻两条 `anim switch` 行的 `shown` 间隔 ≤ **段时长 + 100 ms 抖动余量**（段时长 = 池内实测段长，本批恒 10.04 s ⇒ 上界 10.14 s）；
@@ -1333,7 +1333,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 | 用例 | 类型 | 输入 / 前置 | 预期输出 | 映射 |
 |---|---|---|---|---|
 | TC-1 | 正常 | 合法全量池；冷启动应用 | `anim pool ok=1`；首个待机段 `shown − t0 ≤ 800 ms`；随后链持续换段 | US-15 / AC1、AC11 |
-| TC-2 | 正常 | 清醒 600 s 探针窗口（`npx electron probe-pet-media.js --chain 600`） | 无异常日志；链不停摆（相邻 `switch` 的 `shown` 间隔 ≤ 段长 + 100 ms 抖动余量）且 `switch` 条数 ≥ 0.9 × 窗口 ÷ 段长；相邻 `ended → shown` ≤ 300 ms（**B27 修订**：静默期为预期停摆，细目 = 注 A′） | US-15 / AC3 |
+| TC-2 | 正常 | 清醒 600 s 探针窗口（`npx electron scripts/probes/probe-pet-media.js --chain 600`） | 无异常日志；链不停摆（相邻 `switch` 的 `shown` 间隔 ≤ 段长 + 100 ms 抖动余量）且 `switch` 条数 ≥ 0.9 × 窗口 ÷ 段长；相邻 `ended → shown` ≤ 300 ms（**B27 修订**：静默期为预期停摆，细目 = 注 A′） | US-15 / AC3 |
 | TC-3 | 边界 | 透明窗内播放 VP9-alpha 段；放大观察 | 身体外区域**透明**（桌面可见）、无黑底 / 无残影（O5 的取证点） | US-18 / AC7 |
 | TC-4 | 边界 | 拖动窗口跨屏、穿越缩放比不同的屏，同时段在播放 | 几何写入纪律与既有行为逐位一致（`pet-geometry.log` 无新增尺寸写入；桩测口径的判据面不变） | NFR-13 / AC15 |
 | TC-5 | 边界 | 单候选待机池（`idle` 长度 1） | `loop=true`，不重载、不闪断；链不产生 `switch` 抖动 | US-15 / AC3、AC4 |
@@ -1358,7 +1358,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 **验证手段（三类，全部可用现成工具，不引入测试框架）**
 
 1. **桩测（机器证据，主）**：`node .thincoder/b18-pet-chain-stub.mjs`——装载**真实** `pet-chain-core.js`（双环境导出，DD-14），断言：链阈值边界 / 抽取与排除 / 分类权重与 `noMirror` / 档内轮换 / `mediaBox` 逐值 / 池校验 V1–V6 谓词（合法 + 6 类非法）+ JSON 破损 1 类（**合计 7 类**，与 §3.1 AC1 同口径）/ 11 档映射表。末行打印 `pass/total PASS`，非零退出即失败。
-2. **开发期探针（机器证据，辅）**：`npx electron probe-pet-media.js`——加载 `pet.html`，输出：首帧 alpha 包围盒（校准 `PET_MEDIA_BODY`）/ 双通道命中矩形 / `<video>` 元素计数 / reduce 模式下的计算样式 / 像素级 alpha 采样（黑底判据）。**不入包**（`docs/CONVENTIONS.md` §八）。
+2. **开发期探针（机器证据，辅）**：`npx electron scripts/probes/probe-pet-media.js`——加载 `pet.html`，输出：首帧 alpha 包围盒（校准 `PET_MEDIA_BODY`）/ 双通道命中矩形 / `<video>` 元素计数 / reduce 模式下的计算样式 / 像素级 alpha 采样（黑底判据）。**不入包**（`docs/CONVENTIONS.md` §八）。
 3. **日志与人工（观感证据）**：`BIGFISH_PET_DEBUG=1` ⇒ `userData/pet-anim.log` 机检（行型见 §2.2.11）；观感项（无可见空白帧 / 视觉大小不跳变 / 透明正确）**如实标注为人工判定**。
 
 **限制（如实声明，防被误读为已覆盖）**
@@ -1469,7 +1469,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 - **判据带（双向容差；单向论证不成立）**：预触发定时器标称在估计结束前 `PET_OVERLAP_MS` 触发；JS 定时器**只晚不早**（回调延迟 δ ≥ 0 ⇒ 实测 `overlap = N − δ ≤ N`）——但 `overlap` 按**估计**自然结束计时（`duration` 元数据 / 帧级结束判定与实际的偏差）⇒ 段长估计误差的另一向可致实测 `overlap > N`。因此带 = **[N − 250, N + 250]**（250 = 回调调度 + 段长估计的**双向**容差上界）。
   批次档 §2.4 的「[N, N+250]」与 §2.8 续节的「[N − 250, N]」均为**单向**口径笔误，**以本档为准**。
 - **「或 0」的归属**：`overlap = 0` 只属于**链自主换段的 ended 兜底行**（`duration` 不可得 / 预触发未武装 ⇒ `ended` 照旧决策，`reason ∈ {ended, event-end, slot-rotate}` 的兜底路径）与**非链自主换段**（用户触发 / 档位驱动，不计入 ② 的带判据、也不计入 ③ 的分母与分子）；预触发行（`reason=pre-end`）的 `overlap` 恒 > 0。
-- **段末前触发占比**：`overlap > 0` 的链自主换段行 / 链自主换段行总数 ≥ 0.9（取样 = `npx electron probe-pet-media.js --chain 600` 窗口）。
+- **段末前触发占比**：`overlap > 0` 的链自主换段行 / 链自主换段行总数 ≥ 0.9（取样 = `npx electron scripts/probes/probe-pet-media.js --chain 600` 窗口）。
 - **探针叠化窗采样（④）**：`--chain` 驱动期内注入两路 `paused` 状态采样（≥ 每 10 ms，与既有 `--entry` 入场采样同款注入形态）——叠化窗 = 换前台到淡出窗末的区间；判据 = 窗内两路 `paused=false`、**窗后稳态**恒 1 路 `paused=false`；**采样豁免** = ended 兜底行（旧段已自然结束 ⇒ 叠化窗不成立 ⇒ 该行窗口不采「两路」判据——其「新段就绪后恒 1 路」由 AC28 ② 的 `readyState ≥ 2` 判据面覆盖；[D, D+L] 内 0 路在播是 ended 路径的物理事实，非违例）。
 - **探针与桩测增量**：`probe-pet-media.js` 的叠化窗两路播放 / `overlap=` 读数 / 拖动档 / 逃跑档取证 + 新建 `.thincoder/b21-pet-selection-stub.mjs`（`decideNext` / `judgeSwitch` 装载真实实现；末行 `pass/total PASS`）——文件与增量预算 = 批次档 §2.3 第 6 / 7 行。
 - **注 E′（AC27 判据的 B27 修订注记；源 = §2.14.11 C61）**：自 B27 起：②「或 0」的归属扩展——`overlap = 0` 的必要性主要来自**静默出行**（`reason=quiet-end`：静默段 `loop=true` 无自然结束 ⇒ 无预触发窗口 ⇒ 0）与 ended 兜底；**入静默行**（`reason=quiet`）走既有两触发——预触发 ⇒ `overlap ≈ PET_OVERLAP_MS`、`ended` 兜底 ⇒ 0；
@@ -1496,7 +1496,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 
 ### 3.8 B21 用例表（TC-37–TC-47）
 
-> 验证手段（三类，承 §3.3 / §3.6 形态）：① 桩测 `node .thincoder/b21-pet-selection-stub.mjs`（`decideNext` / `judgeSwitch` 装载真实实现，末行 `pass/total PASS`）；② 探针 `npx electron probe-pet-media.js --chain 600`（`overlap=` 读数 / 叠化窗两路采样 / 拖动档 / 逃跑档取证）；③ 日志与人工（`BIGFISH_PET_DEBUG=1` ⇒ `userData/pet-anim.log`；观感项如实标注）。
+> 验证手段（三类，承 §3.3 / §3.6）：① 桩测 `node .thincoder/b21-pet-selection-stub.mjs`（`decideNext` / `judgeSwitch` 装载真实实现，末行 `pass/total PASS`）；② 探针 `npx electron scripts/probes/probe-pet-media.js --chain 600`（`overlap=` / 叠化窗采样 / 拖动档 / 逃跑档取证）；③ 日志与人工（`BIGFISH_PET_DEBUG=1` ⇒ `userData/pet-anim.log`；观感项如实标注）。
 
 | 用例 | 类型（正常/边界/异常） | 输入 / 前置 | 预期输出 | 映射 |
 |---|---|---|---|---|
@@ -1544,7 +1544,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 
 ### 3.10 B27 用例表（TC-50–TC-58）
 
-> 验证手段（三类，承 §3.3 / §3.6 形态）：① 桩测 `node .thincoder/b27-pet-feel-2-stub.mjs`（`decideNext` / `judgeSwitch` 扩展装载真实实现 + 池数据 `parsePool`，末行 `pass/total PASS`）；② 探针 `npx electron probe-pet-media.js --chain`（换段 / 静默行取证）；③ 日志与人工（`BIGFISH_PET_DEBUG=1` ⇒ `userData/pet-anim.log`；观感项如实标注）。
+> 验证手段（三类，承 §3.3 / §3.6 形态）：① 桩测 `node .thincoder/b27-pet-feel-2-stub.mjs`（`decideNext` / `judgeSwitch` 扩展装载真实实现 + 池数据 `parsePool`，末行 `pass/total PASS`）；② 探针 `npx electron scripts/probes/probe-pet-media.js --chain`（换段 / 静默行取证）；③ 日志与人工（`BIGFISH_PET_DEBUG=1` ⇒ `userData/pet-anim.log`；观感项如实标注）。
 
 | 用例 | 类型（正常/边界/异常） | 输入 / 前置 | 预期输出 | 映射 |
 |---|---|---|---|---|
@@ -1587,3 +1587,4 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 | 2026-09-19 | **B27 修正轮 1（评审轮 1 🔴#1–#3 / 🟡#4–#6 / 🔵#7–#10；源 = 批次档 §3 轮次 1 + 主 agent 裁决）**：① 静默区间锚改静默标记行（`anim quiet enter` → `anim quiet end`）六处同源 + 计时退出决策行豁免；② §2.2.3 / §2.13.8 escape `loop` 旧句补 B27 修订注（`loop=false` 单遍；drag 仍 `true`）；③ `turn` 翻转标记与计划类型解耦（§2.14.9 + 注 H①）。 |
 | 2026-09-19 | 承上行（④–⑥）：④ 注 E′ ② 归因订正（入静默走既有两触发；「或 0」主要来自 `quiet-end` 与 ended 兜底）；⑤ AC34② / TC-55 存活口径「段长 − `PET_OVERLAP_MS` ± 250 ms」+ TC-55 去自相抵；⑥ AC25 / TC-37 池计数 B27 修订注（94 / 12）。**计数不变（AC 35 · TC 58 · DD 43 · C 62 · O 30）**。 |
 | 2026-09-19 | **B27 修正轮 4（棒 B-1 评审 Deferred 🟡×2；源 = 批次档 §5.4 存疑 1/2）**：① §2.14.9 清除面补第 4 清除点（`onPlayFail` 入口即 `clearQuiet()`，播中出错短路防残留）；② 计时退出取证五处同源——「`anim chain` 决策行」→「`reason=quiet-end` 换段行」（§2.14.3 / §2.14.9 不变量 / 注 A′ ① / AC33② / TC-50）。**计数不变（AC 35 · TC 58 · DD 43 · C 62 · O 30）**。 |
+| 2026-09-20 | **B15 实施后文档同步轮**：本档 6 处探针跑法命令 → `npx electron scripts/probes/probe-pet-media.js`（B15 归位；行锚 as-of：`:1315` / `:1336` / `:1361` / `:1472` / `:1499` / `:1547`）。**判据 / 计数零改动。** 依据 = `docs/batches/B15-repo-hygiene.md` §5。 |

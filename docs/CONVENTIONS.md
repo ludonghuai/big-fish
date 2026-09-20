@@ -77,6 +77,7 @@
 - **ESM 注（判据 ① 的扩展名口径 · 主 agent 2026-09-17 已裁定）**：`tests/update-stub.mjs` 为 ESM（`.mjs`），无 `'use strict';` 行（实测 `:1` = `/**`，`:10` = `import`）⇒ **判据 ① 适用于 `.js`（CJS），`.mjs` 免**；
   该档合规性由**判据 ② ③** 承载（本无 `'use strict';` 行）——判据 ① 的扩展名口径**不改变**其归属（上表 22 档逐名含它），三分不变：22 + 3 + 17 = **42**（裁定与落点见 `docs/batches/B11-conventions.md` §2 修正轮 2）。
 - 前世代 = **待迁移面**（**不是**合规面，不享「存量豁免」）。迁移判据 = 本 §一的三条判据；**迁移另批执行**（本批零 `.js` 改动，见 `docs/design/REPO-CONVENTIONS.md` §2.3 出批项 O2）。
+- **B15 as-of 注（计数时效；源 = 附 B §B.2.7 ③）**：本节三分与逐名清单 = **as-of 2026-09-17 快照**；此后码档随各批增长（B15 as-of 2026-09-20 实测跟踪码档 **68** 档；`probe-pet-media.js` 未列入三清单——计数与枚举不符），且 B15 归位时 10 档迁移面已动（注见 §八）。**本批只加此 as-of 注、不重算全域**；全量重算归台账 T31 / B14 对账族。
 
 ---
 
@@ -154,7 +155,7 @@ D③ **13/13 恰一处**（绑定面 **17** 条），免检 **4 档** = `shell-s
 - **缩进** = 空格、2 格（`indent_style = space` · `indent_size = 2`；实测无 Tab 缩进档、0 行 Tab 缩进）。**禁止制表符缩进**。
 - **字符集** = UTF-8（无 BOM；实测 93 文本档 0 档带 BOM）。
 - **`max_line_length` 不写入 `.editorconfig`**：豁免面（台账/地图表格行、批次档 §3）无法表达，误报率高 ⇒ 行宽判据由本档 §五 + B16 机检承载。
-- **已知局限**：无 `core.autocrlf` 的克隆（Linux/macOS 协作者、CI runner）下 EOL 归一依赖于该机 git 配置，非仓库化 ⇒ 建议另批加 `.gitattributes`（`* text=auto eol=lf`）固化口径（出批项 O1，本批不落）。
+- **EOL 口径固化（B15 已落，as-of 2026-09-20）**：根 `.gitattributes` 在场（`* text=auto eol=lf`）⇒ EOL 归一**仓库化**——跨机（Linux/macOS 协作者、CI runner）不再依赖本机 git 配置；固化为**只声明**：未做 `--renormalize`（索引面零变化：158 文本档全 LF · `i/crlf` = 0）。原「已知局限」条由本条**消解**。落点与契约 = `docs/design/REPO-CONVENTIONS.md` 附 B §B.2.2 ⑤。
 
 ---
 
@@ -172,9 +173,9 @@ D③ **13/13 恰一处**（绑定面 **17** 条），免检 **4 档** = `shell-s
 
 ## 八、开发期脚本（探针 / 辅助）
 
-- `probe-*.js`（7 档）与 `debug-pet.cmd` = **开发期诊断工具、不入包**（`package.json:41-82` 的 `build.files` 未列；行号只作 as-of 参考）。
-- 形态要求（探针**特有**项）：头部注释写清「用途 + 跑法」（实测 `probe-displays.js:1-3`：`// Diagnostic probe: …` / `// Run: npx electron probe-displays.js`）。
-- 头部形态（`'use strict';` 第 1 行 + JSDoc 块 + 含路径设计档指针）= **见 §一**（唯一详述处，本处不重述）；现状 `'use strict';` 在第 4–6 行 ⇒ 属迁移面（见 §1.1）。
+- `scripts/probes/probe-*.js`（**8 档**；B15 归位，as-of 2026-09-20）与 `debug-pet.cmd` = **开发期诊断工具、不入包**（`package.json:46-94` 的 `build.files` 未列 probe 条目——行锚只作 as-of 参考；归位布局与新增约定 = `docs/design/REPO-CONVENTIONS.md` 附 B §B.2.2）。
+- 形态要求（探针**特有**项）：头部注释写清「用途 + 跑法」（实测 `scripts/probes/probe-displays.js:3-5`：`probe-displays.js — E6 判定探针：…` / `跑法：npx electron scripts/probes/probe-displays.js`）。
+- 头部形态（`'use strict';` 第 1 行 + JSDoc 块 + 含路径设计档指针）= **见 §一**（唯一详述处，本处不重述）；**B15 注（as-of 2026-09-20）**：归位后 8 档探针头部均已在标准形（原「`'use strict';` 在第 4–6 行」形态随归位迁移消解）——三分计数与其余迁移面 = §1.1 的 B15 as-of 注（不重算）。
 
 ---
 
@@ -193,3 +194,4 @@ D③ **13/13 恰一处**（绑定面 **17** 条），免检 **4 档** = `shell-s
 | 2026-09-19 | **B16 收口轮（门禁现状同步）**：§零 门禁计数 **0/3 → 3/3**；§四 / §五 「随 B16 实施落地」→「已落地」×2；§四 基线处理行改「已落地生效」；§五 行宽债计数与基线对齐 **92 行 / 16 档 → 15 档 / 93 行**（计数权威 = `scripts/gates/baseline.json`；余 13 档 → 12 档同步）。依据 = `docs/batches/B16-test-gates.md` §5 / §6。 |
 | 2026-09-19 | **B29 实施轮（判据 E 判据句落笔）**：§四 表头注「结构判据三条」→「+ 样本解耦判据一条（E）」+ 表增 **E 行**（判据句权威 = 本档；零命中恒判、不进基线）+ 表头注机检面补 E；顺手修表头注行尾既有游离反引号。判据句细则与机检口径 → `docs/design/REPO-CONVENTIONS.md` 附 A-续 §A-B29.2.2（不复述）。依据 = 批次档 `docs/batches/B29-samples-guard.md` §2 · AC-B29-6。 |
 | 2026-09-19 | **B31 收口轮（文档层折账；源 = `docs/batches/B31-affinity-balance.md` §5.2）**：§四 D③ 覆盖面「15 条 require」→ **16**；现状行「免检 **2 档**」→ **3 档**（枚举同步 + `affinity-core.js`——结构性免检，D3）——随 B31 `assemblyExempt` +1 生效（as-of 2026-09-19）。**判据句本体零动。** |
+| 2026-09-20 | **B15 实施后文档同步轮**：§六「已知局限」→ **EOL 固化条**（`.gitattributes` 已落；原局限消解）；§八 探针位置 → `scripts/probes/`（**8 档**计数 + 跑法例新路径 + 回指附 B）+ `build.files` 行锚刷新；§1.1 补 **B15 as-of 注**（三分计数时效；不重算）。依据 = `docs/batches/B15-repo-hygiene.md` §5 / 设计 `docs/design/REPO-CONVENTIONS.md` 附 B §B.2.3。 |

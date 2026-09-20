@@ -284,22 +284,22 @@ B20 D-1 修偏注记自述双处幂等）——见 §1.4 图④注与 §2.2 尾�
 
 ### 2.6 面⑥ 8 档探针清点
 
-**定位**：`probe-*.js` = 开发期诊断探针（`npx electron probe-<名>.js` 单档直跑；不入包——`docs/CONVENTIONS.md` §八
-白名单外即不入，`package.json:46-92` 无 probe 条目）。共 **8 档**（glob 全清单，as-of 2026-09-19），
+**定位**：`scripts/probes/probe-*.js` = 开发期诊断探针（**B15 归位**，as-of 2026-09-20；单档直跑，命令 = 下表「怎么跑」列；不入包——`docs/CONVENTIONS.md` §八
+白名单外即不入，`package.json:46-94` 无 probe 条目）。共 **8 档**（glob 全清单，as-of 2026-09-20），
 全部为多屏 / 桌宠几何问题的取证与校准工具——产出打到 stdout / 日志，**不改产品代码、不写仓库文件**。
 
 | 探针 | 行数 | 干什么（档头自述压缩） | 怎么跑 | 读什么 | 产出什么 |
 |---|---|---|---|---|---|
-| `probe-displays.js` | 55 | E6 判定：setSize / getSize / getPosition 在 DIP 还是物理像素（`probe-displays.js:1-2`） | `npx electron probe-displays.js`（`:3`） | `screen.getAllDisplays()` 各屏几何 | stdout：各屏几何 + 窗口尺寸读数分段打印 |
-| `probe-displays2.js` | 77 | 尺寸坐标系机制钉死：建窗于各屏 getSize 读什么 / 跨屏移动待 DPI 稳定后读什么（`:1-3`） | `npx electron probe-displays2.js`（`:4`） | 双屏几何 + 跨屏移动过程读数 | stdout：Q1 / Q2 两问的读数对照 |
-| `probe-size-readback.js` | 53 | setSize / setBounds 后立即 getSize 在混合 DPI 屏是否稳定（「尺寸闪烁 / 拖动迟滞」假说，`:1-2`） | `npx electron probe-size-readback.js`（`:3`） | setSize 前后窗口尺寸读数 | stdout：写后立即读的稳定性序列 |
-| `probe-straddle-size.js` | 68 | 窗口跨异 DPI 屏边界时 setSize(250,270) 是否可靠（设计禁跨屏写尺寸——验该禁令必要性，`:1-4`） | `npx electron probe-straddle-size.js`（`:5`） | 跨边界摆位后的尺寸读数 | stdout：跨屏写尺寸成败对照 |
-| `probe-position-accuracy.js` | 70 | setPosition / setBounds 在双屏各自是否位置精确（「穿越后回位漂移 → re-anchor 烙入误差」假说，`:1-4`） | `npx electron probe-position-accuracy.js`（`:5`） | 请求位置 vs 回读位置逐屏对照 | stdout：每屏读写误差表 |
-| `probe-resizable-setsize.js` | 56 | `resizable:false` 是否阻断 setSize（几何修正日志 size-from === size-to 疑点，`:1-3`） | `npx electron probe-resizable-setsize.js`（`:4`） | resizable 两态窗口同步骤对照 | stdout：两态 setSize 生效性对照 |
-| `probe-settle-scan.js` | 117 | 逐字复现 petSettlePos 等纯函数，主屏逐高度扫描「用户报的 y 在哪被弹到哪」（`:1-3`） | `npx electron probe-settle-scan.js`（`:4`） | 主屏全高度 × 落点修正数学（复刻 `petIsVisible` / `petStraddleFix` / `petSettlePos`，`:8-10`） | stdout：逐 y 的弹出行为扫描表 |
-| `probe-pet-media.js` | 397 | 桌宠视频通道探针（B18）：VP9-alpha 合成 / video 加载 / alpha 包围盒校准 / 通道计数 / reduce 样式 / B21 取证（`:5-16`） | `npx electron probe-pet-media.js` ＋ flag 集（`:12`） | 自建同配置透明窗（`:14-15`）；canvas 取帧；CDP 模拟 | stdout 读数（隔离 userData `:26-29`） |
+| `scripts/probes/probe-displays.js` | 57 | E6 判定：setSize / getSize / getPosition 在 DIP 还是物理像素（`:3`） | `npx electron scripts/probes/probe-displays.js`（`:5`） | `screen.getAllDisplays()` 各屏几何 | stdout：各屏几何 + 窗口尺寸读数分段打印 |
+| `scripts/probes/probe-displays2.js` | 80 | 尺寸坐标系机制钉死：建窗于各屏 getSize 读什么 / 跨屏移动待 DPI 稳定后读什么（`:3`） | `npx electron scripts/probes/probe-displays2.js`（`:7`） | 双屏几何 + 跨屏移动过程读数 | stdout：Q1 / Q2 两问的读数对照 |
+| `scripts/probes/probe-size-readback.js` | 56 | setSize / setBounds 后立即 getSize 在混合 DPI 屏是否稳定（「尺寸闪烁 / 拖动迟滞」假说，`:3`） | `npx electron scripts/probes/probe-size-readback.js`（`:6`） | setSize 前后窗口尺寸读数 | stdout：写后立即读的稳定性序列 |
+| `scripts/probes/probe-straddle-size.js` | 71 | 窗口跨异 DPI 屏边界时 setSize(250,270) 是否可靠（设计禁跨屏写尺寸——验该禁令必要性，`:3`） | `npx electron scripts/probes/probe-straddle-size.js`（`:7`） | 跨边界摆位后的尺寸读数 | stdout：跨屏写尺寸成败对照 |
+| `scripts/probes/probe-position-accuracy.js` | 73 | setPosition / setBounds 在双屏各自是否位置精确（「穿越后回位漂移 → re-anchor 烙入误差」假说，`:3`） | `npx electron scripts/probes/probe-position-accuracy.js`（`:8`） | 请求位置 vs 回读位置逐屏对照 | stdout：每屏读写误差表 |
+| `scripts/probes/probe-resizable-setsize.js` | 59 | `resizable:false` 是否阻断 setSize（几何修正日志 size-from === size-to 疑点，`:3`） | `npx electron scripts/probes/probe-resizable-setsize.js`（`:7`） | resizable 两态窗口同步骤对照 | stdout：两态 setSize 生效性对照 |
+| `scripts/probes/probe-settle-scan.js` | 120 | 逐字复现 petSettlePos 等纯函数，主屏逐高度扫描「用户报的 y 在哪被弹到哪」（`:3`） | `npx electron scripts/probes/probe-settle-scan.js`（`:7`） | 主屏全高度 × 落点修正数学（复刻 `petIsVisible` / `petStraddleFix` / `petSettlePos`，`:11-12`） | stdout：逐 y 的弹出行为扫描表 |
+| `scripts/probes/probe-pet-media.js` | 397 | 桌宠视频通道探针（B18）：VP9-alpha 合成 / video 加载 / alpha 包围盒校准 / 通道计数 / reduce 样式 / B21 取证（`:5-16`） | `npx electron scripts/probes/probe-pet-media.js` ＋ flag 集（`:12`） | 自建同配置透明窗（`:14-15`）；canvas 取帧；CDP 模拟 | stdout 读数（隔离 userData `:26-29`） |
 
-**probe-pet-media 的耦合面（实测复核，as-of 2026-09-19）**：require 产品档 **5** 个 =
+**probe-pet-media 的耦合面（实测复核，as-of 2026-09-20；B15 归位后相对 require 深度 = `'../../…'`）**：require 产品档 **5** 个 =
 `pet-chain-core.js`（`:22`）＋ `shell-settings.js` / `shell-pet-geometry.js` / `shell-pet-drag.js` /
 `shell-pet.js`（惰性 require `:138-141`）；并复刻主进程的 `BIGFISH_USER_DATA` userData 隔离钩子
 （`:26-29`，同口径 `main.js:66-69`）。**无 `require('./main.js')`**（全仓 grep 零命中）——
@@ -337,13 +337,13 @@ B20 D-1 修偏注记自述双处幂等）——见 §1.4 图④注与 §2.2 尾�
 | bundled-plugins | `bundled-plugins` → `bundled-plugins` | 出厂插件目录（现仅 README.txt 1 项——出厂空置，用户后装，见 §2.8） |
 | dsh-bundle 依赖树 | `dsh-bundle/node_modules` → `dsh/node_modules` | 出厂冻结的后端依赖树（目标名 dsh）——后端 spawn 的兜底来源（`shell-backend.js:90-93`） |
 
-**构建 / 发布脚本 5 件**（行数 as-of 2026-09-19 实测）：
+**构建 / 发布脚本 5 件**（行数 as-of 2026-09-20 实测；其中 3 件随 B15 迁移入 `scripts/`）：
 
 | 脚本 | 行数 | 干什么 | 入口 |
 |---|---|---|---|
-| `afterPack.js` | 39 | 打包后钩子：独立 rcedit 向 exe 自嵌图标 + 版本元数据（electron-builder 内置 rcedit 依赖 winCodeSign 归档，macOS dylib 符号链接在 Windows 提取失败——`:3-7` 自述） | `build.afterPack`（`package.json:44`） |
-| `make-icons.js` | 72 | sharp 从源 PNG（`build/icon_background_removed.png`）产出 4 件图标（icon.png / icon.ico / tray.png / assets/icon.png，`:2-6`） | `npm run icons`（`package.json:22`） |
-| `make-latest.js` | 93 | 发布侧：扫 dist/ 三平台产物算 sha256 → 组装 latest.json 写仓根 + 打印上传清单（附件托管 GitHub Releases——Gitee 单文件 100MB 上限装不下安装包，`:16`）；缺平台跳过 | `npm run make-latest`（`package.json:23`） |
+| `scripts/afterPack.js` | 41 | 打包后钩子：独立 rcedit 向 exe 自嵌图标 + 版本元数据（electron-builder 内置 rcedit 依赖 winCodeSign 归档，macOS dylib 符号链接在 Windows 提取失败——`:3-9` 自述） | `build.afterPack`（`package.json:44`） |
+| `scripts/make-icons.js` | 76 | sharp 从源 PNG（`build/icon_background_removed.png`）产出 4 件图标（icon.png / icon.ico / tray.png / assets/icon.png，`:4-8`） | `npm run icons`（`package.json:22`） |
+| `scripts/make-latest.js` | 93 | 发布侧：扫 dist/ 三平台产物算 sha256 → 组装 latest.json 写仓根 + 打印上传清单（附件托管 GitHub Releases——Gitee 单文件 100MB 上限装不下安装包，`:16`）；缺平台跳过 | `npm run make-latest`（`package.json:23`） |
 | `scripts/ensure-deps.js` | 95 | 源码运行依赖自检：根 devDependencies（electron / electron-builder）＋ dsh-bundle 生产依赖两处要装（`:4-10`）；不进安装包 | `postinstall` / `prestart`（`package.json:14-15`） |
 | `scripts/refresh-dsh-bundle.js` | 291 | 出厂冻结树刷新与只读判定（B08；`AUTO-UPDATE.md` §2.2.10）：钉版 = registry `latest` dist-tag；`--check` 退出码 0/1/2；失败不留半成品 | `npm run bundle:refresh` / `bundle:check`（`package.json:24-25`） |
 
@@ -389,12 +389,12 @@ B20 D-1 修偏注记自述双处幂等）——见 §1.4 图④注与 §2.2 尾�
 | 改 IPC 通道 / preload 桥 | `shell-ipc.js` / 各 preload 档；契约权威 = `SHELL-UX.md` §2.2 | `ARCHITECTURE.md` 面④（桥键数 / 通道计数） |
 | 改数据落盘（userData / ~/.dsh 接触点） | `AUTO-UPDATE.md`（更新域）/ `PET-ANIMATION.md` §2.7（工作状态） | `ARCHITECTURE.md` 面③（谁写谁读表）；字段布局不写（U-5） |
 | 改桌宠子系统（几何 / 拖拽 / 动画链 / 物理 / 工作状态） | 对应 `PET-MULTIMONITOR.md` / `PET-DRAG.md` / `PET-ANIMATION.md` / `PET-MOVEMENT.md` | `ARCHITECTURE.md` 面⑤（仅关系图随依赖变化） |
-| 改打包 / 发布（资源、target、afterPack、latest.json） | `package.json` `build` 段 / `afterPack.js` / `make-latest.js`；更新链权威 = `AUTO-UPDATE.md` | `ARCHITECTURE.md` 面⑦（白名单条数） |
+| 改打包 / 发布（资源、target、afterPack、latest.json） | `package.json` `build` 段 / `scripts/afterPack.js` / `scripts/make-latest.js`；更新链权威 = `AUTO-UPDATE.md` | `ARCHITECTURE.md` 面⑦（白名单条数） |
 | 改 bundled-skills / dsh-bundle / bundled-plugins | `AUTO-UPDATE.md` §2.2.10（钉版 / 刷新）；`SHELL-UX.md`（插件编排） | `ARCHITECTURE.md` 面⑧ |
-| 加诊断探针 | 新 `probe-*.js`（不入包；取证结论记入对应设计档测试层） | `ARCHITECTURE.md` 面⑥（8 档计数） |
+| 加诊断探针 | 新探针 → `scripts/probes/probe-*.js`（B15 归位约定；不入包；取证结论记入对应设计档测试层） | `ARCHITECTURE.md` 面⑥（8 档计数） |
 | 改判据 / 门禁 / 代码规范 | `docs/CONVENTIONS.md` ＋ `scripts/gates/**` | 根 `AGENTS.md` §三（主 agent 写权） |
 
-**前瞻注（B15）**：B15（仓库卫生；`docs/TODO.md` T34 / T35）将把 8 档 `probe-*` 与构建脚本归位到 `scripts/` / `tools/`——**落地后须同步本档面⑥（跑法 / 路径）、面⑦（脚本位置）与本表**（本档两面按 as-of 2026-09-19 根目录平铺形态记录）。
+**B15 归位注（已落地，as-of 2026-09-20）**：8 档 `probe-*` → `scripts/probes/`、构建脚本 3 件（`afterPack` / `make-icons` / `make-latest`）→ `scripts/`（B15 仓库卫生；`docs/batches/B15-repo-hygiene.md`）——本档面⑥（跑法 / 路径）、面⑦（脚本位置 / 行数）与本表**已同步**；归位布局与新增约定 = `docs/design/REPO-CONVENTIONS.md` 附 B §B.2.2。
 
 ### 2.10 八面覆盖自检（as-of 2026-09-19，落笔时点）
 
@@ -435,3 +435,4 @@ B20 D-1 修偏注记自述双处幂等）——见 §1.4 图④注与 §2.2 尾�
 | 2026-09-19 | 建档 + 面①–④ 与总览图区四图落笔（第一棒）；面⑤–⑧ 与改动入口表 = 第二棒。 |
 | 2026-09-19 | 第二棒落笔：面⑤–⑧、改动入口表（§2.9）、八面覆盖自检（§2.10）；probe-pet-media 耦合按实测写（无 main.js，台账 T29 更正另报）；§1.3 过期口径（17 档 / 15 require / 46 条白名单）在对应面订正。 |
 | 2026-09-19 | **修订轮 1**（评审轮 1 十条收敛）：补 §3 验收标准 AC-1…5（§2.10 建对应；变更记录顺延 §4）；tray 10 档名单（§1.2）· 技能 5 档名（面⑧）· 无 init 补 shell-market · `src` 措辞 · PET-AFFINITY 行 · 行数口径注 · B15 前瞻注；面⑦ 补 `download-*` 说明 ＋ 判据指针补 `docs/CONVENTIONS.md`。依据 = 批次档 §3 轮次 1。 |
+| 2026-09-20 | **B15 实施后文档同步轮**：面⑥ 8 档探针 → `scripts/probes/`（跑法 + 行数 + 行锚；定位语 / 耦合面注同源）；面⑦ 3 件脚本 → `scripts/`（行数 as-of 2026-09-20）；§2.9 入口表 2 行 + B15 前瞻注改「已落地」。依据 = `docs/batches/B15-repo-hygiene.md` §5 / 设计 `docs/design/REPO-CONVENTIONS.md` 附 B §B.2.3。 |
