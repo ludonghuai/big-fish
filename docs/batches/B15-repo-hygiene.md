@@ -234,6 +234,63 @@ VERDICT: pass
 
 ---
 
+### §5 实施记录（eng-coder，2026-09-20）
+
+**交付形态**：新建 1 档 + `git mv` 11 档 + 连带修正 11 档 + `package.json` 三行与 `:62` 缩进；步序 ①–⑥ 全走（⑦ 文档同步 / ⑧ 台账收口 = 其他角色，未触碰）。改动已 `git add` 暂存（`A .gitattributes` + `R ×11` + `M package.json`，恰 13 档）；**未提交**（§2.6 的提交形态含 ⑦ 文档面，时机归父侧统筹）。
+工作区除本批 13 档外零改动（运行时面 / `build.files` 49 档 / `tests/**` / `scripts/gates/**` 零 diff）。
+
+**逐档落点（行数 as-of 2026-09-20 实测）**：
+
+| 档 | 动作 | 行数 |
+|---|---|---|
+| `.gitattributes`（新） | `* text=auto eol=lf` + 两条声明注（= 附 B §B.2.2 ⑤ 契约逐字） | 新建 3 行 |
+| `scripts/probes/probe-pet-media.js` | `:12` 跑法行；`:22` + `:138-141` require → `'../../…'`；`:31` `ROOT = path.join(__dirname, '..', '..')` | 397 → 397 |
+| `scripts/probes/probe-displays.js` | 头重排标准形 + 跑法新路径（指针 §2.2） | 55 → 57 |
+| 6 档几何探针（displays2 / size-readback / straddle-size / position-accuracy / resizable-setsize / settle-scan） | 同上；settle-scan 指针 §2.5 | 各 +3 |
+| `scripts/afterPack.js` | `:19-20` `'..'` 基准；JSDoc 补指针（ARCHITECTURE §2.7 面⑦） | 39 → 41 |
+| `scripts/make-icons.js` | `:15-17` `'..'` 基准；头重排 + 指针 + 用法行 | 72 → 76 |
+| `scripts/make-latest.js` | `:41/:51/:69/:79` `'..'` 基准；指针 → `docs/design/AUTO-UPDATE.md §2.2.8`；用法行全路径 | 93 → 93 |
+| `package.json` | `:22` / `:23` / `:44` 三行 + `:62` 缩进 4 → 6 | 行数不变 |
+
+**头指针归属（7 档几何探针，按实证归属取节）**：6 档 → `docs/design/PET-MULTIMONITOR.md` §2.2（各档读数表所在：Q1–Q4 / Q5 / Q6 / Q7 / 位置侧 A–C）；`probe-settle-scan.js` → §2.5（§2.2 无其读数表；该档落点校正读数归属 §2.5 决策面 DD-2 / DD-14 / DD-17）。
+批次号字段口径 = 该头形态的确立批（10 档标 `B15`）；`probe-pet-media.js` 保留 `（B18；…）` 指针、不追改批号（设计 §B.2.2 ②「保留指针」口径；评审轮 1 #7 同源）。
+
+**机检与实机（原始读数）**：
+
+- **G1** `build.files` 排序集前后零 diff（49 条、零 probe 条目）；**G2** `git grep -nE "require\(['\"]\./(probe-|afterPack|make-icons|make-latest)"` = **0**。
+- **G3** 11 档字面量相对 require 5 条全解析；全仓 68 档 .js/.mjs、115 条相对 require，未解析 17 处**全部**位于 `scripts/gates/**` 的注释 / 自证夹具字符串（B16 面、本批零触碰）。
+- **G4** 活文档面 27 命中（分类与处置见下）；注入 / 移除双向实测 = 27 → 注入 28 → 清除 27（文档回净、零 diff）。
+- **G5** 三绿：`GATE lint PASS checks=7 selftest=20/20` · `GATE test:full PASS pass=62 fail=0 skipped=0 ms=1143` · `GATE test:integration PASS scenarios=3 pass=3 fail=0`（S1 = 真启动，冒烟证据）。
+- **G6** `npm run pack` 退 0，stdout 含 `[afterPack] applied icon + version to D:\big-fish\dist\win-unpacked\Bigfish.exe`（无 skipping 分支）。
+- **G7** 探针实跑：`scripts/probes/probe-displays.js` 正常读数退 0；`scripts/probes/probe-pet-media.js` **O5 pass** 退 0（`window alpha(825x475 px, sf=1.2500)` / 播放推进 / DOM 读数齐）。
+- **TC 双向**：TC-05 / 06 注入回红（`UNRESOLVED scripts/probes/probe-pet-media.js:22` / `ROOT=…scripts\probes miss=3`）→ 恢复绿；TC-08 夹具 +1 报红、真实档零 diff；TC-03 临时 clone 索引注入 CRLF ⇒ `i/crlf` 命中；TC-01 / 02 / 04 / 07 读数在案。
+- **AC-B15-3 ④**：make-latest 沙箱正例退 0（sha256 与实算一致）+ 负例退 1；真仓 `latest.json` 零触碰；make-icons 静态基准过（`sharp` 缺依赖 ⇒ 不实跑，见下）。
+
+**如实声明 / 存疑（提请父侧裁定）**：
+
+1. **G4 = 27 命中**：22 处 = 6 档活文档同步面（⑦ eng-designer：CONVENTIONS `:176`；ARCHITECTURE `:287` + 8 行；AUTO-UPDATE 5 处；PET-ANIMATION 6 处；PET-MOVEMENT `:698`）；5 处 = `docs/design/REPO-CONVENTIONS.md` 自身定义 / 契约行（`:1018` / `:1019` / `:1032` / `:1135` / `:1155`）——**判据自指 ⇒ 按字面「= 0」不可达成**。
+建议随 ⑦ 或设计微修补「判据自身定义行豁免」口径（先例 = 附 A-续 E① 守卫自身豁免）。
+2. **AC-B15-2 计数口径**：「根非包散档 26 → 15」按逐字公式实测 = **26 → 16**（70 − 11 + 1 `.gitattributes` = 60 顶层；60 − 44 = 16）——存量面 = 15（原 26 中 11 档离根），+1 = F1 新增档自身。
+3. **AC-B15-4 行数口径**：`package.json` `\n` 字符数 = 143（read / 编辑器口径 144 行；末行空行），前后同值——设计记「按 `\n` 计数 = 144」与实测差 1（疑为 split 口径）；「行数不变」结论成立。
+4. **探针 0x0 首发抖动（一次性）**：probe-pet-media 首次实跑 `capturePage` 返 0x0 ⇒ 该次 O5 判 fail；独立最小复现（原版无改动 capture 测试：首捕 0x0 / 次捕正常）+ 旧版探针原位对照（pass）+ 新版复跑 ×2（pass）⇒ 判为**会话级捕屏抖动，非 B15 引入**（本批不触 `capturePage` 路径）。
+5. **Δ 与设计预估差异（零行为面）**：make-icons +4（设计 ≈+3）；make-latest ±0（设计 ≈+2）；`.gitattributes` 3 行（设计 §B.2.3 记「≈ 6 行」——实现取 §B.2.2 ⑤ 契约逐字为准）。
+6. **未做面**：`--renormalize`（无触发面：索引 `i/crlf|i/mixed|i/none` 双向 = 0）；提交；⑦ / ⑧ 全部面。
+7. **T35**：`测试-更新功能/` 实测不在盘（`git ls-files` + 工作区双查零命中，as-of 2026-09-20）⇒ 无处置动作；`.gitignore:22` 条目保留为预防性声明（DD-B15-6）；核销建议行归主 agent。
+
+**交付前内部审计与代码评审（终态）**：
+
+- **偏离审计（explore，read-only，1 轮）**：1 条 🟡 = §5 未落笔（**本段落笔 = 闭环**）；写域 / 逐档修正 / 头形态 / 陈述一致性 / 如实声明五维逐条核过（其独立复核：11 档 `node --check` 全过、行数 Δ 与 §B.2.3 预计带一致）。观察 2 条：指针精度合规；`PET-MOVEMENT.md` mtime 异常 = 本批 TC-B15-09 注入-清除净零操作（`git diff` 实测为空）——均已解释。
+- **代码评审（advisor，1 轮）**：VERDICT **pass**；发现 1 条 🔵（批次号标法两存）→ 已由本段「头指针归属」句落定口径；范围外注记 2 条（G4 判据自指 / `.gitattributes` 估数漂移）= 已登记于「如实声明」1 / 5。
+- 无 fix round 新增（审计 🟡 由本段落笔闭环；评审 🔵 以口径落档闭环）。
+
+**评审发现裁决表（advisor 轮 1）**：
+
+| # | Action | Detail |
+|---|---|---|
+| 1 | Fixed | 🔵 批次号标法 → 本段「头指针归属」句落定口径（批次号 = 头形态确立批；`probe-pet-media.js` 保留 B18 不追改） |
+
+（父侧压行注：本 §5 的 3 行超宽（`:239` / `:254` / `:269`，as-of）由主 agent **打标代修**——逐字保留、仅换行、零语义；成因 = 本段落笔于 coder 门禁复跑之后，其 PASS 行对 §5 为 stale；折后门禁复绿。）
+
 ## §6 验收核销（主 agent）
 
 <!-- 由主 agent 填 -->

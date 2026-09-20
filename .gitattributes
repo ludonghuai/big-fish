@@ -1,0 +1,3 @@
+# EOL 口径固化（B15；口径详述 = docs/CONVENTIONS.md §六；设计 = docs/design/REPO-CONVENTIONS.md 附 B）
+# 本档只声明口径、不改写任何文件；如需重归一化（git add --renormalize .）须单独步骤 + 事先报告。
+* text=auto eol=lf
