@@ -16,7 +16,7 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 
 把 `dsh web` 的本地后端 + React UI 包进一个原生桌面窗口，免去手动开终端、记端口、开浏览器。
 
-> **当前版本：`0.0.1`** · 已发布 Windows 安装包；macOS / Linux 目前需自行打包（见下文「打包」）
+> **当前版本：`0.0.2`** · 已发布 Windows 安装包；macOS / Linux 目前需自行打包（见下文「打包」）
 >
 > **源码与文档**：<https://gitee.com/ludonghuai/big-fish> · **问题反馈（Issues）**：<https://github.com/ludonghuai/big-fish/issues>
 
@@ -24,7 +24,7 @@ Bigfish 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10 / 11 | [`Bigfish.Setup.0.0.1.exe`](https://github.com/ludonghuai/big-fish/releases/download/v0.0.1/Bigfish.Setup.0.0.1.exe) | 约 206 MB，双击按向导安装 |
+| Windows 10 / 11 | [`Bigfish.Setup.0.0.2.exe`](https://github.com/ludonghuai/big-fish/releases/download/v0.0.2/Bigfish.Setup.0.0.2.exe) | 约 206 MB，双击按向导安装 |
 
 安装包没有做代码签名：Windows 若弹「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」
 （不是病毒，是没买签名证书）。

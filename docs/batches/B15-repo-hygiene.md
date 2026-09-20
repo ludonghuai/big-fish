@@ -317,9 +317,14 @@ VERDICT: pass
 
 ## §6 验收核销（主 agent，2026-09-20）
 
-**实施核验（主 agent 亲跑 / 亲读）**：① 门禁 = `GATE lint PASS`（亲跑 ✓；含 coder §5 三处超宽的打标代折后复绿 ✓）· `test:full` 62/62 · `test:integration` 3/3 ✓；② 四处抽检 = `.gitattributes` 三条 ✓ / `package.json` `:22`·`:23`·`:44`·`:62` 四行 ✓ / 探针 `../../` + `ROOT('..','..')` ✓ / 重命名 11 条 ✓；③ coder 实机证据承接 = `npm run pack` 含 `[afterPack] applied icon + version to …`（无 skipping ✓）+ 探针 O5 pass ✓。
+**实施核验（主 agent 亲跑 / 亲读）**：① 门禁 = `GATE lint PASS`（亲跑 ✓；含 coder §5 三处超宽的打标代折后复绿 ✓）· `test:full` 62/62 · `test:integration` 3/3 ✓；
+② 四处抽检 = `.gitattributes` 三条 ✓ / `package.json` `:22`·`:23`·`:44`·`:62` 四行 ✓ / 探针 `../../` + `ROOT('..','..')` ✓ / 重命名 11 条 ✓；
+③ coder 实机证据承接 = `npm run pack` 含 `[afterPack] applied icon + version to …`（无 skipping ✓）+ 探针 O5 pass ✓。
 
-**AC 逐条（AC-B15-1…11）**：① `.gitattributes` 在场 + 除自身外零 status 变化 ✓；② 11 rename + 旧路径零 + 新路径在场 + 根非包散档 **26 → 16**（口径更正 ✓）；③ 11 档 `node --check` + require 0 未解析 + 基准断言 + 沙箱正负例 ✓；④ 三行新值 + `build.files` 49 条集合零 diff + 行数不变（`\n` = 143 ✓）；⑤ G2 = 0 + G4 = 0（豁免口径 ✓）；⑥ pack 正例 ✓；⑦ 探针 2 档实跑 ✓；⑧ 6 档同步落地 ✓（`CONVENTIONS` §六 / §八 + §1.1 as-of 注 + 其余 5 档）；⑨ 运行时零 diff + 三绿 + 冒烟 ✓；⑩ T35 订正 + 核销 ✓；⑪ 白名单 49 + 其余散档零改动 ✓。
+**AC 逐条（AC-B15-1…11）**：① `.gitattributes` 在场 + 除自身外零 status 变化 ✓；② 11 rename + 旧路径零 + 新路径在场 + 根非包散档 **26 → 16**（口径更正 ✓）；
+③ 11 档 `node --check` + require 0 未解析 + 基准断言 + 沙箱正负例 ✓；④ 三行新值 + `build.files` 49 条集合零 diff + 行数不变（`\n` = 143 ✓）；
+⑤ G2 = 0 + G4 = 0（豁免口径 ✓）；⑥ pack 正例 ✓；⑦ 探针 2 档实跑 ✓；⑧ 6 档同步落地 ✓（`CONVENTIONS` §六 / §八 + §1.1 as-of 注 + 其余 5 档）；
+⑨ 运行时零 diff + 三绿 + 冒烟 ✓；⑩ T35 订正 + 核销 ✓；⑪ 白名单 49 + 其余散档零改动 ✓。
 
 **台账 / 地图 / `CHANGELOG`（D7 同步清单）**：T24 / T34 → 待核销 ✓；T35 已核销归档 ✓；T25 计数 **20 → 10** ✓；地图 B15 行 → 已实施完成 ✓；`CHANGELOG.md` 本批条目 ✓。
 

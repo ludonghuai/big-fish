@@ -1,6 +1,6 @@
 {
   "name": "bigfish",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Bigfish — Electron desktop shell for DeepSeek Harness",
   "private": true,
   "main": "main.js",

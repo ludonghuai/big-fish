@@ -1,10 +1,10 @@
 {
-  "version": "0.0.1",
-  "note": "新增插件市场（1000+ 社区插件，一键安装/卸载/禁用/启用）+ 鲸鱼娘桌宠好感度与兑换屋 + 专注/鲸鱼模式切换 + 大量稳定性修复（修复插件禁用不生效、市场状态不刷新等）",
+  "version": "0.0.2",
+  "note": "动作图鉴卡片墙（96 张视频卡 + 喜欢/屏蔽 + 满级特权）+ 动作解锁三把锁 + 「等待确认」提醒 + 好感度数值重定 + 大量稳定性修复",
   "urls": {
-    "win32": "https://github.com/ludonghuai/big-fish/releases/download/v0.0.1/Bigfish.Setup.0.0.1.exe"
+    "win32": "https://github.com/ludonghuai/big-fish/releases/download/v0.0.2/Bigfish.Setup.0.0.2.exe"
   },
   "sha256": {
-    "win32": "6d150bf0c57cea27311b8c0407b99265e5b2cd4cbb7e5ca26c802913a8d7950e"
+    "win32": "c3bea8bd0dcb6d8834bfa07eef21859cc638ff2d998b6c22836275a14a932ee0"
   }
 }
