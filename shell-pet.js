@@ -19,12 +19,12 @@ const physics = require('./shell-pet-physics.js');
 let showMainWindow = null;
 let openExchangeWindow = null;
 let broadcastAffinity = null;
-let affinityLevelProvider = null, notifyUnlock = null, unlockCore = null;   // B23 注入（等级值访问器 / 解锁提示通知包装 / 解锁核；组合根接线——本档不 require 好感面与核档）
+let affinityLevelProvider = null, notifyUnlock = null, unlockCore = null, petPrefsProvider = null;   // B23 注入 + B35 偏好访问器（组合根接线——本档不 require 好感面与核档）
 function init(deps) {
   showMainWindow = deps.showMainWindow;
   openExchangeWindow = deps.openExchangeWindow;
   broadcastAffinity = deps.broadcastAffinity;
-  affinityLevelProvider = deps.affinityLevelProvider; notifyUnlock = deps.notifyUnlock; unlockCore = deps.unlockCore;
+  affinityLevelProvider = deps.affinityLevelProvider; notifyUnlock = deps.notifyUnlock; unlockCore = deps.unlockCore; petPrefsProvider = deps.petPrefsProvider;
   ipcMain.on('pet-meal-played', handleMealPlayed);   // B23：饭点「演过」上报（渲染层只上报饭点键；ipcMain 派发形态 = (event, mealKey)——承 shell-pet-physics.js:97 同款注）
   // 渲染层请求一次散步（复用既有 doWander 的守卫与位移纪律；本批不改其内部，DD-6）
   ipcMain.on('pet-chain-move', () => doWander());
@@ -82,7 +82,7 @@ function sendAnimConfig() {
   if (!petWindow || petWindow.isDestroyed()) return;
   if (!animPoolResult) animPoolResult = loadAnimPool();
   animLog(animPoolResult.line);
-  petWindow.webContents.send('pet-chain-config', Object.assign({ debug: animDebug() }, animPoolResult.payload, unlockPayload()));   // B23：payload 扩 allowSet / lockHint
+  petWindow.webContents.send('pet-chain-config', Object.assign({ debug: animDebug() }, animPoolResult.payload, unlockPayload()));   // B23 / B35：payload 扩 allowSet / lockHint / blockSet / likeSet
 }
 
 // B23 动作解锁门控（设计档 docs/design/PET-UNLOCK.md §2.5.3 / §2.5.4）：规则档装载 + payload 组装 + 解锁提示 + 饭点「演过」回写
@@ -98,13 +98,14 @@ function unlockPayload() {   // §2.5.3 组装；跨日键比对（§2.5.2）与
   const t = unlockCore.gateStep({
     rulesText: animRulesText, now: new Date(), level: affinityLevelProvider ? affinityLevelProvider() : 1,
     poolNames: animPoolResult && animPoolResult.payload.pool ? animPoolResult.payload.pool.categories.flatMap((c) => c.actions) : [],
-    switches: { season: s.petUnlockSeason !== false, meal: s.petUnlockMeal !== false, level: s.petUnlockLevel !== false }, state: unlockState,
+    switches: { season: s.petUnlockSeason !== false, meal: s.petUnlockMeal !== false, level: s.petUnlockLevel !== false, favOnly: s.petUnlockFavOnly === true, lv10: s.petUnlockLv10 !== false },   // B35：五开关（增 favOnly / lv10）
+    state: unlockState, prefs: petPrefsProvider ? petPrefsProvider() : null,   // B35：prefs 注入（PET-GALLERY §2.6；缺席 = 空集 ⇒ B23 语义）
   });
   if (!t.lockHint.valid && !unlockWarned) { unlockWarned = true; console.error('[bigfish] unlock rules unusable (' + t.lockHint.reason + ') — gating falls back to no-lock'); }
   unlockState = t.state;
   if (unlockFirst) { unlockFirst = false; saveUnlockState(); }   // ① 首算静默（只落 notified 快照）
   else if (t.fresh.length) { if (notifyUnlock) notifyUnlock(UNLOCK_SAY); petSay(UNLOCK_SAY); saveUnlockState(); }   // 新解锁一次播报（US-42）
-  return { allowSet: t.allowSet, lockHint: t.lockHint };
+  return { allowSet: t.allowSet, lockHint: t.lockHint, blockSet: t.blockSet, likeSet: t.likeSet };   // B35：归一化双名单随 payload 下发（PET-GALLERY §2.4.3）
 }
 function handleMealPlayed(_e, mealKey) { if (!unlockState) return;   // §2.5.3：渲染层只上报饭点键、判据单点在主进程；落盘后立即重下发（§2.5.4 ③）
   const next = unlockCore.mealPlayed(unlockState, mealKey, unlockCore.rollDayKey(new Date())); if (!next) return;

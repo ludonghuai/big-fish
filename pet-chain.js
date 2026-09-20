@@ -1,8 +1,8 @@
 'use strict';
 /**
- * pet-chain.js — 双缓冲视频播放器 + 动画链运转 + 三级回落 + 链日志（B18 + B21 衔接 + R1/R2 + drag/escape + B27 静默 + B23 门控名单喂入）。
+ * pet-chain.js — 双缓冲视频播放器 + 动画链运转 + 三级回落 + 链日志（B18 + B21 衔接 + R1/R2 + drag/escape + B27 静默 + B23 门控名单喂入 + B35 偏好双名单）。
  * 边界（设计档 §2.2.1）：零 fs / 零 fetch——池数据只来自主进程的 `pet-chain-config`；本档不碰窗口几何。
- * 函数清单：onConfig · setSlot · setDragging · startSlot · chainStep · enterQuiet · quietExpire · clearQuiet · switchTo · handleEnded · requestMove · onPlayFail · setChannel · applyMediaBox · log；applyAllowSet · reportMealPlayed（B23）。
+ * 函数清单：onConfig · setSlot · setDragging · startSlot · chainStep · enterQuiet · quietExpire · clearQuiet · switchTo · handleEnded · requestMove · onPlayFail · setChannel · applyMediaBox · log；applyAllowSet · reportMealPlayed（B23）；stillPickable · settleExcludedPlaying（B35）。
  * 全局出口（渲染层内部接口，承设计档 §2.2.1）：window.petChain = { videoActive, hitRect, setSlot, setDragging }。
  */
 
@@ -22,6 +22,7 @@ let failCount = 0, moveWait = null, blocked = false;   // 级③ 回落判据 / 
 let preEndTimer = null, pauseTimer = null, dragActive = false;  // B21：预触发定时器 / 淡出窗末 pause 定时器 / 拖动在途（避 pet.js 同名 let）
 let quietActive = false, quietTimer = null;  // B27 静默运行期状态（§2.14.9）：动作类段末进入；计时到点或槽位到达退出
 let allowSet = null, mealMap = {}, lastPoolKey = null;  // B23：可入选段名集合（null = 无门控 ⇒ 不过滤）/ 三餐段名 → 饭点键 / 上次池指纹
+let blockSet = [], likeSet = [], weightOf = null;       // B35：屏蔽名单（events 过滤唯一输入）/ 喜欢名单 / 类内选段加权函数（null = 既有均匀，DD-B35-3）
 const lastPick = {};        // 池键 → 上一次该档抽中的段（避开连播，US-17 / AC6）
 
 const box = core.mediaBox({
@@ -65,9 +66,12 @@ function onConfig(config) {
   if (els.media.length !== 2) { log('anim fallback reason=media-count'); return; } // 运行期不变量（NFR-10）
   const poolKey = JSON.stringify(config.pool);
   allowSet = Array.isArray(config.allowSet) ? config.allowSet : null;   // B23：门控名单（设计档 PET-UNLOCK.md §2.5.3）
+  blockSet = Array.isArray(config.blockSet) ? config.blockSet : [];     // B35：屏蔽名单（PET-GALLERY §2.4.3；独占三段结构上不入内）
+  likeSet = Array.isArray(config.likeSet) ? config.likeSet : [];        // B35：喜欢名单（weightOf 构造输入）
   mealMap = config.lockHint && config.lockHint.meals && typeof config.lockHint.meals === 'object' ? config.lockHint.meals : {};
   // B23：池未变 ⇒ 本条下发是**门控重下发**（§2.5.4 重算点）——只换名单、**不重置播放态**（否则饭点演过 / 升级 / 开关翻转会立刻切走在播段）
-  if (poolKey === lastPoolKey) { applyAllowSet(config.pool); return; }
+  // B35：prefs 重下发同路（触发面 ⑥⑦）；在播 loop 段已被排除 ⇒ 温和收尾（U-8 ②，不硬切）
+  if (poolKey === lastPoolKey) { applyAllowSet(config.pool); settleExcludedPlaying(); return; }
   lastPoolKey = poolKey;
   clearQuiet();   // B27：池重配打断静默（§2.14.9 清除面；非静默时零行）
   applyAllowSet(config.pool);
@@ -80,13 +84,44 @@ function onConfig(config) {
 
 /** B23 门控喂入（设计档 docs/design/PET-UNLOCK.md §2.5.3 / DD-B23-2）：分类动作按 allowSet **硬排除**——锁住的段不入抽（非权重调零）；
  *  空分类保留（weight 照旧，既有 pickWeightedCategory 只滤 actions.length > 0）；idle / turn / moves 基础档与 events 事件档**不过滤**（不属解锁系统管辖）。
+ *  B35 扩展（PET-GALLERY §2.5.2 / DD-B35-4）：events 按 blockSet 过滤（独占三段结构上不可屏蔽 ⇒ drag / escape / quiet 永不空）；
+ *  weightOf = likeSet 命中 ⇒ PET_FAV_WEIGHT（类内选段加权；事件档轮换不加权）；同一 blockSet / likeSet 名单下发、无双源。
  *  过滤发生在数据进入既有掷骰函数之前 ⇒ 掷骰次序与函数签名逐字不变；每次下发按 `config.pool` 原池重建（幂等；池未变时不重置播放态）。 */
 function applyAllowSet(base) {
   if (!base) return;
-  if (!allowSet) { pool = base; return; }   // 无门控（未下发 / 规则档坏 ⇒ allowSet=null）⇒ 原池不过滤
+  const bset = {};
+  for (const n of blockSet) bset[n] = true;
+  const lset = {};
+  for (const n of likeSet) lset[n] = true;
+  weightOf = likeSet.length ? (n) => (lset[n] ? core.PET_FAV_WEIGHT : 1) : null;
+  const ev = {};   // 事件档过滤（字符串档同语义：被屏蔽 ⇒ 空数组 ⇒ event-empty 回落）
+  for (const k of Object.keys(base.events)) { const v = base.events[k]; ev[k] = Array.isArray(v) ? v.filter((n) => !bset[n]) : (bset[v] ? [] : v); }
+  if (!allowSet) { pool = Object.assign({}, base, { events: ev }); return; }   // 无门控（未下发 / 规则档坏 ⇒ allowSet=null）⇒ 分类不过滤、事件档照滤
   const set = {};
   for (const n of allowSet) set[n] = true;
-  pool = Object.assign({}, base, { categories: base.categories.map((c) => Object.assign({}, c, { actions: c.actions.filter((n) => set[n]) })) });
+  pool = Object.assign({}, base, { events: ev, categories: base.categories.map((c) => Object.assign({}, c, { actions: c.actions.filter((n) => set[n]) })) });
+}
+
+/** B35 在播段排除判定（温和切换谓词）：过滤后池内任何档位仍含该名 ⇒ 可再入选（idle / turn / moves 不属过滤面 ⇒ 恒真）。 */
+function stillPickable(name) {
+  if (!pool) return true;
+  if (pool.idle.indexOf(name) >= 0 || pool.turn.indexOf(name) >= 0 || pool.moves.walk.indexOf(name) >= 0 || pool.moves.run.indexOf(name) >= 0) return true;
+  for (const c of pool.categories) if (c.actions.indexOf(name) >= 0) return true;
+  for (const k of Object.keys(pool.events)) { const v = pool.events[k]; if (typeof v === 'string' ? v === name : v.indexOf(name) >= 0) return true; }
+  return false;
+}
+
+/** B35 温和切换（U-8 ② / §2.5.2）：在播段不切断——仅「loop 段且已被排除」⇒ 置 loop=false **并同置 onended 收尾挂钩**（既有 handleEnded 入口，
+ *  走段末决策 triggerChainDecision('ended', 0)；gen / playing 守卫逐字沿用——与 switchTo 的 loop=false 分支同形；**不补武装预触发**（武装时点已过，
+ *  收尾走 ended 兜底 overlap=0）；挂钩失效 = 换段（old.onended=null）/ 通道回落（setChannel 清除面）既有路径。 */
+function settleExcludedPlaying() {
+  if (!playing || playing.loop !== true || stillPickable(playing.name)) return;
+  const elF = els.media[front];
+  if (!elF) return;
+  playing.loop = false;
+  elF.loop = false;
+  elF.onended = () => handleEnded(elF, gen);
+  log('anim prefs-settle anim=' + playing.name + ' loop=0');
 }
 
 /** B23 饭点「演过」上报（设计档 §2.5.3）：渲染层只上报段名对应的饭点键、不自判（一天一次判据单点在主进程）。 */
@@ -141,6 +176,7 @@ function startSlot(s) {
   }
   const slotVal = pool.events[s];
   if (slotVal === undefined) { log('anim slot-miss slot=events.' + s + ' fallback=png'); setChannel('png'); return; }
+  if (Array.isArray(slotVal) && slotVal.length === 0) { log('anim event-empty slot=' + s); return; }   // B35：事件全屏蔽 ⇒ 动画面忽略（不切段、保持当前段——硬约束 4 / DD-B35-10；状态机与台词面不动）
   toVideo();
   const single = typeof slotVal === 'string' || slotVal.length <= 1;
   switchTo(pickFor('events.' + s, slotVal), s === 'sleep' || single, 'slot-' + s, false, 'event');
@@ -157,7 +193,7 @@ function chainPoolSize(d) {
 /** 链的一步（只在 idle 档运转，§2.2.4 规则 1）；掷出 move ⇒ 发散步请求后重掷一次。 */
 function chainStep(reason, allowMove) {
   if ((mode !== 'video' && !entering) || !pool) return;
-  const d = core.pickChainNext({ weights: pool.weights, roll: Math.random(), cur, facing, pool });
+  const d = core.pickChainNext({ weights: pool.weights, roll: Math.random(), cur, facing, pool, weightOf });   // B35：weightOf 透传（null = 既有均匀）
   log('anim chain kind=' + d.kind + ' pick=' + (d.name === null ? '-' : d.name) + ' mirror=' + (d.mirror ? 1 : 0) + ' cat=' + (d.category === null ? '-' : d.category));
   if (d.kind === 'move' && allowMove !== false) { requestMove(); chainStep('move-ack', false); return; }
   if (d.name === null) return;
@@ -187,7 +223,7 @@ function schedulePreEnd(el, dur) {
 function triggerChainDecision(reason, overlap) {
   if (mode !== 'video' || !pool || !playing) return;
   if (playing.kind === 'turn') facing = facing === 'right' ? 'left' : 'right';   // 翻转由本档执行（§2.13.4；B18 同款）；B27：先于 decideNext、与下一计划类型解耦（§2.14.9）
-  const d = core.decideNext({ pool, weights: pool.weights, roll: Math.random(), slot, playing, cur, facing, quiet: quietActive });
+  const d = core.decideNext({ pool, weights: pool.weights, roll: Math.random(), slot, playing, cur, facing, quiet: quietActive, weightOf });   // B35：weightOf 透传
   if (d.plan === 'rotate') { lastPick['events.' + slot] = d.name; switchTo(d.name, false, reason, d.mirror, 'event', overlap); return; }
   if (d.plan === 'quiet') { switchTo(d.name, true, 'quiet', false, 'quiet', overlap); return; }   // B27：静默段循环（§2.14.9）；quietActive/计时器/enter 行落账 = 播放成功回调（AC33①②③）
   if (d.plan === 'chain') { switchTo(d.name, chainPoolSize(d) <= 1, reason, d.mirror, d.kind === 'turn' ? 'turn' : d.kind, overlap); return; }

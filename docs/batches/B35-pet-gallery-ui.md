@@ -124,8 +124,13 @@
 
 ### 2.2 实施面边界
 
-- **允许面**（逐档 · 口径 = §1.3 勘察计数；门禁 `\n` 口径与预算 = 设计档 §2.6）：`exchange.html`（重写，卡墙 + 喂养面 + `<script src="pet-unlock-core.js">` 一行；CSP 预计零改动，备选 = meta 行增 `media-src 'self'` 一枚）/ `exchange.js`（重写）/ `exchange-preload.js`（**+3 桥键**：`prefsLike` / `prefsBlock` / `setFavOnly`）/ `shell-affinity.js`（窗口重写 + pet-prefs 属主 + 三 handle 自注册）/ `shell-pet.js`（**≤ +1 行**：`gateStep` 增 `prefs` 入参 + 注入键 `petPrefsProvider`；**越线即停下上报**，拆分预案承 B23 §2.8）/ `shell-settings.js`（+3 默认键）/ `shell-tray.js`（+2 checkbox）/ `pet-chain.js`（池重建单点扩展 + 温和切换 + `event-empty` 回落）/ `pet-chain-core.js`（`pick` 加性可选参 `weightOf` + `PET_FAV_WEIGHT`）/ `pet-unlock-core.js`（新纯函数并入——归宿二选一结论 = 设计档 §2.2.8）/ `main.js`（**Δ 0**：两处 init 既有行就地改写增传注入键，承 B23 / B31 装配面先例）。
-- **冻结面**（零 diff）：`shell-pet-geometry.js` / `shell-pet-drag.js` / `pet.html` / `pet.js` / `pet-preload.js` / `assets/pet-anim/webm/**` / `assets/pet-anim/pool.json` / `assets/pet-anim/unlock-rules.json` / `affinity-core.js` / `shell-ipc.js` / `scripts/gates/**`（基线零改动）/ `tests/**` / updater · market · backend 面（清单 = 需求档 NFR-32）。
+- **允许面**（逐档 · 口径 = §1.3 勘察计数；门禁 `\n` 口径与预算 = 设计档 §2.6）：`exchange.html`（重写，卡墙 + 喂养面 + `<script src="pet-unlock-core.js">` 一行；CSP 预计零改动，备选 = meta 行增 `media-src 'self'` 一枚）
+  / `exchange.js`（重写）/ `exchange-preload.js`（**+3 桥键**：`prefsLike` / `prefsBlock` / `setFavOnly`）/ `shell-affinity.js`（窗口重写 + pet-prefs 属主 + 三 handle 自注册）
+  / `shell-pet.js`（**≤ +1 行**：`gateStep` 增 `prefs` 入参 + 注入键 `petPrefsProvider`；**越线即停下上报**，拆分预案承 B23 §2.8）/ `shell-settings.js`（+3 默认键）/ `shell-tray.js`（+2 checkbox）
+  / `pet-chain.js`（池重建单点扩展 + 温和切换 + `event-empty` 回落）/ `pet-chain-core.js`（`pick` 加性可选参 `weightOf` + `PET_FAV_WEIGHT`）/ `pet-unlock-core.js`（新纯函数并入——归宿二选一结论 = 设计档 §2.2.8）
+  / `main.js`（**Δ 0**：两处 init 既有行就地改写增传注入键，承 B23 / B31 装配面先例）。
+- **冻结面**（零 diff）：`shell-pet-geometry.js` / `shell-pet-drag.js` / `pet.html` / `pet.js` / `pet-preload.js` / `assets/pet-anim/webm/**` / `assets/pet-anim/pool.json` / `assets/pet-anim/unlock-rules.json` / `affinity-core.js` / `shell-ipc.js`
+  / `scripts/gates/**`（基线零改动）/ `tests/**` / updater · market · backend 面（清单 = 需求档 NFR-32）。
 - **零新源档 · 零新依赖**：`package.json` 整档零 diff（`build.files` carve-out 不触发——新逻辑并入 `pet-unlock-core.js`）。
 - **写盘纪律**：prefs / 尺寸 / 开关均事件驱动（toggle / resize 停手 / closed），不入任何 tick 路径。
 
@@ -175,5 +180,261 @@
 
 ### 2.7 口径注（行数计数分歧登记）
 
-§1.3 勘察表的行数实为**非空行计数**（PowerShell `Measure-Object -Line`），其「`\n` 计数」标注与门禁判据 C 口径（`docs/CONVENTIONS.md` §五）不符——门禁口径实测：`exchange.html` 79 / `exchange.js` 173 / `shell-affinity.js` 372 / `shell-pet.js` **498** / `pet-chain.js` 333 / `pet-chain-core.js` 227 / `pet-unlock-core.js` 345 / `shell-settings.js` 65 / `shell-tray.js` 209 / `main.js` 263 / `package.json` 143。设计档 §2.6 的受影响清单与 ≤500 预算均按门禁口径记账（建议主 agent 在收口轮同步 §1.3 口径标注；本段之外不动 §1）。
+§1.3 勘察表的行数实为**非空行计数**（PowerShell `Measure-Object -Line`），其「`\n` 计数」标注与门禁判据 C 口径（`docs/CONVENTIONS.md` §五）不符——
+门禁口径实测：`exchange.html` 79 / `exchange.js` 173 / `shell-affinity.js` 372 / `shell-pet.js` **498** / `pet-chain.js` 333 / `pet-chain-core.js` 227 / `pet-unlock-core.js` 345 / `shell-settings.js` 65 / `shell-tray.js` 209 / `main.js` 263 / `package.json` 143。
+设计档 §2.6 的受影响清单与 ≤500 预算均按门禁口径记账（建议主 agent 在收口轮同步 §1.3 口径标注；本段之外不动 §1）。
+
+（父侧压行注：§2.2 允许面 / §2.2 冻结面 / §2.7 三处超宽行由主 agent **打标代修**——逐字保留、仅换行、零语义；依据 = §2.8 存疑 ① 的授权建议。）
+
+---
+
+
+
+### 2.8 修正轮 1 记录（评审轮 1 = 🔴2 / 🟡5 / 🔵4 → 11 条全修；2026-09-20）
+
+落点登记（行号为修正后 as-of；三档均经回读核验 + 全档行宽复测）：
+
+- ① 🔴 重算通路落档：设计档 §2.4.3（三 handle 落盘后通路）· §2.5.4 ⑥·⑦ · §2.6（`shell-affinity.js` / `main.js` 行）· §2.8（结构判据行）· §3.2——经**既有 `deps.pet` 注入**调 `recalcAndBroadcast`（通路实测已在场：`main.js:117` + `shell-affinity.js:148`；**零新增注入键**）；`rebuildTrayMenu` = 唯一新增键。
+- ② 🔴 温和切换补 `onended` 收尾挂钩：§2.5.2 · §2.7 DD-B35-9 · §2.8（B18 播放器契约行）· TC-B35-19 · AC-B35-8（附「不补武装预触发」与既有失效路径句——核 B18 三禁止形态 ①②③ / AC28）。
+- ③ 🟡 触发线统一「越 499（实测 ≥500）⇒ 停下上报」：§2.1 · §2.6 · §2.8 · §2.9 O-B35-6 · AC-B35-13 · §7（与需求档 NFR-32 同源）。
+- ④ 🟡「特权」徽标谓词 + TC-B35-21：§2.3（谓词全句）· §2.10 · AC-B35-9；⑤ 🟡 US-45 DOM 用例 TC-B35-22 + §5 映射：§2.10 · §5 · AC-B35-12。
+- ⑥ 🟡 `FALLBACK` 落点 + 空分类处置：§2.5.2（新 bullet，与 B23 §2.5.3 口径同源）· TC-B35-12 · O-B35-3；⑦ 🟡 PET-UNLOCK 回填注记 ×4 + 变更记录：上游档 §2.5.1 / §2.5.3 / §3.2 / §3.3 / §8（另句内形态订正一处）。
+- ⑧ 🔵 需求档指针：PET.md NFR-30 / NFR-32 / NFR-33 + **US-44**（§2.5.6→§2.5.5 = 本轮勘察发现的第 4 处指针，一致性面当场修）；⑨ 🔵 计数：§5（22 条 = 正常 4 / 边界 10 / 错误 2 / 机检 6）+ §3.3（导出面 13 → **18**）。
+- ⑩ 🔵 段名：§2.3（`工作状态-垂头叹气冒汗`——磁盘实测；原「垂头丧气冒汗」为笔误）；⑪ 🔵 桩测行：§2.6（B23 桩测档「不在盘」行 + B35 桩测承载句）· §2.2.9 · §5 · AC-B35-9。
+
+**行宽合规化**：设计档设计建档轮遗留 7 处超宽行（§2.2 六表 + §8 建档行）本轮收紧（语义零变更）；需求档 / 上游档本无超宽。
+**批次档 §2 存量 3 处超宽**（`:127` / `:128` / `:178`）受 append-only 约束**未动**——待主 agent 处置（建议：主 agent 打标代修折行，或授权我在下一轮代修）。
+
+**跨批发现（须主 agent 裁）**：`.thincoder/b23-unlock-stub.mjs` **不在盘**（as-of 2026-09-20 实测；B23 §6.3 曾裁「转 ②③ 常驻」——实物既不在 `.thincoder/` 也未落 `tests/`）。
+本轮按「B23 用例组（时节 / 饭点 / 等级 / 关门 / 跨日 / 提示六组）在 B35 桩测内重建承载」改写（NFR-31 断言面语义不变）；复原该档 / 修正 B23 §6.3 / 维持重建承载 = 主 agent 裁定项。
+
+**冻结复核**：用户已裁项（D-1…D-4 / 硬约束 1–10 / U-1…U-8）零改动；三方条目一致未变（US-44…US-50 / NFR-30…NFR-33 / AC-B35-1…13）。
+
+**`npm run lint`（完稿实跑，原样）**：`CHECK syntax PASS files=68` · `CHECK width FAIL files=16 lines=96 violations=1`（唯一红点 = `docs/batches/B35-pet-gallery-ui.md` current=3，即上述 §2 存量；`PET-GALLERY.md` 7 → 0 已消）·
+`CHECK lines PASS near=5` · `CHECK dag PASS` · `CHECK fanout PASS` · `CHECK assembly PASS (13/13) + exempt=4` · `CHECK samples PASS` · `selftest=20/20` · `GATE lint FAIL`（因 width 唯一红点）。
+
+补记（同一修正轮）：上段 lint 行原为单行 386 字符（超宽）——已就地折行为两行（形态修复、语义零变更；因系同轮自写入行且「行宽 ≤300」为本轮硬要求，故以折行收口，特此留痕）。
+
+补记 2（同一修正轮）：设计档 §5 两处（计数 / 映射行、测试寿命分层行）于批次编译时曾漏列，经回读自检补落（落点与上段 ⑤ / ⑨ / ⑪ 登记一致）；另 §5 分层行按行宽复测收紧 12 字符。至此设计档 / 需求档 / 上游档三档回读全绿（超宽 0）。
+
+## §3 设计评审（评审子代理）
+
+**父侧代写声明**：本轮评审者的 `batch_segment({segment:"§3"})` 写入**被拒**（原因 = 本档当时缺 `## §3` 骨架段头：`the bound batch record has no "## §3" section header`，`Nothing was written`；骨架段头已由主 agent 同轮补建）。以下内容 = 按评审者交付报告**逐字转写**，未经加工（代写打标，非评审判定本身失据——发现表与 VERDICT 均出自评审者原报告）。
+
+**评审对象**：B35 设计评审（`docs/design/PET-GALLERY.md` 主 + `docs/requirements/PET.md` US-44…US-50 / NFR-30…NFR-33 + 批次档 §2 任务书）；轮次 = 1。**声明限制**：本项目未声明 Project Standards 文档，方法论合规章按 Project Guide（`AGENTS.md` + 文档地图）裁定。
+
+| # | Category | Severity | Issue | Suggestion |
+|---|---|---|---|---|
+| 1 | Feasibility / Clarity | 🔴 | 触发面 ⑥/⑦ 要求 prefs 变更后调 `pet.recalcAndBroadcast()` 重算重下发（`docs/design/PET-GALLERY.md:204` · `:342`），但三枚新 handle 按 §2.4.3 在 `shell-affinity.js` 内自注册（`PET-GALLERY.md:162`）；受影响面逐项枚举显示该档只增 `rebuildTrayMenu`（`:241`）、`main.js` 只就地改写两处既有行（`:245`）——**shell-affinity 无任何通往 shell-pet 重算/重下发的通路，设计未落档**。后果 = prefs / favOnly 变更在产线不即时生效（须等下一自然触发点），US-47「她只演我喜欢的组合」/ US-48「绝不再出现」的语义与 §2.5.4 声明行为落空；桩测（虚拟时钟注入）结构上抓不到该缺口。 | 补记该触发通路（如 `affinity.init` 既有行再增传一个「重算入口」注入键，或在 shell-pet.js 侧承载 handler——择一并写进 §2.6 / §3.3 表）；`main.js` 仍可为 Δ0。 |
+| 2 | Feasibility（与既有契约相抵） | 🔴 | 温和切换落点「在播段为 loop 段且已被排除 ⇒ 把前台元素 `loop` 置 `false`（本遍收尾后走 `ended` 回链）」（`PET-GALLERY.md:193` · DD-B35-9）与上游播放器契约相抵：`onended = loop ? null : onEnded`（`docs/design/PET-ANIMATION.md:317`）——loop 段载入时**不挂** ended 回调；预触发定时器亦只对 loop=false 段武装（`PET-ANIMATION.md:983` · `:1212`）。⇒ 仅置 `loop=false` 时段末既无回调、也无兜底唤起，链停在末帧——AC-B35-8 / TC-B35-19 的期望输出按现描述不成立。 | 把「同置 `onended`（或等价收尾挂钩）」写进 §2.5.2 机制句，并核其不破 B18 三禁止形态 / AC28；或改述为另一条可达成路径——批准前定稿。 |
+| 3 | Requirements（口径不一致） | 🟡 | `shell-pet.js` 的「停下上报」触发线两处不一致：需求档「越 499 即停下上报」（`docs/requirements/PET.md:774`）vs 设计档「越 500 ⇒ 停下上报」（`PET-GALLERY.md:242`）；500 行时一处说停、一处说继续（`PET.md:784` 同源）。 | 收口为一处数字并在 NFR-32 与 §2.6 同步。 |
+| 4 | Requirements coverage | 🟡 | US-49 的「图鉴卡对特权放行的时节 / 饭点段显示『特权』徽标」（`PET.md:491`）在本设计只有徽标枚举行（`PET-GALLERY.md:135`），**无判定规则**；§2.10 亦无用例覆盖（TC-B35-1…6 只断 allowSet / 状态面）。 | 补「特权」徽标谓词（段属时节 / 饭点域 ∧ 窗口关闭 ∧ lv10Free）并给 ≥1 用例。 |
+| 5 | Test coverage | 🟡 | §5 自述「每条功能性需求 ≥1 用例」（`PET-GALLERY.md:378`），但枚举里 **US-45 缺席**（US-44 → US-46 直接跳接）；AC-B35-12 明写的机检面「DOM 结构断言（双标签卡 / 头部卡 / 食品网格 / 卡墙容器 / 进度头在场）」（`:371`）无任何 TC 承载。 | 补一条喂养面 DOM 结构 TC（或把该断言并入 TC-13）并同步 §5 映射句。 |
+| 6 | Clarity / Feasibility | 🟡 | 两条边界用例的前提未落名：TC-B35-12 的「链回 idle 基础段（`FALLBACK` 既有路径）」（`PET-GALLERY.md:283` · `:304`）与 TC-B35-19 的前提「loop=true **单候选分类段**」（`:311`）在回指文档中无对应落点——PET-ANIMATION §2.2.4 只给 `pick` 的「排除后为空 ⇒ 退回原池」语义（`PET-ANIMATION.md:284`），PET-UNLOCK §2.5.3 则明写「空分类保留…既有 `pick` 退回原池逻辑**不得**用到」（`docs/design/PET-UNLOCK.md:165`）。「全分类空」（favOnly + 零收藏 / 全屏蔽）这一新空态与该既有口径的接续方式未说明。 | 点明 FALLBACK 的权威落点（函数 / 行为），并交代「分类内段名过滤 ⇒ 空分类」在 favOnly / 全屏蔽下的处置，与 B23 口径同源。 |
+| 7 | Document ownership | 🟡 | 设计把 `PET-UNLOCK.md` 声明为上游契约（`PET-GALLERY.md:5`），但本批**改动了该契约面**：`eligible` 输入增 `prefs` / `switches.favOnly·lv10`（`:174-182`）、`gateStep` 输出增 `blockSet`/`likeSet`（`:184`）、`unlock:view` 由 `{rows…}` 演进为卡片视图（`:166`）、导出面扩张（`:350`）；全档未登记对 `PET-UNLOCK.md` 的回填注记 ⇒ 两档同源事实将不同步（`PET-UNLOCK.md:146-151` / `:409` / `:419` 保持 B23 期原文）。 | 登记一批 `PET-UNLOCK.md` 注记行（eligible 输入扩展 / gateStep 输出扩展 / unlock:view 形状演进 / 导出面计数），承 B21→PET-ANIMATION 的回填先例。 |
+| 8 | Doc hygiene（指针） | 🔵 | 需求档三处指针与设计档实际节号不符：NFR-30「阈值与常量表见设计档 §2.5.5」（`PET.md:757`）——IO 阈值 0.25 与 `GALLERY_MAX_PLAYING` 在 §2.5.3；NFR-32 / NFR-33「预算与拆分预案见设计档 §2.7」（`PET.md:774` · `:784`）——预算在 §2.6、超限预案在 §2.2.8（§2.7 = DD 表）。 | 收口轮同步指针（或改用符号名锚）。 |
+| 9 | Doc hygiene（计数） | 🔵 | 两处汇总数与逐条枚举不符：§5「20 条：正常 5 / 边界 11 / 错误 2 / 机检 2」（`PET-GALLERY.md:378`）vs 用例表实况 **4 / 10 / 2 / 4**；§3.3「导出面（13 → **19**）」（`:350`）vs 逐名枚举「+4 函数 +1 常量」⇒ 应为 18。 | 两处数字订正或补漏枚举。 |
+| 10 | Doc hygiene（命名） | 🔵 | 未引用素材名两处不一致：设计「`工作状态-垂头丧气冒汗`」（`PET-GALLERY.md:134`）vs PET-ANIMATION「`工作状态-垂头叹气冒汗`」（`PET-ANIMATION.md:643` · `:822` · `:828`）——必有一处错，而设计侧标的是「实测」名单。 | 以磁盘实名为准订正一处。 |
+| 11 | Affected-file annotation | 🔵 | 受影响清单给了新建桩测 `.thincoder/b35-gallery-stub.mjs`（`PET-GALLERY.md:248`），但同批要改的 `.thincoder/b23-unlock-stub.mjs`（§2.2.9 代价面）未带现状行数 / Δ 注记。 | 补一行（现状行数 + 预计 Δ），与既有桩测行同形。 |
+
+**计数**：🔴 2 / 🟡 5 / 🔵 4。
+**越界项（无严重度）**：批次档 §1.3 的行数标注（实为非空行计数、标为「`\n` 计数」）与门禁判据 C 口径不符——§1.3 不在本次评审目标内（目标 = §2 任务书），且 §2.7 已登记该分歧并建议收口轮同步，故不判级、仅提示。
+**正面确认（无发现面）**：US-44…US-50 / NFR-30…NFR-33 逐条均有对应 §2 设计落点与 AC-B35-1…13 回指，无功能性缺条；受影响清单逐档带门禁口径行数 + Δ 预算（与批次档 §2.7 实测数逐项一致），无档越 500 且两处越线预案齐备；冻结面清单与 NFR-32 原文逐项对齐；U-1…U-8 全部裁定落档、三方一致表可逐条对上；零新依赖 / 零新源档 / 结构判据零增量（扇出 5→5 · 3→3、绑定 17 不变）论证完整。
+
+**父侧复核（2026-09-20）**：两条 🔴 的引证已由主 agent 逐字复读原文核实——① `PET-GALLERY.md:204`/`:241`/`:245` 三处枚举确无重算通路（成立 ✓）；② `PET-ANIMATION.md:317`「`onended = loop ? null : onEnded`」与 `:193` 机制句确相抵（成立 ✓）。
+
+VERDICT: changes-required
+
+---
+
+### 轮次 1（评审子代理）
+
+**评审对象**：B35 设计评审轮 2（修正轮 1 面复核；target = `docs/design/PET-GALLERY.md`（主）+ `docs/requirements/PET.md` US-44…US-50 / NFR-30…NFR-33 + `docs/design/PET-UNLOCK.md`（回填注记）+ 批次档 §2（含 §2.8）/§3/§4）。口径 = 「只验 §3 轮 1 表格 11 条 + 指出明显新问题」；本轮亲读三档 + 批次档全文；声明外文件未读、代码面引证未独立复核（如实标注）。
+
+**轮 1 表格复核（11/11 Fixed）**：
+
+1. 🔴 ⑥/⑦ 重算通路 → **Fixed**（`PET-GALLERY.md:166`「**三 handle 的落盘后通路**（修正轮 1 · #1）：`prefs:like` / `prefs:block` ⇒ 写 `pet-prefs.json` 后调 `pet.recalcAndBroadcast()`——**经既有 `deps.pet` 注入**…**零新增注入键、零新增绑定**」；§2.5.4 :210 · §2.6 :247/:251 · §2.8 :280 · §3.2 :352 五面同源）
+2. 🔴 温和切换 → **Fixed**（`PET-GALLERY.md:196`「把前台元素 `loop` 置 `false` **并同置 `onended` 收尾挂钩**」+ :197「**不补武装预触发**…收尾走 `ended` 兜底（`overlap=0`）」；DD-B35-9 :267 · TC-19 :319 · AC-B35-8 :377 · §2.8 :276 同步）
+3. 🟡 499/500 → **Fixed**（`PET-GALLERY.md:248`「**越 499（= 实测 ≥500）⇒ 停下上报**」与 `PET.md:774`「越 499 即停下上报」同源；§2.1 :45 · §2.8 :284 · O-B35-6 :294 · AC-B35-13 :382 · §7 :422 六处一致）
+4. 🟡 特权徽标 → **Fixed**（`PET-GALLERY.md:136` 谓词全句 + TC-21 :321 + AC-B35-9 :378）
+5. 🟡 US-45 用例 → **Fixed**（TC-22 :322 + §5 :388「**US-45→TC-22**」+ AC-B35-12 :381）
+6. 🟡 FALLBACK → **Fixed**（`PET-GALLERY.md:199`/`:200` 空分类处置与 `FALLBACK` 落点（`pet-chain-core.js:44` / `:77`）+ TC-12 :312 + O-B35-3 :291）
+7. 🟡 PET-UNLOCK 回填 → **Fixed**（`PET-UNLOCK.md:166`（eligible）/`:191`（payload）/`:416`（unlock:view 形状）/`:427`（导出面 13→18）+ §8 :523）
+8. 🔵 指针 → **Fixed**（`PET.md:757`→§2.5.3 · `:774`/`:784`→§2.6 / §2.2.8 · `:456`→§2.5.5；changelog :847 登记）
+9. 🔵 计数 → **Fixed**（`PET-GALLERY.md:388`「**22 条：正常 4 / 边界 10 / 错误 2 / 机检 6**」（逐条复算相符）+ :360「（13 → **18**）」）
+10. 🔵 段名 → **Fixed**（`PET-GALLERY.md:134`「`工作状态-垂头叹气冒汗`」）
+11. 🔵 桩测行 → **Fixed**（`PET-GALLERY.md:255`「**不在盘**…本批承载 = 上行的重建复跑」+ §2.2.9 :127 + `PET.md:765` 承载说明）
+
+**轮 2 新见（非阻断）**：
+
+| # | Category | Severity | Issue | Suggestion |
+|---|---|---|---|---|
+| N1 | Doc-state（跨档滞后） | 🟡 | 批次档 §2.4（`:160`）「用例 = §2.10 **TC-B35-1…20**（正常 5 / 边界 11 / 错误 2 / 机检 2）」与（`:161`）「B23 桩测档的图鉴断言随 payload 演进同批更新（设计档 §2.2.9）」与现行设计档脱钩（现为 22 条 4/10/2/6；B23 桩测档不在盘 ⇒ 无既有断言可更）。 | 收口轮同步 §2.4，或 §2.8 追加一行「§2.4 的 TC 计数 / 桩测句以本条为准」。 |
+| N2 | Doc hygiene（枚举） | 🔵 | `PET.md:765` 的 B23 用例组枚举「时节 / 饭点 / 等级 / 关门 / 跨日全组」为 5 组，设计档为 6 组（`PET-GALLERY.md:254`「时节 / 饭点 / 等级 / 关门 / 跨日 / 提示六组」）——漏「提示」（US-42 / AC-B23-7 桩测属该组）。 | 收口轮对齐枚举（语义面无碍）。 |
+| N3 | Clarity（谓词括注） | 🔵 | 「特权」徽标谓词的括注「（时节 = 窗口关闭；饭点 = 窗口关闭 ∨ 当日已演）」（`PET-GALLERY.md:136`）未含对应门开关；闭门态下按关门语义（`PET-UNLOCK.md:159`「时节门关 ⇒ 全部时节动作照常可选」）该段并非「锁」，按括注字面仍会授徽标 ⇒ 满级 + 关门用户全窗外时节段恒挂「特权」。 | 括注补「对应门开关为开」，或按「无特权判定下当刻为锁」的完整读法落句；可加一例 TC。 |
+| N4 | Affected-file annotation | 🔵 | `main.js` 转交的 `tray.rebuildTrayMenu`（`PET-GALLERY.md:251` · §3.3 :362）未注明是既有导出还是 shell-tray 新增——§2.6 该档行（`:250`）只记两 checkbox 的 +4。 | 若为新增导出，`shell-tray.js` 的 Δ / 行形补记（预算远低于门禁，不影响机制）。 |
+
+**计数**：🔴 0 / 🟡 1 / 🔵 3；轮 1 表格 11/11 已 Fixed。**未独立复核面（声明外）**：代码面引证（`main.js:117` / `shell-affinity.js:148` / `pet-chain-core.js:44`·`:77` / `pet-chain.js:150-155`·`:164`·`:255`·`:288`）——前两处已由 §4 复核登记；其余建议父侧一读收口（若为否，影响 §2.5.2 空态处置与 §2.6 记账，不属机制阻断面）。
+
+VERDICT: pass
+
+## §4 评审裁决与实施启动（主 agent）
+
+**评审轮 1 裁决（2026-09-20；发现表 = §3，11 条全修）**：
+
+| # | Action | Detail |
+|---|--------|--------|
+| 1 | Fixed | 🔴 修正轮改为经**既有 `deps.pet` 注入**调 `recalcAndBroadcast` 落档（零新增注入键；通路实测已在场：`main.js:117` + `shell-affinity.js:148`）；§2.4.3 / §2.5.4 / §2.6 / §2.8 四面同步 ✓。**父侧复核注**：原判「无通路」在**代码面**半句上不成立（通路一直在 ✓），仅在**设计档未落档**半句上成立 ✓——按设计面缺陷收口 ✓。 |
+| 2 | Fixed | 🔴 温和切换补 `onended` 收尾挂钩 + 「不补武装预触发」句；核 B18 三禁止形态 ①②③ / AC28 落 §2.8 ✓。 |
+| 3 | Fixed | 🟡 触发线统一「越 499（实测 ≥500）⇒ 停下上报」（取需求档保守线；§2.1 / §2.6 / §2.8 / §2.9 / AC-B35-13 / §7 六处同源）✓。 |
+| 4 | Fixed | 🟡「特权」徽标谓词落 §2.3 + TC-B35-21 + AC-B35-9 回指 ✓（谓词按 §2.5.1 补全为「∧ 无特权判定下当刻为锁 ∧ 未被屏蔽」——父侧裁决：**接受**（比字面更正确）✓）。 |
+| 5 | Fixed | 🟡 US-45 DOM 用例 TC-B35-22 + §5 映射句同步 ✓。 |
+| 6 | Fixed | 🟡 `FALLBACK` 权威落点（`pet-chain-core.js:77`）+ 空分类处置（与 B23 §2.5.3 口径同源）✓。 |
+| 7 | Fixed | 🟡 `PET-UNLOCK.md` 回填注记 ×4（eligible 输入 / gateStep 输出 + payload / unlock:view 形状 / 导出面 13→18）+ 变更记录 ✓。 |
+| 8–11 | Fixed | 🔵 四小项：指针 ×4（含勘察新发现第 4 处 US-44）/ 计数 ×2 / 段名取磁盘实名 / 桩测行按实际状态改写 ✓。 |
+
+**修正轮 1 落地核验（主 agent，2026-09-20）**：① 两条 🔴 的修法引证**逐字复读原文核实** ✓（`main.js:117` 整 `pet` 对象注入 ✓ / `shell-affinity.js:148` 已在调 `pet.recalcAndBroadcast()` ✓ / `PET-ANIMATION.md:317` 契约句 ✓）；
+② 三处超宽行**打标代折** ✓（本档 §2.2×2 / §2.7×1——「逐字保留、仅换行、零语义」）后 `npm run lint` = **PASS（checks=7 · selftest=20/20）** ✓；
+③ 跨批发现（`.thincoder/b23-unlock-stub.mjs` 不在盘）**父侧裁定 = 维持「B35 桩测内重建承载」** ✓ + 登台账 **T62**（B23 后续对账轮）✓。
+
+**用户批准与实施启动**：待评审轮 2 通过后由用户批准（发起权 = 用户）——本节待补。
+
+### 评审轮 2（2026-09-20）——修正面复核 = **pass**
+
+**轮 1 表格复核**：11/11 全 **Fixed**（逐条引证复读 ✓）；**新见 4 条**（N1 🟡 / N2–N4 🔵，均非阻断）——父侧裁决如下。
+
+| # | Action | Detail |
+|---|--------|--------|
+| N1 | Deferred | 🟡 批次档 §2.4 的 TC 计数（TC-B35-1…20 / 正常 5·边界 11·错误 2·机检 2）与桩测句（「B23 图鉴断言同批更新」）与现行设计档脱钩（现 22 条 4/10/2/6；B23 桩测档不在盘）⇒ **B35 收口轮同步**（或 §2.8 追加一行「以本条为准」）——评审方明示 report-and-pass，非 must-fix ✓。 |
+| N2 | Deferred | 🔵 `PET.md:765` 的 B23 用例组枚举（5 组）vs 设计档（6 组，含「提示」）⇒ 收口轮对齐枚举 ✓。 |
+| N3 | Deferred | 🔵 「特权」徽标谓词括注未含门开关态（闭门语义下会误授徽标）⇒ 收口轮按「无特权判定下当刻为锁」完整读法落句；**实施期先行约束** = 派工时写进任务书（谓词按完整读法实现：∧ 未被屏蔽 ∧ 对应门开关为开）✓。 |
+| N4 | Deferred | 🔵 `tray.rebuildTrayMenu` 未注明既有导出 / 新增——若为新增，`shell-tray.js` 的 Δ / 行形补记（实施期见真章；不影响机制与绑定面）✓。 |
+
+**轮 2 结论**：两条 🔴 已从机制面闭合（重算通路五面同源；温和切换补 `onended` 收尾挂钩且不破 B18 三禁止形态 / AC28），无新 🔴 ⇒ **VERDICT: pass（凭证已签发）**。
+
+**用户批准（2026-09-20）**：评审轮 2 pass 后，用户原话「B35的评审已结束，可以根据现有文档开发吗」= **明确批准实施**——设计凭证生效，实施启动（四步流程批准环节闭合）。N1–N4 按上表裁决执行（N3 实施期先行约束已写入派工面：「特权」徽标谓词 = ∧ 未被屏蔽 ∧ 对应门开关为开 ∧ 无特权判定下当刻为锁）。
+
+---
+
+## §5 实施记录（eng-coder）
+
+**代笔声明（2026-09-20）**：eng-coder 子代理启动时配额不可用（5 小时窗口上限，provider 403）⇒ 主 agent 持设计凭证**亲跑实施**（先例 = B12 §5「19/19 主 agent 亲跑」），本段由主 agent 以 eng-coder 角色自写并打标；设计凭证 = §4（评审轮 2 pass + 用户 2026-09-20 批准）。
+
+### 5.1 交付摘要
+
+- **实施面 12 档** = 改动代码 11 档 + 桩测 1 档（`.thincoder/b35-gallery-stub.mjs`，gitignore 惯例）；**允许面外零档**（`git diff --stat` 实测：代码面与 §2.6 清单逐档一致；文档面 = 评审期已定档，见 §6.4）。
+- **四件事同批落地**：① 窗口形态（`resizable` 放开 + 默认 720×560 / 最小 480×420 + `petExchangeSize` 持久化 + 所在屏钳制）；② 喂养面重排（头部卡 + 食品网格）；③ 图鉴 = 视频卡片墙（96 卡 / IO 懒加载 / 并发 ≤8 / 指纹跳过重渲）；④ 三谓词叠加（喜欢 ×3 类内加权 / 屏蔽双点硬排除 / Lv.10 特权两域分支）。
+- **行数决算（门禁 `\n` 口径，2026-09-20 实测）**：
+
+| 文件 | 预算（§2.6） | 实测 | 决算说明 |
+|---|---|---|---|
+| `pet-unlock-core.js` | 345 +125 ≈470 | **478**（+133） | 超估 8 行（doc 注释实写偏厚，两轮收紧后 528→478）；≤500 ✓ 未触停报线 |
+| `pet-chain-core.js` | 227 +14 ≈241 | **235**（+8） | 预算内 |
+| `pet-chain.js` | 333 +25 ≈358 | **369**（+36） | 超估 11 行（`stillPickable` / `settleExcludedPlaying` 两函数实写 + 注释）；≤500 ✓ |
+| `exchange.html` | 79 +130 ≈210 | **118**（+39） | 预算内（CSS 单行紧凑形） |
+| `exchange.js` | 173 +170 ≈345 | **352**（+179） | 超估 7 行；≤500 ✓ |
+| `exchange-preload.js` | 9 +3 =12 | **13**（+4） | 超估 1 行（桥键注释行） |
+| `shell-affinity.js` | 372 +70 ≈442 | **486**（+114） | 超估 44 行（prefs 属主四函数 + 窗口重写 + 三 handle 实写偏厚）；≤500 ✓（near 提示行已出，**下批改动前须先给拆分计划**） |
+| `shell-pet.js` | 498 +1 =499 | **499**（+1） | **预算精确命中**（宽度合规折行使 gateStep 入参行一拆二）；越 499 停报线未触 |
+| `shell-settings.js` | 65 +3 =68 | **68**（+3） | 预算精确命中 |
+| `shell-tray.js` | 209 +4 ≈213 | **213**（+4） | 预算精确命中 |
+| `main.js` | 263 Δ0 | **264**（+1） | 超估 1 行：`pet.init` 行加宽后 349 字符超 300 行宽 ⇒ 合规折行（宽度为更硬规则；装配语义零变更、绑定计数不变） |
+| `package.json` | 143 Δ0 | **143**（0） | 零 diff ✓ |
+
+- **机制面落点**（与设计契约逐条对应，括号 = 实现位置）：`eligible` 三谓词（`pet-unlock-core.js`——屏蔽先行 / `lv10Free` 两域分支 / favOnly 合取在后）；
+  `validatePrefs` / `togglePref` / `playbackPlan` / `clampWindowSize` 同档纯函数；`pick` 加性可选参 `weightOf`（`pet-chain-core.js`，缺席路径逐字）；
+  events 过滤 + 温和收尾（`pet-chain.js` `applyAllowSet` / `settleExcludedPlaying`——`loop` 置 false + 同置 `onended` 挂钩，不补武装预触发）；事件空集 `anim event-empty`（`startSlot` 取档后长度 0 即返）；
+  卡墙视图（`unlockView` 原地演进：favorites 置顶不重出 / sections / resident 16 / 特权徽标按 N3 完整读法）；
+  prefs 属主（`shell-affinity.js`——懒装载 + 校验归一 + 事件驱动写盘 + `petPrefs()` 访问器）；三 handle 自注册（落盘后既有 `deps.pet` 重算，`unlock:fav-only` 增 `rebuildTrayMenu` 唯一新键）。
+- **实施期偏差登记**：`main.js` Δ +1（上行决算）；N3 先行约束已落码（徽标谓词含「对应门开关为开」——`pet-unlock-core.js` `privileged` 谓词，TC-B35-21 八断言绿）。
+
+### 5.2 实跑取证（本机，2026-09-20）
+
+| 面 | 命令 | 结果 |
+|---|---|---|
+| 桩测 | `node .thincoder/b35-gallery-stub.mjs` | **101/101 PASS**（TC-B35-1…22 全项 + B23 六组复跑 + 静态面） |
+| 门① | `npm run lint` | **PASS**（checks=7 · selftest=20/20；width 初红 2 行 ⇒ 折行后复绿） |
+| 门② | `npm run test:full` | **PASS**（62/62，零回退） |
+| 门③ | `npm run test:integration` | **PASS**（3 场景 S1/S2/S3 全绿） |
+| 冻结面 | `git diff --stat` | 代码面 11 档 = §2.6 允许清单逐档一致；冻结清单（几何 / 拖拽 / pet.html·pet.js·pet-preload / webm / pool.json / unlock-rules.json / affinity-core / shell-ipc / gates / tests / updater·market·backend）**零 diff**；`package.json` 零 diff；`baseline.json` 零 diff |
+| 行宽 | lint width 判据 | PASS（初跑 2 行超 300：`main.js:94` 349 / `shell-pet.js:101` 336 ⇒ 折行修复后复跑绿——见 §5.1 决算） |
+
+### 5.3 微修轮（2026-09-20 用户实机目视发现 ①；eng-coder 角色自写打标）
+
+- **发现**：用户实机截图——「悠闲哼歌」「摇扇纳凉」两卡视频位黑框。根因 = 该两段在 categories（小动作）与基础档 `idle` **并存** ⇒ 卡墙各两张卡（分类组 + 常驻区）；`cardEls` / `playState` 以**段名**为键互相覆盖，播放调度只落后注册的常驻区卡，分类组卡永不赋 `src`。
+- **修法**（`exchange.js`，+5 行）：播放调度改**卡实例键**（`名#序号`——`dataset.uid`；`buildCard` 发卡号、`renderUnlock` 重置序号、IO 回调读 uid）；卡墙 96 张契约与 `unlock:view` payload **零变更**。
+- **回归**：桩测 TC-15 扩同名双卡场景（常驻区复刻段）⇒ TC-15f / TC-15g 两断言；**103/103 PASS** + 三道门复绿（lint · test:full 62 · integration 3）。
+
+### 5.4 微修轮 ②（2026-09-20 用户实机裁定；eng-coder 角色自写打标）
+
+- **裁定**：用户实机——「我现在才六级还没到10级，托盘不应该看到这些东西吧」⇒ 托盘「满级特权 · 无视时间限制」项**未满级不显示**（U-5 ② 的呈现面修订；开关值与「默认开」语义不变，满级后该项出现且默认勾选）。
+- **实施（3 档 +4 行）**：`shell-tray.js` 该项改条件展开（`affinity.affinityLevel() >= 10 ? […] : []`）；`shell-affinity.js` 等级跨档分支增 `rebuildTrayMenu()`（显隐随等级刷新）；`main.js` `loadAffinity()` 同行增 `tray.rebuildTrayMenu()`（启动即定显隐、不等首个 10 s 节拍；Δ 0）。
+- **回归**：桩测静态面 +3 断言（AC-11e/f/g）；**106/106 PASS** + 三道门复绿（lint · test:full 62 · integration 3）。
+- **备选登记**：「置灰禁用」形态未取——用户原话 = 「不应该看到」，取隐藏。
+
+### 5.5 微修轮 ③（2026-09-20 用户实机发现 ②；eng-coder 角色自写打标）
+
+- **发现**：用户实机截图——「工作状态-忙碌点按」「工作状态-清点归档」两卡黑框。根因 = 两卡为全墙 DOM 序最末两张；视口内可见卡 ~12 张时，前 8 张占满并发上限（`GALLERY_MAX_PLAYING`），末两张为**待命卡**；而原实现只在「判播」时才赋 `src`——待命卡连首帧都不载 ⇒ 黑框。设计本意 = 播放数 ≤8（NFR-30），并非「可见卡黑框」。
+- **修法**（`exchange.js`，+4 行）：IO 回调内**入视即赋 `src` 并载首帧**（`preload` 升 `metadata` + `load()`）——可见待命卡显示首帧画面；播放仍按 ≤8 计划调度；懒加载口径不变（未入视仍不赋 `src`）。
+- **回归**：桩测 TC-15h…k 四断言（可见 10 卡 ⇒ 播 8 待命 2 · 待命同赋 src · 待命 = metadata 不播）；**110/110 PASS** + 三道门复绿（lint · test:full 62 · integration 3）。
+
+---
+
+## §6 验收核销（主 agent）
+
+### 6.1 AC 逐条核销（机检面全绿；人工项如实标注待实机）
+
+| AC | 结果 | 证据 |
+|---|---|---|
+| AC-B35-1（窗口形态） | **绿** | 桩测静态面：`resizable: true` / `minWidth/minHeight = EXCHANGE_MIN_SIZE` / 常量 720×560 · 480×420 单点；`clampWindowSize` 四输入（TC-B35-18）；位置 = 所在屏 `getDisplayNearestPoint` + workArea 钳（`shell-affinity.js` 实读） |
+| AC-B35-2（尺寸持久化） | **绿** | 桩测静态面：resize 防抖 500 ms + close 兜底两事件点；非法值回落（TC-18）；写盘 = settings 事件驱动 |
+| AC-B35-3（卡墙结构） | **机检绿 / CSP 面待实机** | TC-B35-13 全 20 断言绿（96 卡 / 分母 80 / src 编码 / 未引用 12 段磁盘实测缺席）；`file://` 下 video 加载实证 = **人工项（待用户实机）**——CSP 按勘察实证零改动（备选 `media-src` 单行未启用） |
+| AC-B35-4（性能面） | **机检绿 / 内存待实机** | TC-B35-14（并发 ≤8 + 补播次序）/ TC-B35-15（懒加载 + 离屏即停 DOM 桩断言）绿；10 min 工作集增幅 = **人工度量项（待实机）** |
+| AC-B35-5（喜欢体系） | **绿** | TC-10（×3 频率比实测落 [2.4,3.6] 带内 + 缺席路径均匀）/ TC-11（合取不越锁）/ TC-13（置顶不重出）/ toggle 落盘回读（handle 通路 = togglePref→validatePrefs→savePrefs 实读） |
+| AC-B35-6（屏蔽硬排除） | **绿** | TC-7（双点过滤）+ TC-20（×1000 `pick=` 零出现）+ TC-9（独占结构保护）；机检 = 过滤名单不含段名，无权重写入路径（`applyAllowSet` 实读 = 数组过滤） |
+| AC-B35-7（事件空集回落） | **绿** | TC-8（四段全屏蔽 ⇒ `anim event-empty slot=eat` + 不切段，DOM 桩实证）；独占三事件永不空（TC-9 同源） |
+| AC-B35-8（温和切换） | **绿** | TC-19（loop 置 false + `onended` 挂钩 + 回链后 `pick=` 不含该段，DOM 桩实证）；非 loop 段 = 播完不再出现（机制句实读） |
+| AC-B35-9（特权 + 逐位一致） | **绿** | TC-1…6 + TC-21（徽标八断言）+ **B23 六组（时节/饭点/等级/关门/跨日/提示）在新 eligible 面全量复跑绿**（B35 桩测内重建承载——B23 桩测档不在盘，T62 在册） |
+| AC-B35-10（持久化容错） | **绿** | TC-16（损坏重置 + 视图全中性）/ TC-17（校验归一三谓词）；写盘仅两事件点（`savePrefs()` 全档 2 处机检） |
+| AC-B35-11（零回退） | **绿** | 三道门全绿 + 冻结清单零 diff + `package.json` 零 diff + `baseline.json` 零 diff + 既有 62 单元 + 3 集成零回退 |
+| AC-B35-12（布局观感） | **机检绿 / 观感待实机** | TC-22（双标签卡 / 头部卡 / 食品网格 ≥1 / 卡墙容器 / 进度头在场，DOM 桩断言）；「好看」= **人工目视项（待用户实机验收）** |
+| AC-B35-13（规范） | **绿** | 改动档行宽 ≤300（width PASS）/ 单档 ≤500（最大 `shell-pet.js` 499 / `shell-affinity.js` 486 / `pet-unlock-core.js` 478——两预案均未触发）/ 注释中文 / 零新档（既有档头在场） |
+
+### 6.2 评审轮 2  Deferred 四项收口（N1–N4）
+
+- **N1**：批次档 §2.4 的 TC 计数与桩测句以本条为准——**TC 22 条（正常 4 / 边界 10 / 错误 2 / 机检 6）；B23 桩测档不在盘 ⇒ 用例组由 B35 桩测重建承载**（§2.4 原文 append-only 不动）。
+- **N2**：`PET.md` NFR-31 的 B23 用例组枚举 5 组 ⇒ **6 组**（补「提示」）——主 agent 打标代修，语义零变更。
+- **N3**：「特权」徽标谓词按完整读法落句（∧ 对应门开关为开）——设计档 §2.3 与 TC-B35-21 行主 agent 打标代修；实施已先行按完整读法落地（§5.1 偏差登记）。
+- **N4**：`tray.rebuildTrayMenu` = **既有导出**（`shell-tray.js` module.exports 实读）⇒ 无新增导出行，`shell-tray.js` Δ +4 仅两 checkbox（与 §2.6 记账一致）。
+
+### 6.3 父侧登记项（口径与对账）
+
+- **§1.3 口径注同步**：批次档 §1.3 勘察表行数 = 非空行口径（§2.7 已登记分歧）；受影响清单与预算的门禁 `\n` 口径以 §2.6 / §5.1 决算为准（§1.3 原文 append-only 不动）。
+- **跨批对账**：`.thincoder/b23-unlock-stub.mjs` 不在盘事项 = **T62 在册**（B23 后续对账轮；父侧裁定 = 维持 B35 桩测内重建承载——§4 已裁）。
+- **B35 桩测处置**：`.thincoder/b35-gallery-stub.mjs` 按 gitignore 惯例留盘（开发期工具，不入仓——同 B23/B31 先例；复原 / 常驻化归 T62 同口径裁定）。
+- **下批预警**：`shell-pet.js` 499 / `shell-affinity.js` 486 / `pet-unlock-core.js` 478 三线贴线——**下批任何改动前须先给拆分计划**（`shell-pet.js` 预案 = 门控面迁 `shell-pet-unlock.js`，承 B23 §2.8；O-B35-6 已登记）。
+
+### 6.4 文档面变更归口（本批 diff 中文档档逐档归口）
+
+`docs/batches/B35-pet-gallery-ui.md`（§3 评审 + §4 裁决 + §5/§6 本段）· `docs/design/PET-GALLERY.md`（eng-designer 修正轮 1 + 主 agent N3 代修）·
+`docs/design/PET-UNLOCK.md`（eng-designer 修正轮 1 回填注记 ×4）· `docs/requirements/PET.md`（eng-designer US-44…50 / NFR-30…33 + 主 agent N2 代修）·
+`docs/README.md` / `docs/TODO.md` / `docs/TODO-archive.md`（主 agent 索引台账面收口）——
+`docs/batches/B15-repo-hygiene.md` 与 `docs/design/REPO-CONVENTIONS.md` 两档 = **他会话在途面**（非本批产物，本批不动不收口）。
+
+### 6.5 核销结论
+
+**B35 机检面全绿**（三道门 + 桩测 101/101 + 冻结面零 diff + AC-B35-1…13 机检项全绿）⇒ **本批交付完成、待用户实机目视**（人工项 = AC-B35-3 的 `file://` 媒体加载实证 · AC-B35-4 内存实测 · AC-B35-12 布局观感 · §2 待实机五项：并发体感 / ×3 体感 / 窗口观感 / 温和切换观感 / 事件全屏蔽喂食面）；目视通过后台账 R24 转已核销归档（承 B23 先例）。
+
+### 6.6 微修轮核销（2026-09-20 实机目视发现 ①）
+
+用户实机目视发现 ①（同名双卡黑框——悠闲哼歌 / 摇扇纳凉）= 实施缺陷（播放调度键冲突，非设计偏差），已由 §5.3 微修轮修复并机检核销（桩测 103/103 含 TC-15f/g 回归 + 三道门复绿）；**「待用户实机目视」其余人工项不变**（§6.5 清单），用户续验中。
+
+### 6.7 微修轮 ② 核销（2026-09-20 用户实机裁定）
+
+实机裁定（未满级托盘不显示「满级特权」项）已按 §5.4 落地并机检核销（桩测 106/106 + 三道门复绿）；需求档 US-49 修订注记与设计档 §7 决策表行由主 agent 打标代修同源。**「待用户实机目视」其余人工项不变**（§6.5 清单）。
+
+### 6.8 微修轮 ③ 核销（2026-09-20 实机目视发现 ②）
+
+实机目视发现 ②（待命卡黑框——工作状态-忙碌点按 / 工作状态-清点归档）= 实施缺陷（待命卡不赋 `src`，非设计偏差——并发上限只管播放、不管首帧加载），已由 §5.5 修复并机检核销（桩测 110/110 含 TC-15h…k 回归 + 三道门复绿）。**「待用户实机目视」其余人工项不变**（§6.5 清单）。
+
 

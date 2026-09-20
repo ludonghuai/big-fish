@@ -22,6 +22,9 @@ const DEFAULT_SETTINGS = {
   petUnlockSeason: true,  // 时节门（B23 / US-38）：默认开（用户 2026-09-20 裁定「做了门禁就要使用」；关 = 该门来源不做过滤）
   petUnlockMeal: true,    // 饭点门（B23 / US-39）：默认开（同上）
   petUnlockLevel: true,   // 等级门（B23 / US-40）：默认开（同上）
+  petUnlockFavOnly: false, // 只看喜欢（B35 / US-47）：默认关；开 = 链面「喜欢 ∩ 已解锁 − 屏蔽」合取 + 卡墙只显喜欢组（双面同键，无双源）
+  petUnlockLv10: true,    // Lv.10 特权（B35 / US-49）：默认开（D-4 + U-5 ②）；满级后时节 / 饭点时间窗与「一天一次」解除；关 ⇒ 满级回 B23 语义
+  petExchangeSize: null,  // 兑换屋尺寸（B35 / US-44 / US-50）：{ w, h } 或 null = 未调过（默认 720×560；读取走 clampWindowSize 钳制）
   mode: 'whale',        // 'whale' 鲸鱼模式（桌宠+背景图） | 'focus' 专注模式（无桌宠、纯色背景）
   modeChosen: false,    // 是否已弹过模式选择
   lastModeVersion: '',  // 上次选择模式时的版本号（更新后重新弹窗）

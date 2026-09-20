@@ -85,6 +85,11 @@ function rebuildTrayMenu() {
         { label: '动作解锁 · 时节', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petUnlockSeason, click: (item) => setUnlock('petUnlockSeason', item.checked) },
         { label: '动作解锁 · 饭点', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petUnlockMeal, click: (item) => setUnlock('petUnlockMeal', item.checked) },
         { label: '动作解锁 · 等级', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petUnlockLevel, click: (item) => setUnlock('petUnlockLevel', item.checked) },
+        // 只看喜欢（B35 / US-47）：链面合取 + 卡墙显示过滤（双面同键）；专注模式置灰同口径
+        { label: '只看喜欢的动作', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petUnlockFavOnly, click: (item) => setUnlock('petUnlockFavOnly', item.checked) },
+        // Lv.10 特权（B35 / US-49）：默认开；关 ⇒ 满级回到 B23 门控语义（时节 / 饭点时间窗与一天一次恢复）
+        //   **未满级不显示本项**（用户 2026-09-20 实机裁定——满级才可见；显隐刷新 = 等级跨档 broadcastAffinity 触发 rebuildTrayMenu）
+        ...(affinity.affinityLevel() >= 10 ? [{ label: '满级特权 · 无视时间限制', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petUnlockLv10, click: (item) => setUnlock('petUnlockLv10', item.checked) }] : []),
         { label: '开机自启', type: 'checkbox', checked: settings.get().launchAtLogin, click: (item) => setAutoStart(item.checked) },
         {
           label: 'Windows 右键菜单',

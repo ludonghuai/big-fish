@@ -22,6 +22,8 @@ const SEG_MAX_BYTES = 1.5 * 1024 * 1024;
 const PET_OVERLAP_MS = 1200;
 /** B27 真·静默期（ms）：动作类段（action / turn）末进入静默，静默内零链决策（§2.14.2 / §2.14.9；U-1 = 40% / 30 s，实机标定路径 = 本常量一处）。 */
 const PET_QUIET_MS = 30000;
+/** B35 喜欢段类内选段倍率（DD-B35-3 / PET-GALLERY §2.2.2；单点定义、`pet-chain.js` 单点消费；事件档轮换不加权；体感回调只改本处）。 */
+const PET_FAV_WEIGHT = 3;
 
 // ---- 链决策（设计档 §2.2.4）----
 /** 按权重掷骰：roll ∈ [0,1) ⇒ 'idle' | 'turn' | 'move' | 'action'（余量全归 action，见档内「权重余量」契约）。 */
@@ -32,11 +34,17 @@ function rollKind(roll, weights) {
   return 'action';
 }
 
-/** 等概率抽 1，尽量避开 exclude；排除后为空 ⇒ 退回原池（不返回 undefined）。 */
-function pick(pool, exclude) {
+/** 等概率抽 1，尽量避开 exclude；排除后为空 ⇒ 退回原池（不返回 undefined）。B35 加性可选参 `weightOf(name)→倍率`（缺席 = 既有均匀语义逐字；DD-B35-3）。 */
+function pick(pool, exclude, weightOf) {
   const entries = exclude === undefined ? pool : pool.filter((n) => n !== exclude);
   const src = entries.length ? entries : pool;
-  return src[Math.floor(Math.random() * src.length)];
+  if (typeof weightOf !== 'function') return src[Math.floor(Math.random() * src.length)];
+  let total = 0;
+  for (const n of src) total += Math.max(0, Number(weightOf(n)) || 0);
+  if (!(total > 0)) return src[Math.floor(Math.random() * src.length)];   // 权重全零 / 非法 ⇒ 均匀兜底
+  let t = Math.random() * total;
+  for (const n of src) { t -= Math.max(0, Number(weightOf(n)) || 0); if (t <= 0) return n; }
+  return src[src.length - 1];
 }
 
 /** 按权重抽分类；noMirror 分类在 facing='right' 时被滤（全被滤 ⇒ 退回全池）；无可用分类 ⇒ null。 */
@@ -75,7 +83,7 @@ function pickChainNext(input) {
   if (kind === 'move') return { kind, name: null, mirror: false, category: null };
   const cat = pickWeightedCategory(pool.categories, facing);
   if (!cat) return { kind: 'idle', name: pick(pool.idle, cur), mirror: false, category: 'FALLBACK' };
-  return { kind: 'action', name: pick(cat.actions, cur), mirror: facing === 'right' && !cat.noMirror, category: cat.id };
+  return { kind: 'action', name: pick(cat.actions, cur, input.weightOf), mirror: facing === 'right' && !cat.noMirror, category: cat.id };   // B35：类内选段加权（可选参透传；idle / turn 基础档不加权）
 }
 
 /** B21 段末决策（设计档 §2.13.4；B27 扩展 = §2.14.9）：输入池/权重/掷骰/当前档位/正播段/朝向/静默标记 ⇒ 输出四类计划（rotate/quiet/chain/none；roll 注入保确定性）。
@@ -93,7 +101,7 @@ function decideNext(input) {
     const quietSegs = pool.events && pool.events.quiet !== undefined ? pool.events.quiet : null;
     return { plan: 'quiet', name: quietSegs ? pickSlot(quietSegs, cur) : pool.idle[0], mirror: false };
   }
-  const d = pickChainNext({ weights, pool, cur, facing, roll });
+  const d = pickChainNext({ weights, pool, cur, facing, roll, weightOf: input.weightOf });   // B35：weightOf 透传（加性可选参；缺席路径逐字不变）
   if (d.name === null) return { plan: 'none' };
   return { plan: 'chain', name: d.name, mirror: d.mirror, kind: d.kind, category: d.category };
 }
@@ -219,7 +227,7 @@ function parsePool(text, probe) {
 
 const PetChainCore = {
   rollKind, pick, pickWeightedCategory, pickSlot, nextInSlot, pickChainNext, decideNext, judgeSwitch, mediaBox, segSrc, parsePool, validatePool,
-  PET_MEDIA_CANVAS, PET_MEDIA_BODY, PET_BODY_TARGET_H, PET_FEET_Y, PET_STAGE_W, SEG_MAX_BYTES, PET_OVERLAP_MS, PET_QUIET_MS,
+  PET_MEDIA_CANVAS, PET_MEDIA_BODY, PET_BODY_TARGET_H, PET_FEET_Y, PET_STAGE_W, SEG_MAX_BYTES, PET_OVERLAP_MS, PET_QUIET_MS, PET_FAV_WEIGHT,
 };
 
 // 双环境导出尾巴：node（桩测 / 主进程 require）与浏览器（<script> 全局）同源装载。

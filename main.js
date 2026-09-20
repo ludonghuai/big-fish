@@ -91,7 +91,8 @@ notifier.init({ getDshHome: backend.dshHome, petSay: pet.petSay, IDLE_NOTIFY_MS:
 backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: plugins.sanitizeProfileBundles, getMainWindow: win.getMainWindow });
 geometry.init({ getPetWindow: pet.getPetWindow, getPetDrag: drag.getPetDrag });
 drag.init({ getPetWindow: pet.getPetWindow, pet, petWouldArmFlight: physics.petWouldArmFlight }); // T60：甩抛放行面接线
-pet.init({ showMainWindow: win.showMainWindow, openExchangeWindow: affinity.openExchangeWindow, broadcastAffinity: affinity.broadcastAffinity, affinityLevelProvider: () => affinity.affinityLevel(), notifyUnlock: notifier.notifyUnlock, unlockCore });   // B23：解锁门控注入面（等级访问器 + 提示复用入口 + 核档注入）
+pet.init({ showMainWindow: win.showMainWindow, openExchangeWindow: affinity.openExchangeWindow, broadcastAffinity: affinity.broadcastAffinity,
+  affinityLevelProvider: () => affinity.affinityLevel(), notifyUnlock: notifier.notifyUnlock, unlockCore, petPrefsProvider: () => affinity.petPrefs() });   // B23 门控注入面 + B35 prefs 访问器（PET-GALLERY §3.3）
 // 工作状态联动接线（B19 / §2.7 注入面 9 项；shell-pet.js 不 require 工作模块 ⇒ 背底档经 setBaseStateProvider 注入）
 work.init({
   setPetState: pet.setPetState,
@@ -114,7 +115,7 @@ physics.init({
   settings,
   setPetState: pet.setPetState,
 });
-affinity.init({ getPetWindow: pet.getPetWindow, pet, setQuitting, APP_NAME, affinityCore, settings, unlockCore });   // B23：settings + 核档注入（图鉴开关态读取；核档经组合根送达）
+affinity.init({ getPetWindow: pet.getPetWindow, pet, setQuitting, APP_NAME, affinityCore, settings, unlockCore, rebuildTrayMenu: tray.rebuildTrayMenu });   // B23：settings + 核档注入；B35：rebuildTrayMenu（唯一新增注入键，既有行就地改写）
 mode.init({ getMainWindow: win.getMainWindow, destroyPetWindow: pet.destroyPetWindow, ensurePet: pet.ensurePet, rebuildTrayMenu: tray.rebuildTrayMenu, notify: notifier.notify, APP_NAME });
 plugins.init({ updaterLog: update.updaterLog });
 update.init({ setQuitting, APP_NAME, runtimeNodeExe: plugins.runtimeNodeExe, bundledPnpmPath: plugins.bundledPnpmPath });
@@ -204,7 +205,7 @@ if (!gotLock) {
     tray.createTray();
     tray.registerShortcuts();
     notifier.startCompletionWatcher();
-    affinity.loadAffinity();
+    affinity.loadAffinity(); tray.rebuildTrayMenu();   // B35 微修②：createTray 先于本行 ⇒ 装载后重建一次（满级用户启动即见「满级特权」项，不等首个 10 s 节拍）
     affinity.startAffinityWatcher();
     update.scheduleUpdateChecks();
     // 显示器配置变化（E5 三事件，DD-8）：失效拖动缓存 + 校正到可见区 + 落盘

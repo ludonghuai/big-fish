@@ -18,6 +18,7 @@ let setQuitting = null;
 let APP_NAME = null;
 let affinityCore = null; let unlockCore = null;   // B23 解锁核经 init(deps) 注入（本档零静态 require 边——设计档 PET-UNLOCK.md §2.2.4）
 let settings = null;
+let rebuildTrayMenu = null;   // B35 注入（托盘菜单重建——favOnly 开关双面同源的菜单侧；PET-GALLERY §2.5.4 ⑦，唯一新增注入键）
 function init(deps) {
   getPetWindow = deps.getPetWindow;
   pet = deps.pet;
@@ -25,8 +26,13 @@ function init(deps) {
   APP_NAME = deps.APP_NAME;
   affinityCore = deps.affinityCore;
   settings = deps.settings; unlockCore = deps.unlockCore;
+  rebuildTrayMenu = deps.rebuildTrayMenu;
   // B23：图鉴数据通道自注册（先例 = shell-pet.js 模块内自注册；shell-ipc.js 保持零 diff——设计档 §3.3 / O-B23-9）
   ipcMain.handle('unlock:view', handleUnlockView);
+  // B35：偏好三 handle 同先例自注册（PET-GALLERY §2.4.3；落盘后通路 = 既有 deps.pet 的 recalcAndBroadcast——零新增键）
+  ipcMain.handle('prefs:like', handlePrefsLike);
+  ipcMain.handle('prefs:block', handlePrefsBlock);
+  ipcMain.handle('unlock:fav-only', handleFavOnly);
 }
 
 // ---------------------------------------------------------------------------
@@ -144,8 +150,9 @@ function broadcastAffinity() {
     getPetWindow().webContents.send('pet-affinity', affinityView());
   }
   // B23：等级**变化**才触发门控重算 + 重下发（设计档 §2.5.4 触发面 ②；非变化时不重下发——避免每 10 s 重启链段）
+  // B35 微修②：等级跨档同点重建托盘菜单（「满级特权」项未满级不显示——用户 2026-09-20 实机裁定；显隐随等级刷新）
   const level = affinityView().level;
-  if (level !== lastPushedLevel) { lastPushedLevel = level; if (pet.recalcAndBroadcast) pet.recalcAndBroadcast(); }
+  if (level !== lastPushedLevel) { lastPushedLevel = level; if (pet.recalcAndBroadcast) pet.recalcAndBroadcast(); if (rebuildTrayMenu) rebuildTrayMenu(); }
 }
 
 function startAffinityWatcher() {
@@ -186,16 +193,32 @@ function stopAffinityWatcher() {
 
 /** 右键鲸鱼娘：在它旁边打开兑换窗口。 */
 let exchangeWindow = null;
+// B35 窗口尺寸常量（U-2 / §2.5.5；常量单点——clampWindowSize 的 limits 与 BrowserWindow minWidth/minHeight 同源）
+const EXCHANGE_DEFAULT_SIZE = { w: 720, h: 560 };
+const EXCHANGE_MIN_SIZE = { w: 480, h: 420 };
 function openExchangeWindow() {
   if (exchangeWindow && !exchangeWindow.isDestroyed()) {
     exchangeWindow.show();
     exchangeWindow.focus();
     return;
   }
+  // 尺寸 = 持久化值经 clampWindowSize 钳制（纯函数 = pet-unlock-core；所在屏 workArea 上限 + 最小保底——US-44 / TC-B35-18）
+  const petWin = getPetWindow && getPetWindow();
+  const petAlive = !!(petWin && !petWin.isDestroyed());
+  let disp = screen.getPrimaryDisplay();
+  if (petAlive) {
+    const [px, py] = petWin.getPosition();
+    const [pw, ph] = petWin.getSize();
+    disp = screen.getDisplayNearestPoint({ x: Math.round(px + pw / 2), y: Math.round(py + ph / 2) });   // 所在屏（现行主屏 workAreaSize 口径升级，多屏修正）
+  }
+  const wa = disp.workArea;
+  const size = unlockCore.clampWindowSize(settings ? settings.get().petExchangeSize : null, wa, { minW: EXCHANGE_MIN_SIZE.w, minH: EXCHANGE_MIN_SIZE.h, defW: EXCHANGE_DEFAULT_SIZE.w, defH: EXCHANGE_DEFAULT_SIZE.h });
   exchangeWindow = new BrowserWindow({
-    width: 320,
-    height: 500,
-    resizable: false,
+    width: size.w,
+    height: size.h,
+    minWidth: EXCHANGE_MIN_SIZE.w,
+    minHeight: EXCHANGE_MIN_SIZE.h,
+    resizable: true,
     maximizable: false,
     fullscreenable: false,
     title: '鲸鱼娘兑换屋',
@@ -209,14 +232,15 @@ function openExchangeWindow() {
       sandbox: true,
     },
   });
-  // 放在鲸鱼娘右侧（放不下就放左边）
-  if (getPetWindow() && !getPetWindow().isDestroyed()) {
-    const [px, py] = getPetWindow().getPosition();
-    const [pw] = getPetWindow().getSize();
-    const { workAreaSize } = screen.getPrimaryDisplay();
+  // 位置每次现算（宠会动 ⇒ 记位置无义，只记尺寸）：贴宠右侧、右溢出改左侧、按所在屏 workArea 钳 x/y
+  if (petAlive) {
+    const [px, py] = petWin.getPosition();
+    const [pw] = petWin.getSize();
     let x = px + pw + 6;
-    if (x + 320 > workAreaSize.width) x = Math.max(0, px - 326);
-    exchangeWindow.setPosition(Math.round(x), Math.round(Math.max(0, Math.min(py, workAreaSize.height - 500))));
+    if (x + size.w > wa.x + wa.width) x = px - size.w - 6;
+    x = Math.min(Math.max(x, wa.x), wa.x + wa.width - size.w);
+    const y = Math.min(Math.max(py, wa.y), wa.y + wa.height - size.h);
+    exchangeWindow.setPosition(Math.round(x), Math.round(y));
   }
   // 缓存爆破：防止 Chromium file:// 缓存加载旧版 exchange.html 导致元素缺失
   const cacheBust = Date.now();
@@ -227,6 +251,16 @@ function openExchangeWindow() {
       fs.appendFileSync(file, `[${new Date().toISOString()}] [${level}] ${message}\n`);
     } catch { /* best effort */ }
   });
+  // 尺寸持久化（US-50 / NFR-33）：resize 防抖 ≈500 ms 停手写一次 + close 兜底——事件驱动写盘，不入任何 tick
+  let resizeTimer = null;
+  const persistSize = () => {
+    if (!exchangeWindow || exchangeWindow.isDestroyed() || !settings) return;
+    const [w, h] = exchangeWindow.getSize();
+    settings.get().petExchangeSize = { w, h };
+    settings.saveSettings();
+  };
+  exchangeWindow.on('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(persistSize, 500); });
+  exchangeWindow.on('close', () => { clearTimeout(resizeTimer); persistSize(); });
   exchangeWindow.on('closed', () => { exchangeWindow = null; });
 }
 
@@ -309,19 +343,99 @@ function readStaticJson(rel) {
 /** 当前好感等级（**运行时值**；图鉴与提示的 `Lv.n` 一律取此值——本档 §3.3 导出，main.js pet.init 注入 shell-pet 同源）。 */
 function affinityLevel() { return affinityView().level; }
 
-/** 解锁开关态（默认全开；关 = 该门来源不做过滤——设计档 §2.5.1 单一口径）。 */
+/** 解锁开关态（默认全开；关 = 该门来源不做过滤——设计档 §2.5.1 单一口径；B35 增 favOnly / lv10 两键同面读取）。 */
 function unlockSwitches() {
   const s = settings ? settings.get() : {};
-  return { season: s.petUnlockSeason !== false, meal: s.petUnlockMeal !== false, level: s.petUnlockLevel !== false };
+  return { season: s.petUnlockSeason !== false, meal: s.petUnlockMeal !== false, level: s.petUnlockLevel !== false, favOnly: s.petUnlockFavOnly === true, lv10: s.petUnlockLv10 !== false };
 }
 
-/** 图鉴视图（US-43 / AC-B23-8）：本档只做数据读取（池 / 规则 / 只读演过快照），组装与判定均在 pet-unlock-core.js（与链同源单点）。 */
+/** 图鉴视图（US-43 / AC-B23-8 + B35 卡墙化）：本档只做数据读取（池 / 规则 / 只读演过快照 / prefs），组装与判定均在 pet-unlock-core.js（与链同源单点）。 */
 function handleUnlockView() {
   if (!unlockPoolCache) unlockPoolCache = readStaticJson('assets/pet-anim/pool.json');
   if (!unlockRulesCache) unlockRulesCache = readStaticJson('assets/pet-anim/unlock-rules.json');
+  ensurePrefs();
   let playedMeals = {};
   try { playedMeals = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'unlock-state.json'), 'utf8')).playedMeals || {}; } catch { /* 首次使用 / 损坏 ⇒ 无演过记录（只读面，属主 = shell-pet） */ }
-  return unlockCore.unlockView({ pool: unlockPoolCache, rules: unlockRulesCache, now: new Date(), level: affinityLevel(), switches: unlockSwitches(), playedMeals });
+  return unlockCore.unlockView({ pool: unlockPoolCache, rules: unlockRulesCache, now: new Date(), level: affinityLevel(), switches: unlockSwitches(), playedMeals, prefs });
+}
+
+// ---------------------------------------------------------------------------
+// B35 偏好面（PET-GALLERY §2.4.1）：`userData/pet-prefs.json` 属主（装载 / 校验 / 保存 / 访问器）+ 三 handle（自注册见 init）
+// ---------------------------------------------------------------------------
+const PET_PREFS_NAME = 'pet-prefs.json';
+let prefs = { liked: [], blocked: [] };   // 进程内缓存（读面 = petPrefs() 访问器——B23 affinityLevelProvider 先例）
+let prefsLoaded = false;
+function prefsFile() { return path.join(app.getPath('userData'), PET_PREFS_NAME); }
+
+/** 池段名（categories）+ 独占三段（events.drag / escape / quiet 唯一段）——prefs 校验输入（结构保护，US-48；惰性装载承 unlockPoolCache 先例）。 */
+function poolFacts() {
+  if (!unlockPoolCache) unlockPoolCache = readStaticJson('assets/pet-anim/pool.json');
+  const p = unlockPoolCache && typeof unlockPoolCache === 'object' ? unlockPoolCache : {};
+  const names = Array.isArray(p.categories) ? p.categories.flatMap((c) => (Array.isArray(c.actions) ? c.actions : [])) : [];
+  const ev = p.events && typeof p.events === 'object' ? p.events : {};
+  const prot = [];
+  for (const k of ['drag', 'escape', 'quiet']) for (const n of (Array.isArray(ev[k]) ? ev[k] : [ev[k]])) if (typeof n === 'string' && prot.indexOf(n) < 0) prot.push(n);
+  return { names, prot };
+}
+
+/** 首次使用时装载（解析失败 / 形态非法 ⇒ 按「首次使用」重置——同 unlock-state.json 形态，NFR-33）。 */
+function ensurePrefs() {
+  if (prefsLoaded) return;
+  prefsLoaded = true;
+  let raw = null;
+  try { raw = JSON.parse(fs.readFileSync(prefsFile(), 'utf8')); } catch { raw = null; }
+  const f = poolFacts();
+  prefs = unlockCore.validatePrefs(raw, f.names, f.prot);
+}
+
+/** 事件驱动写盘（toggle 时；原子性 = 整档 writeFileSync，承先例）。 */
+function savePrefs() {
+  try {
+    fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
+    fs.writeFileSync(prefsFile(), JSON.stringify({ version: 1, liked: prefs.liked, blocked: prefs.blocked }), 'utf8');
+  } catch (err) { console.error('[bigfish] pet prefs save failed:', err); }
+}
+
+/** prefs 访问器（供 main.js 装配注入 shell-pet.js——B23 `affinityLevelProvider` 先例；返回副本防外部改缓存）。 */
+function petPrefs() {
+  ensurePrefs();
+  return { liked: prefs.liked.slice(), blocked: prefs.blocked.slice() };
+}
+
+/** 喜欢翻转（US-47）：togglePref 原子翻转 → validatePrefs 归一 → 落盘 → 经既有 deps.pet 重算重下发（触发面 ⑥——零新增注入键）。 */
+function handlePrefsLike(_e, body) {
+  ensurePrefs();
+  const b = body && typeof body === 'object' ? body : {};
+  const t = unlockCore.togglePref(prefs, b.name, 'like', b.on === true, {});
+  if (!t) return { ok: false };
+  const f = poolFacts();
+  prefs = unlockCore.validatePrefs(t, f.names, f.prot);
+  savePrefs();
+  if (pet.recalcAndBroadcast) pet.recalcAndBroadcast();
+  return { ok: true, view: handleUnlockView() };
+}
+
+/** 屏蔽翻转（US-48）：独占段（blockable=false）⇒ { ok:false, message }（结构保护）；其余同 like 通路。 */
+function handlePrefsBlock(_e, body) {
+  ensurePrefs();
+  const b = body && typeof body === 'object' ? body : {};
+  const f = poolFacts();
+  const t = unlockCore.togglePref(prefs, b.name, 'block', b.on === true, { blockable: f.prot.indexOf(b.name) < 0 });
+  if (!t) return { ok: false, message: '该动作是事件独占段，不可屏蔽' };
+  prefs = unlockCore.validatePrefs(t, f.names, f.prot);
+  savePrefs();
+  if (pet.recalcAndBroadcast) pet.recalcAndBroadcast();
+  return { ok: true, view: handleUnlockView() };
+}
+
+/** 「只看喜欢」开关（US-47 双面）：写 settings 单点 + 同点重算 + 托盘菜单重建（托盘 checkbox 同键同语义，无双源——触发面 ⑦）。 */
+function handleFavOnly(_e, body) {
+  const on = !!(body && typeof body === 'object' && body.on === true);
+  settings.get().petUnlockFavOnly = on;
+  settings.saveSettings();
+  if (pet.recalcAndBroadcast) pet.recalcAndBroadcast();
+  if (rebuildTrayMenu) rebuildTrayMenu();
+  return { ok: true };
 }
 
 function handleAffinityExchange() {
@@ -368,5 +482,6 @@ module.exports = {
   affinityLevel,
   handleAffinityExchange,
   handleAffinityBuy,
+  petPrefs,
   init,
 };

@@ -2,7 +2,8 @@
 /**
  * pet-unlock-core.js — 动作解锁三把锁纯函数核：时节 / 饭点 / 等级三门判定 + 可选集计算 + 规则档校验 + 解锁来源键（B23；设计档 docs/design/PET-UNLOCK.md §2.5.1）。
  * 边界（设计档 §2.5.1）：零 DOM / 零 IPC / 零 fs——可被 node 直接装载（桩测装载真实实现，NFR-27）；时钟一律入参 `now`，本档不自行取时（AC-B23-10 符号级断言）。
- * 函数清单：rollDayKey · resolveWindows · isSeasonOpen · isMealOpen · validateRules · eligible · unlockKeys · unlockNotice · mealKeyOf · prunePlayedMeals · mealPlayed · gateStep · unlockView（图鉴视图面）；双环境导出尾巴见档末。
+ * 函数清单：rollDayKey · resolveWindows · isSeasonOpen · isMealOpen · validateRules · eligible · unlockKeys · unlockNotice · mealKeyOf · prunePlayedMeals · mealPlayed · gateStep · unlockView（图鉴卡片墙视图面）
+ *   · validatePrefs · togglePref · playbackPlan · clampWindowSize（B35；设计档 docs/design/PET-GALLERY.md §2.5.1）；常量 GALLERY_MAX_PLAYING；双环境导出尾巴见档末。
  */
 
 // ---- 基础谓词（形态谓词集中一处；判定函数只吃已注入的入参） ----
@@ -126,11 +127,11 @@ function levelOf(rules, name) {
 }
 
 /**
- * 可选集计算（核心入口，设计档 §2.5.1）⇒ { allowSet, lockedNames }。
- * 合取语义：时节段 = 时节门 ∧ 当日 ∈ 窗口（D-2：不按等级锁）；饭点段 = 饭点门 ∧ 当刻 ∈ 窗口 ∧ 当日未演；
- *   普通段 = 等级门 ∧ level ≥ 解锁级。**状态面**（「当日已演」排除）不随开关走（§2.5.1 ②，TC-B23-19）；
- *   **集合面**：任一门关闭 = 该门来源不做过滤（全解锁；三开关全关 ⇒ allowSet = 全池，TC-B23-18）。
- * `input` = { poolNames, rules, now, level, switches, playedMeals, quiet }；`quiet` = 规则档坏 / 表过期时的「无锁」回落标记。
+ * 可选集计算（核心入口，PET-UNLOCK §2.5.1 + PET-GALLERY §2.5.1）⇒ { allowSet, lockedNames }。
+ * 合取语义：时节 = 门 ∧ 当日 ∈ 窗口（D-2 不按等级锁）；饭点 = 门 ∧ 当刻 ∈ 窗口 ∧ 当日未演（状态面不随开关走）；普通 = 门 ∧ level ≥ 级；
+ *   任一门关 = 该门来源不过滤（全关 ⇒ 全池）。B35 三谓词（`prefs` / `favOnly` / `lv10` 缺席 ⇒ B23 语义逐字）：屏蔽 = 硬排除（优先一切域，D-3）；
+ *   `lv10Free = lv10 开 ∧ level ≥ 10` ⇒ 时节日期窗 / 饭点时刻窗 / 一天一次三解除（D-4）；`favOnly` ⇒ 合取「∧ 喜欢」（不越锁，域门在先）。
+ * `input` = { poolNames, rules, now, level, switches, playedMeals, quiet, prefs }；`quiet` = 坏档 / 过期「无锁」回落标记。
  */
 function eligible(input) {
   const src = input || {};
@@ -140,6 +141,10 @@ function eligible(input) {
   const sw = isObj(src.switches) ? src.switches : {};
   const played = isObj(src.playedMeals) ? src.playedMeals : {};
   const level = Number.isFinite(src.level) ? src.level : 1;
+  const prefs = isObj(src.prefs) ? src.prefs : {};
+  const liked = {}; for (const n of (Array.isArray(prefs.liked) ? prefs.liked : [])) liked[n] = true;
+  const blocked = {}; for (const n of (Array.isArray(prefs.blocked) ? prefs.blocked : [])) blocked[n] = true;
+  const favOnly = sw.favOnly === true, lv10Free = sw.lv10 !== false && level >= 10;   // lv10Free：Lv.1–9 / 开关关两路恒假 ⇒ 既有路径逐字（硬约束 5）
   const allowSet = [];
   const lockedNames = [];
   const day = now instanceof Date ? rollDayKey(now) : null;
@@ -151,18 +156,16 @@ function eligible(input) {
   if (isObj(rules) && Array.isArray(rules.seasonal)) for (const rule of rules.seasonal) if (isObj(rule)) seasonOf[rule.action] = rule;
   const playedToday = Array.isArray(played[day]) ? played[day] : [];
   for (const name of pool) {
-    if (src.quiet === true) { allowSet.push(name); continue; }   // 坏档 / 过期 ⇒ 整体回落「无锁」（NFR-29）
-    if (seasonOf[name]) {   // 时节域：D-2 = 只按日期锁
-      if (!seasonOn || isSeasonOpen(seasonOf[name], now)) allowSet.push(name); else lockedNames.push(name);
-    } else if (mealKeyOf(rules, name)) {   // 饭点域：时刻窗 + 状态面「一天一次」
+    if (blocked[name]) { lockedNames.push(name); continue; }   // 屏蔽优先于一切域（D-3 / §2.2.4）
+    let pass;
+    if (src.quiet === true) pass = true;   // 坏档 / 过期 ⇒ 整体回落「无锁」（NFR-29；特权不改本路径）
+    else if (seasonOf[name]) pass = !seasonOn || lv10Free || isSeasonOpen(seasonOf[name], now);   // 时节域：D-2 只按日期锁；D-4 特权解除日期窗
+    else if (mealKeyOf(rules, name)) {   // 饭点域：时刻窗 + 状态面「一天一次」；D-4 特权两判齐解
       const key = mealKeyOf(rules, name);
-      if (playedToday.indexOf(key) >= 0) lockedNames.push(name);
-      else if (!mealOn || isMealOpen(rules.meals, key, now)) allowSet.push(name);
-      else lockedNames.push(name);
-    } else {   // 等级门域
-      const need = levelOf(rules, name);
-      if (!levelOn || need === 0 || level >= need) allowSet.push(name); else lockedNames.push(name);
-    }
+      pass = (lv10Free || playedToday.indexOf(key) < 0) && (!mealOn || lv10Free || isMealOpen(rules.meals, key, now));
+    } else { const need = levelOf(rules, name); pass = !levelOn || need === 0 || level >= need; }   // 等级门域：照旧（Lv.10 本就全量收口）
+    if (pass && favOnly && !liked[name]) pass = false;   // favOnly 合取（锁着的喜欢段仍不入选）
+    if (pass) allowSet.push(name); else lockedNames.push(name);
   }
   return { allowSet, lockedNames };
 }
@@ -256,34 +259,162 @@ function unlockSortKey(name, rules, now) {
 }
 
 /**
- * 图鉴视图（US-43 / AC-B23-8）⇒ { rows, totals, byCategory }：行 = 动作名 / 分类 / 条件串 / 解锁态；
- * 百分比分母 = **可解锁面**（categories 段——排除基础档 / 事件档，§2.2.3 口径 ②）；分组与组内排序 = U-9 ①；
- * 判定与链同源（本档 `eligible` 单点）；规则档不可用 ⇒ 全部按已解锁展示（与链同源回落）。
+ * 图鉴卡片墙视图（B35 / US-46；`unlock:view` 通道原地演进 §2.2.9——B23 文字行形态退役）⇒ { favorites, sections, resident, totals, favOnly, level }。
+ * card = { name, src, cond, unlocked, liked, blocked, likeable, blockable, badges }；覆盖 = categories 80 主面（排序承 B23 U-9①；喜欢组置顶、收藏段不重出）
+ *   + 常驻 / 事件 16 签展示（基础档 8 + 事件独占 8——不计分母、不可喜欢不可屏蔽）。「已解锁」= 三锁 + 特权（不含屏蔽与 favOnly）；判定 = 本档 eligible 单点；
+ * 「特权」徽标（修正轮 #4+N3）= 时节 / 饭点域 ∧ 对应门开 ∧ 无特权下当刻为锁 ∧ lv10Free ∧ 未被屏蔽；规则档不可用 ⇒ 全部按已解锁展示（同源回落）。
  */
 function unlockView(input) {
   const src = input || {};
   const pool = src.pool && Array.isArray(src.pool.categories) ? src.pool : { categories: [] };
   const rules = src.rules;
   const now = src.now;
+  const level = Number.isFinite(src.level) ? src.level : 1;
+  const sw = isObj(src.switches) ? src.switches : {};
   const names = pool.categories.flatMap((c) => c.actions);
+  const dir = typeof pool.dir === 'string' ? pool.dir : '';
+  const ext = typeof pool.ext === 'string' ? pool.ext : '';
+  const ev = isObj(pool.events) ? pool.events : {};
+  const protectedNames = [];   // 独占三段（events.drag / escape / quiet 唯一段）= 结构保护（US-48）
+  for (const k of ['drag', 'escape', 'quiet']) for (const n of (Array.isArray(ev[k]) ? ev[k] : [ev[k]])) {
+    if (typeof n === 'string' && protectedNames.indexOf(n) < 0) protectedNames.push(n);
+  }
+  const prefs = validatePrefs(src.prefs, names, protectedNames);
+  const likedSet = {}; for (const n of prefs.liked) likedSet[n] = true;
+  const blockedSet = {}; for (const n of prefs.blocked) blockedSet[n] = true;
   const valid = validateRules(rules, names, now).ok;
-  const allowed = valid ? eligible({ poolNames: names, rules, now, level: src.level, switches: src.switches, playedMeals: src.playedMeals }).allowSet : names;
-  const set = {};
-  for (const n of allowed) set[n] = true;
-  const rows = [];
-  const byCategory = {};
+  const gate = valid ? eligible({ poolNames: names, rules, now, level, switches: { season: sw.season, meal: sw.meal, level: sw.level, lv10: sw.lv10 }, playedMeals: src.playedMeals }).allowSet : names;
+  const unlockSet = {};
+  for (const n of gate) unlockSet[n] = true;
+  const lv10Free = sw.lv10 !== false && level >= 10, day = now instanceof Date ? rollDayKey(now) : null;
+  const playedToday = isObj(src.playedMeals) && Array.isArray(src.playedMeals[day]) ? src.playedMeals[day] : [];
+  const seasonOf = {};
+  if (isObj(rules) && Array.isArray(rules.seasonal)) for (const r of rules.seasonal) if (isObj(r)) seasonOf[r.action] = r;
+  const privileged = (name) => {   // 「特权」徽标谓词（本应被时间锁住、因满级而放行的段）
+    if (!lv10Free || blockedSet[name]) return false;
+    if (seasonOf[name]) return sw.season !== false && !isSeasonOpen(seasonOf[name], now);
+    const mk = mealKeyOf(rules, name);
+    if (mk) return sw.meal !== false && (playedToday.indexOf(mk) >= 0 || !isMealOpen(rules.meals, mk, now));
+    return false;
+  };
+  const card = (name) => {
+    const u = !!unlockSet[name];
+    const badges = [u ? '已解锁' : '未解锁'];
+    if (likedSet[name]) badges.push('♥ 喜欢');
+    if (blockedSet[name]) badges.push('已屏蔽');
+    if (privileged(name)) badges.push('特权');
+    if (protectedNames.indexOf(name) >= 0) badges.push('事件独占');
+    return {
+      name, src: dir + '/' + encodeURIComponent(name) + ext, cond: valid ? unlockCondition(name, rules, now) : '规则档不可用',
+      unlocked: u, liked: !!likedSet[name], blocked: !!blockedSet[name], likeable: true, blockable: protectedNames.indexOf(name) < 0, badges,
+    };
+  };
+  const favorites = prefs.liked.map(card);
+  const sections = [];
   let unlocked = 0;
   for (const c of pool.categories) {
     const list = c.actions.slice().sort((a, b) => (unlockSortKey(a, rules, now) < unlockSortKey(b, rules, now) ? -1 : 1));
     let catUnlocked = 0;
+    const cards = [];
     for (const n of list) {
-      const u = !!set[n];
-      if (u) { unlocked += 1; catUnlocked += 1; }
-      rows.push({ name: n, category: c.id, cond: valid ? unlockCondition(n, rules, now) : '规则档不可用', unlocked: u });
+      if (unlockSet[n]) { unlocked += 1; catUnlocked += 1; }
+      if (likedSet[n]) continue;   // 喜欢组置顶、不重出于分类组（D-2 / §2.3）
+      cards.push(card(n));
     }
-    byCategory[c.id] = { unlocked: catUnlocked, total: c.actions.length };
+    sections.push({ id: c.id, unlocked: catUnlocked, total: c.actions.length, cards });
   }
-  return { rows, totals: { unlocked, total: names.length }, byCategory };
+  // 常驻 / 事件区（签展示、不计分母）：基础档（idle / turn / moves）+ 事件独占段（events 内不在 categories 与基础档的名）
+  const resident = [];
+  const seen = {};
+  const baseNames = [];
+  const mv = isObj(pool.moves) ? pool.moves : {};
+  for (const arr of [pool.idle, pool.turn, mv.walk, mv.run]) for (const n of (Array.isArray(arr) ? arr : [])) baseNames.push(n);
+  const catSet = {}; for (const n of names) catSet[n] = true;
+  const baseSet = {}; for (const n of baseNames) baseSet[n] = true;
+  const pushResident = (name, tag) => {
+    if (typeof name !== 'string' || seen[name]) return;
+    seen[name] = true;
+    resident.push({ name, src: dir + '/' + encodeURIComponent(name) + ext, cond: tag === '常驻' ? '常驻动作 · 始终可演' : '事件动作 · 触发表演', unlocked: true, liked: false, blocked: false, likeable: false, blockable: false, badges: [tag] });
+  };
+  for (const n of baseNames) pushResident(n, '常驻');
+  for (const k of Object.keys(ev)) for (const n of (Array.isArray(ev[k]) ? ev[k] : [ev[k]])) if (!catSet[n] && !baseSet[n]) pushResident(n, '事件');
+  return { favorites, sections, resident, totals: { unlocked, total: names.length }, favOnly: sw.favOnly === true, level };
+}
+
+// ---- B35 偏好面（喜欢 / 屏蔽；设计档 PET-GALLERY.md §2.4.1 / §2.5.1；纯函数，判定与链同源单点）----
+/** 卡墙并发上限（NFR-30 / U-3；单点定义——exchange.js 经 `window.PetUnlockCore` 消费）。 */
+const GALLERY_MAX_PLAYING = 8;
+
+/** prefs 校验归一化（NFR-33 谓词单点）⇒ { liked, blocked }：池外名剔除（两集合 ⊆ categories 段）· 去重 · 独占段移出 blocked（结构保护，US-48）· 交集按屏蔽归一。 */
+function validatePrefs(prefs, poolNames, protectedNames) {
+  const src = isObj(prefs) ? prefs : {};
+  const inPool = {}; for (const n of (Array.isArray(poolNames) ? poolNames : [])) inPool[n] = true;
+  const prot = {}; for (const n of (Array.isArray(protectedNames) ? protectedNames : [])) prot[n] = true;
+  const liked = [];
+  for (const n of (Array.isArray(src.liked) ? src.liked : [])) {
+    if (typeof n !== 'string' || !inPool[n] || liked.indexOf(n) >= 0) continue;
+    liked.push(n);
+  }
+  const blocked = [];
+  for (const n of (Array.isArray(src.blocked) ? src.blocked : [])) {
+    if (typeof n !== 'string' || !inPool[n] || prot[n] || blocked.indexOf(n) >= 0) continue;
+    blocked.push(n);
+  }
+  return { liked: liked.filter((n) => blocked.indexOf(n) < 0), blocked };
+}
+
+/** 喜欢 / 屏蔽互斥翻转的原子纯函数（IPC 处理器唯一 mutation 入口）⇒ newPrefs | null（kind 非法或 `ctx.blockable=false` 的屏蔽 ⇒ null；like 置位即清 block，反之亦然）。 */
+function togglePref(prefs, name, kind, on, ctx) {
+  if (typeof name !== 'string' || !name) return null;
+  if (kind !== 'like' && kind !== 'block') return null;
+  if (kind === 'block' && isObj(ctx) && ctx.blockable === false) return null;
+  const src = isObj(prefs) ? prefs : {};
+  const liked = (Array.isArray(src.liked) ? src.liked : []).slice();
+  const blocked = (Array.isArray(src.blocked) ? src.blocked : []).slice();
+  const flip = (arr, add) => {
+    const i = arr.indexOf(name);
+    if (add && i < 0) arr.push(name);
+    if (!add && i >= 0) arr.splice(i, 1);
+  };
+  if (kind === 'like') { flip(liked, !!on); if (on) flip(blocked, false); }
+  else { flip(blocked, !!on); if (on) flip(liked, false); }
+  return { liked, blocked };
+}
+
+/** 卡墙播放计划（US-46 / NFR-30 / §2.5.3）⇒ { play, pause }：`cards` = 卡名 → { visible, playing }（键序 = 入视先后，补播同序）；可见 ∧ 未播 ∧ 播数 < cap ⇒ play；不可见 ∧ 在播 ⇒ pause；可见超 cap ⇒ 待命。 */
+function playbackPlan(cards, cap) {
+  const src = isObj(cards) ? cards : {};
+  const limit = Number.isFinite(cap) ? Math.max(0, cap) : GALLERY_MAX_PLAYING;
+  const keys = Object.keys(src);
+  const pause = [];
+  let used = 0;
+  for (const k of keys) {
+    const c = isObj(src[k]) ? src[k] : {};
+    if (c.playing && c.visible) used += 1;
+    else if (c.playing && !c.visible) pause.push(k);
+  }
+  const play = [];
+  for (const k of keys) {
+    const c = isObj(src[k]) ? src[k] : {};
+    if (c.visible && !c.playing && used < limit) { play.push(k); used += 1; }
+  }
+  return { play, pause };
+}
+
+/** 弹窗尺寸钳制（US-44 / TC-B35-18）：非法 / null ⇒ 默认；钳入 [min, workArea]。`limits` = { minW, minH, defW, defH }（数值权威 = shell-affinity.js 的 EXCHANGE_* 常量；本档内值 = 缺省兜底）。 */
+function clampWindowSize(size, workArea, limits) {
+  const lim = isObj(limits) ? limits : {};
+  const minW = lim.minW > 0 ? lim.minW : 480;
+  const minH = lim.minH > 0 ? lim.minH : 420;
+  const defW = lim.defW > 0 ? lim.defW : 720;
+  const defH = lim.defH > 0 ? lim.defH : 560;
+  const wa = isObj(workArea) ? workArea : {};
+  const maxW = Math.max(minW, wa.width > 0 ? wa.width : defW);
+  const maxH = Math.max(minH, wa.height > 0 ? wa.height : defH);
+  const w = isObj(size) ? Number(size.w) : NaN;
+  const h = isObj(size) ? Number(size.h) : NaN;
+  if (!Number.isFinite(w) || !Number.isFinite(h)) return { w: Math.min(defW, maxW), h: Math.min(defH, maxH) };
+  return { w: Math.round(Math.min(Math.max(w, minW), maxW)), h: Math.round(Math.min(Math.max(h, minH), maxH)) };
 }
 
 /** playedMeals 裁剪（保留最近 `keep` 天 + 必保当前日键；O-B23-4；返回新对象，不改入参）。 */
@@ -312,10 +443,10 @@ function mealPlayed(state, mealKey, day) {
 }
 
 /**
- * 门控一步（纯函数；规则档原文 → 校验 + 跨日裁剪 + 三门判定 + 提示判据）⇒ { allowSet, lockHint, fresh, state }。
- * `input` = { rulesText, poolNames, now, level, switches, state }；规则档解析失败 / 校验不过 / 表过期 ⇒
- *   `allowSet = null` 与 `lockHint.valid = false`（渲染层不达滤 = 回落「无锁」，NFR-29）；`state` 返回新对象（不改入参）。
- * `lockHint` = { valid, reason, switches, meals }（meals = 段名 → 饭点键映射；不含等级数值与阈值）。
+ * 门控一步（纯函数；规则档原文 → 校验 + 跨日裁剪 + 三门判定 + 提示判据）⇒ { allowSet, lockHint, fresh, state, blockSet, likeSet }。
+ * `input` = { rulesText, poolNames, now, level, switches, state, prefs, protectedNames }；规则档不可用 ⇒ `allowSet = null`（回落「无锁」，NFR-29）。
+ * B35：`switches` 增 `favOnly` / `lv10`（缺席 = false / true）；`prefs` 经 `validatePrefs` 归一化后入 `eligible`（合取在主进程完成——渲染层零判定，承 DD-B23-8），
+ *   归一化集合以 `blockSet` / `likeSet` 输出（payload 直用；规则档不可用路径照出——事件过滤不依赖规则档）。`lockHint` = { valid, reason, switches, meals }。
  */
 function gateStep(input) {
   const src = input || {};
@@ -325,19 +456,21 @@ function gateStep(input) {
   const day = now instanceof Date ? rollDayKey(now) : null;
   const playedMeals = prunePlayedMeals(prev.playedMeals, day, 60);
   const notified = isObj(prev.notified) ? prev.notified : {};
+  const prefsN = validatePrefs(src.prefs, src.poolNames, src.protectedNames);
   let rules = null;
   try { rules = JSON.parse(src.rulesText); } catch { rules = null; }
   const v = validateRules(rules, src.poolNames, now);
-  if (!v.ok) return { allowSet: null, lockHint: { valid: false, reason: v.reason, switches: sw, meals: {} }, fresh: [], state: { playedMeals, notified } };
-  const allowSet = eligible({ poolNames: src.poolNames, rules, now, level: src.level, switches: sw, playedMeals }).allowSet;
+  if (!v.ok) return { allowSet: null, lockHint: { valid: false, reason: v.reason, switches: sw, meals: {} }, fresh: [], state: { playedMeals, notified }, blockSet: prefsN.blocked, likeSet: prefsN.liked };
+  const allowSet = eligible({ poolNames: src.poolNames, rules, now, level: src.level, switches: sw, playedMeals, prefs: prefsN }).allowSet;
   const notice = unlockNotice({ rules, now, level: src.level, switches: sw, notified });
   const meals = {};
   for (const k of MEAL_KEYS) if (typeof rules.mealActions[k] === 'string') meals[rules.mealActions[k]] = k;
-  return { allowSet, lockHint: { valid: true, reason: '', switches: sw, meals }, fresh: notice.fresh, state: { playedMeals, notified: notice.notified } };
+  return { allowSet, lockHint: { valid: true, reason: '', switches: sw, meals }, fresh: notice.fresh, state: { playedMeals, notified: notice.notified }, blockSet: prefsN.blocked, likeSet: prefsN.liked };
 }
 
 const PetUnlockCore = {
   rollDayKey, resolveWindows, isSeasonOpen, isMealOpen, validateRules, eligible, unlockKeys, unlockNotice, mealKeyOf, prunePlayedMeals, mealPlayed, gateStep, unlockView,
+  validatePrefs, togglePref, playbackPlan, clampWindowSize, GALLERY_MAX_PLAYING,
 };
 
 // 双环境导出尾巴：node（桩测 / 主进程 require）与浏览器（<script> 全局）同源装载（口径同 pet-chain-core.js:225-227）。

@@ -42,7 +42,7 @@
 ### 2.1 问题陈述
 
 B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×500 且 `resizable:false`——用户原话「弹窗大小调整不了，布局没有精心设计」。
-本批在同一扇窗内做四件事的叠加：① 窗口形态（可调整 + 记住尺寸）；② 喂养面重排；③ 图鉴改视频卡片墙（96 张卡、并发受限的懒加载播放）；④ 在既有三把锁（B23 `eligible` 单点）上叠加三个新谓词——喜欢加权 / 屏蔽硬排除 / Lv.10 特权。约束网：B18 池校验与掷骰次序不回退、B23 门控语义对 Lv.1–9 逐位一致、`shell-pet.js` 行数余量仅 2 行（门禁口径 498/500）、零新依赖、渲染层判定须可桩测。
+本批在同一扇窗内做四件事的叠加：① 窗口形态（可调整 + 记住尺寸）；② 喂养面重排；③ 图鉴改视频卡片墙（96 张卡、并发受限的懒加载播放）；④ 在既有三把锁（B23 `eligible` 单点）上叠加三个新谓词——喜欢加权 / 屏蔽硬排除 / Lv.10 特权。约束网：B18 池校验与掷骰次序不回退、B23 门控语义对 Lv.1–9 逐位一致、`shell-pet.js` 行数逼近门禁（498/500；本批预算 +1——越 499 即停下上报）、零新依赖、渲染层判定须可桩测。
 
 ### 2.2 方案选型对比
 
@@ -50,7 +50,7 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 
 | # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
 |---|---|---|---|---|
-| 1 | **webm 直放 + IntersectionObserver + 并发上限 8**：卡 = `<video muted loop playsinline preload="none">`，未入视不赋 src；入视赋 src 起载、上限内 `play()`；离视 `pause()` | 零新素材 ✓ 零新依赖 ✓ 离线 ✓；并发上限把解码面钉死在 ≤8 路 640×360 VP9 ✓；懒加载 ⇒ 打开图鉴不整墙解码 ✓；媒体面 = 用户要的「最好看的画面在动」 | 代价 = 无封面帧的卡在首次入视前有短暂空框（卡片底色 + 名称兜底，观感可接受） | **选定**（D-1 + U-3） |
+| 1 | **webm 直放 + IntersectionObserver + 并发上限 8**：卡 = `<video muted loop playsinline preload="none">`，未入视不赋 src；入视赋 src 起载、上限内 `play()`；离视 `pause()` | 零新素材 ✓ 零新依赖 ✓ 离线 ✓；并发上限把解码面钉死 ≤8 路 640×360 VP9 ✓；懒加载 ⇒ 图鉴不整墙解码 ✓；媒体面 = 用户要的「画面在动」 | 代价 = 无封面帧的卡首次入视前短暂空框（卡底色 + 名称兜底，可接受） | **选定**（D-1 + U-3） |
 | 2 | 静态抽帧封面（ffmpeg 预抽 poster，视频 hover 才播） | 首屏安静 ✓；但 ffmpeg = 新依赖（硬约束 8 违反）+ 抽帧产物 = 新素材面（D-1 已否） | 换来的是构建链耦合 | **否决**（D-1） |
 | 3 | 全部卡片 `preload="metadata"` 常驻 src、无并发上限 | 实现最简；96 卡同页 ⇒ 元数据 96 连接 + 可见区外仍在解码面边上，桌面常驻应用不可接受 | 换来的是实现省事 | **否决**（NFR-30） |
 
@@ -61,7 +61,7 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 
 | # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
 |---|---|---|---|---|
-| 1 | **类内选段加权 ×3（段级倍率）**：`pet-chain-core.js` 的 `pick` 增**加性可选参** `weightOf(name) → 倍率`（缺席 = 既有均匀语义逐字不变），`pet-chain.js` 由 payload 的 `likeSet` 构造 `weightOf = liked ? 3 : 1` | 落点 = 类内均匀随机处（勘察指名）✓；分类间权重分布不变 ✓；`pool.json` 零 diff（硬约束 2 ✓）；纯函数可桩测（分布断言）✓；既有 45 用例不受影响（可选参缺席路径逐字）✓ | 代价 = `pet-chain-core.js` 加性扩签名（B18 掷骰**次序**不变——只改类内均匀步的抽样密度） | **选定**（U-1 ①） |
+| 1 | **类内选段加权 ×3**：`pet-chain-core.js` 的 `pick` 增**加性可选参** `weightOf(name) → 倍率`（缺席 = 均匀语义逐字不变），`pet-chain.js` 由 `likeSet` 构造 `weightOf = liked ? 3 : 1` | 落点 = 类内均匀随机 ✓；类间分布不变 ✓；`pool.json` 零 diff（硬约束 2 ✓）；纯函数可桩测 ✓；既有 45 用例零影响（缺席路径逐字）✓ | 代价 = 加性扩签名（B18 掷骰次序不变） | **选定**（U-1 ①） |
 | 2 | 分类权重加成（喜欢段所在分类 weight +n） | 喜欢集中在同分类时分布失真（整类变胖）；改的是类间分布而非「喜欢的更常出现」 | 换来的是语义错位 | **否决** |
 | 3 | `pool.json` 增段级权重字段 | 触 B18 V 系校验契约 + 池档冻结（硬约束 2） | — | **否决** |
 
@@ -71,7 +71,7 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 
 | # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
 |---|---|---|---|---|
-| 1 | **双点同名单**：链面 = `eligible` 增 `prefs.blocked` 输入（`allowSet` 直接不含被屏蔽段——承 B23 单点）；事件面 = payload 增 `blockSet`，渲染层在池重建单点（`applyAllowSet` 扩展）对 `pool.events[*]` 过滤 | `pick=` 机检锚零迁移 ✓（两面的段名都不入抽）；链面判定单点同源 ✓；事件档不入门控（B23 口径 B/C）⇒ 事件过滤只能在渲染层名单面 ✓ | 代价 = 过滤点两处（链面 eligible + 渲染层 events）——同一名单 `blockSet` 下发，无双源 | **选定**（D-3） |
+| 1 | **双点同名单**：链面 = `eligible` 增 `prefs.blocked`（`allowSet` 直接不含被屏蔽段——承 B23 单点）；事件面 = payload 增 `blockSet`，渲染层池重建单点（`applyAllowSet` 扩展）对 `pool.events[*]` 过滤 | `pick=` 机检锚零迁移 ✓（两面段名都不入抽）；链面判定单点同源 ✓；事件档不入门控（B23 口径 B/C）⇒ 过滤只能落渲染层 ✓ | 代价 = 过滤点两处（链面 + 渲染层）——同一 `blockSet` 名单下发，无双源 | **选定**（D-3） |
 | 2 | 主进程拦事件触发（`setPetState` 前查屏蔽表） | 状态机语义与动画表现分叉（状态变了、动画没演）；B21 交互优先级面被改写 | 换来的是单点幻觉 | **否决** |
 | 3 | 权重调零（被屏蔽段 weight=0） | 批次档硬约束 3 逐字禁止（调零仍可被抽中）；且事件档本无权重 | — | **否决**（硬约束 3） |
 
@@ -81,7 +81,7 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 
 | # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
 |---|---|---|---|---|
-| 1 | **`eligible` 内两域分支**：`lv10Free = level ≥ 10 ∧ switches.lv10 !== false`；时节域 `!seasonOn \|\| lv10Free \|\| isSeasonOpen(...)`；饭点域跳过「当日已演」与时刻窗两判（`!mealOn \|\| lv10Free \|\| ...`）；等级域零改动（Lv.10 在 B23 本就全量收口） | 谓词单点（与三锁同函数）✓；Lv.1–9 与开关关两路 `lv10Free` 恒假 ⇒ 既有路径逐字命中（可桩测回归）✓；规则档零改动 ✓ | 代价 = `eligible` 增两条分支（断言面 = TC-B35-1…6 全覆盖） | **选定**（D-4 + U-5 ②） |
+| 1 | **`eligible` 两域分支**：`lv10Free = level ≥ 10 ∧ switches.lv10 !== false`；时节域 `!seasonOn \|\| lv10Free \|\| isSeasonOpen(...)`；饭点域跳过已演 / 时刻窗两判（`!mealOn \|\| lv10Free \|\| ...`）；等级域照旧（Lv.10 已收口） | 谓词单点（同函数）✓；Lv.1–9 / 开关关两路 `lv10Free` 恒假 ⇒ 既有路径逐字命中 ✓；规则档零改动 ✓ | 代价 = 增两分支 | **选定**（D-4 + U-5 ②） |
 | 2 | 第四把锁（独立的「特权门」并入合取） | 特权不是「锁」是「放行」——并入合取会把关门语义（关 = 不过滤）搅浑 | 换来的是模型虚设 | **否决** |
 | 3 | 规则档复制一份 Lv.10 专用表 | 数据双源必漂移；规则档冻结面 | — | **否决** |
 
@@ -91,7 +91,7 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 
 | # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
 |---|---|---|---|---|
-| 1 | **独立 `userData/pet-prefs.json`**（喜欢 / 屏蔽集合）+ settings 只放三键（`petUnlockFavOnly` / `petUnlockLv10` / `petExchangeSize`） | 先例 = `unlock-state.json`（B23 同形态：独立档 + 损坏重置 + 事件驱动写盘）✓；集合数据与开关分面（settings 损坏不牵连集合）✓；settings 面与 `petUnlock*` 三锁同面 ✓ | 代价 = 多一个持久化档（属主 = `shell-affinity.js`，经注入访问器供 `shell-pet.js` 读——B23 `affinityLevelProvider` 先例） | **选定**（U-4 ②） |
+| 1 | **独立 `userData/pet-prefs.json`**（喜欢 / 屏蔽集合）+ settings 只放三键（`petUnlockFavOnly` / `petUnlockLv10` / `petExchangeSize`） | 先例 = `unlock-state.json`（B23 同形）✓；集合 / 开关分面（损坏不牵连集合）✓；settings 与 `petUnlock*` 三锁同面 ✓ | 代价 = 多一个持久化档（属主 = `shell-affinity.js`，经注入访问器供 `shell-pet.js` 读） | **选定**（U-4 ②） |
 | 2 | 全部进 settings.json 新键 | 集合（可 80 名）与布尔开关混面；`DEFAULT_SETTINGS` 默认表膨胀 | — | **否决** |
 | 3 | 并入 `unlock-state.json` | 该档属主 = `shell-pet.js`（行数余量 2 行，写权面易爆）；语义上「门控状态」与「用户偏好」是两件事 | — | **否决** |
 
@@ -115,7 +115,7 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 
 | # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
 |---|---|---|---|---|
-| 1 | **并入 `pet-unlock-core.js`**（门禁口径实测 345 行，+约 125 ⇒ 约 470 ≤ 500） | 注入面已在场（`unlockCore` 经 `main.js` 绑定 + 双档 `init(deps)` 注入 `shell-pet.js` / `shell-affinity.js`）⇒ **零新绑定、零新 `assemblyExempt`、零新静态边、`build.files` 零改动** ✓；喜欢 / 屏蔽 / 特权 = 同一 `eligible` 家族的语义延伸，分档即判定面分叉 ✓；卡墙组装与链判定同源单点 ✓ | 代价 = 单档逼近 480 提示线（越线出提示行不拦；预算与预案见 §2.7） | **选定** |
+| 1 | **并入 `pet-unlock-core.js`**（实测 345 行 + 约 125 ≈ 470） | 注入面已在场（`unlockCore` 经 `main.js` 绑定 + 双档 `init(deps)` 注入）⇒ **零新绑定 / `assemblyExempt` / 静态边 / `build.files` 改动** ✓；喜欢 / 屏蔽 / 特权 = 同一 `eligible` 家族延伸（判定不分叉）✓；卡墙组装与链判定同源 ✓ | 代价 = 单档逼近 480 提示线（越线只出提示行不拦；预算 = §2.6、超限预案 = 本节末） | **选定** |
 | 2 | 新建 `pet-gallery-core.js`（`init(deps)` 注入 + `assemblyExempt` 先例） | 隔离干净；但 `main.js` 增绑定一行 + 免检清单 +1 + `build.files` +1 + 两处 init 增传——四面各 +1 的纯账面成本；且特权 / 屏蔽判定仍须调 `eligible` ⇒ 跨档耦合照旧 | 换来的是账面复杂度 | **否决**（成本四维 +1，收益只是名义隔离） |
 
 > **超限预案**：实施期 `pet-unlock-core.js` 实测 > 500 ⇒ **停下上报**（不改道自拆），拆分 = `pet-gallery-core.js`（卡墙组装 + prefs 校验迁出，门控面留在原档），回填本表与 NFR-32 允许面并重走评审确认（承 B23 §2.8 `shell-pet.js` 拆分预案先例）。
@@ -124,15 +124,16 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 
 | # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
 |---|---|---|---|---|
-| 1 | **`unlock:view` 通道原地演进**：`unlockView` 输出由「文字行」扩为「卡片视图」（分组结构化 + 徽标 + src + 喜欢 / 屏蔽态） | 通道与桥键零新增 ✓；唯一消费者 = `exchange.js`（本批同体重写）⇒ 无跨面漂移 ✓；B23 桩测档（gitignore 开发期工具）由 eng-coder 同批更新断言 | 代价 = payload 形状变更（单消费者，账面安全） | **选定** |
+| 1 | **`unlock:view` 通道原地演进**：`unlockView` 输出由「文字行」扩为「卡片视图」（分组结构化 + 徽标 + src + 喜欢 / 屏蔽态） | 通道与桥键零新增 ✓；唯一消费者 = `exchange.js`（本批同体重写）⇒ 无跨面漂移 ✓；B23 桩测档（gitignore 开发期工具）**不在盘**（as-of 2026-09-20 实测）⇒ 无既有断言需更新——card 形状断言随 B35 桩测新建 | 代价 = payload 形状变更（单消费者，账面安全） | **选定** |
 | 2 | 新增 `gallery:view` 通道并存 | 双通道双形状 ⇒ 旧面成僵尸 | — | **否决** |
 
 ### 2.3 卡片墙形态与覆盖口径（U-6 = ①）
 
 - **覆盖（as-of 2026-09-20 实测）**：卡墙主面 = `categories` **80 段**（小动作 18 / 玩耍 27 / 吃什么 12 / 时节 21 / 文字 2——收集进度分母不变，承 B23 §2.2.3 口径 ②）；
   「常驻 / 事件」区 = 基础档 **8 段**（idle 3 + turn 1 + moves 4）+ 事件独占 **8 段**（点击回应 5 + 工作状态 3），带签展示、**不计分母、不可喜欢不可屏蔽**；
-  磁盘未引用 **12 段**（`余额-*` 6 / `碎碎念-*` 3 / `工作状态-垂头丧气冒汗` / `工作状态-雀跃庆祝` / `被鼠标拖拽悬空反馈`）**不入墙**（链不可达 ⇒ 展示即误导；素材本体不动——O-B35-5）。
+  磁盘未引用 **12 段**（`余额-*` 6 / `碎碎念-*` 3 / `工作状态-垂头叹气冒汗` / `工作状态-雀跃庆祝` / `被鼠标拖拽悬空反馈`）**不入墙**（链不可达 ⇒ 展示即误导；素材本体不动——O-B35-5）。
 - **卡片构成**：视频位（§2.2.1）+ 动作名 + 解锁条件串（承 B23 `unlockCondition` 单点）+ 徽标行（`已解锁` / `未解锁` 灰化 / `♥ 喜欢` / `已屏蔽` / `常驻` / `事件` / `特权`）+ 操作钮（☆ 喜欢 / ⊘ 屏蔽——按 `likeable` / `blockable` 显隐；独占段标「事件独占·不可屏蔽」）。
+  **「特权」徽标谓词**（修正轮 1 · #4；N3 完整读法落句）：段属时节 / 饭点域 ∧ **对应门开关为开** ∧ **无特权判定下当刻为锁**（时节 = 窗口关闭；饭点 = 窗口关闭 ∨ 当日已演）∧ `lv10Free` ∧ 未被屏蔽——即「本应被时间锁住、因满级而放行」的段；与 `已解锁` 并存、非替代；其余段（等级域 / 常驻 / 事件）恒无此徽标；判定在 `unlockView` 组装期内（同源输入）；用例 = TC-B35-21。
 - **分组与排序**：`♥ 喜欢` 组**置顶**（D-2；仅收藏段、不重出于分类组）；分类组承 B23（组内排序键不变）；「常驻 / 事件」区沉底；**只看喜欢开 ⇒ 全墙只显喜欢组**（§2.2.7 双面语义）。
 - **总览头部**：收集进度（分母 80）+ 喜欢数 + 屏蔽数 +「只看喜欢」开关（勾选态与 settings 同源）。
 - **喂养面（US-45）**：头部卡（好感等级 · MAX 态 / 💴 余额 / 可兑换量 / 汇率）+ 食品卡片网格（图标 / 名 / 加成 / 价格 / 持有 / 买钮）；数据通道零改动；观感验收 = 人工目视（AC-B35-12 如实标注）。
@@ -147,7 +148,7 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 
 - `liked` / `blocked` = 池段名数组（均 ⊆ categories 80 段——基础档 / 事件独占段不入两集合）；**互斥**（`liked ∩ blocked = ∅`，校验归一化：交集按**屏蔽**生效并从 `liked` 剔除）；**独占三段禁入 blocked**（`被吓一跳` / `原地左转奔跑` / `待机呼吸休闲`——结构保护，US-48）。
 - 容错：解析失败 / 形态非法 ⇒ 按「首次使用」重置（同 `unlock-state.json` 形态）；写入 = 事件驱动（toggle 时），原子性 = 整档 `writeFileSync`（承先例）。
-- 读面：`shell-affinity.js` 进程内缓存 + 导出访问器 `petPrefs()`（供 `main.js` 装配注入 `shell-pet.js`——B23 `affinityLevelProvider` 先例）；写后即刻广播重算（§2.5.4 触发面 ⑥）。
+- 读面：`shell-affinity.js` 进程内缓存 + 导出访问器 `petPrefs()`（供 `main.js` 装配注入 `shell-pet.js`——B23 `affinityLevelProvider` 先例）；写后即刻广播重算（§2.5.4 触发面 ⑥——经既有 `deps.pet` 通路，零新增键）。
 
 #### 2.4.2 `settings.json` 三新键（默认表 `shell-settings.js`）
 
@@ -162,6 +163,8 @@ B23 交付的图鉴是**纯文字行**（名 + 条件 + 灰化），窗口 320×
 - 新增 handle（均在 `shell-affinity.js` 内自注册，承 `unlock:view` 先例；`shell-ipc.js` 零 diff）：
   **`prefs:like`**（invoke `{name, on}` ⇒ `{ok, view?}`）· **`prefs:block`**（invoke `{name, on}` ⇒ `{ok, message?, view?}`；`blockable=false` ⇒ `ok:false`）· **`unlock:fav-only`**（invoke `{on}` ⇒ `{ok}`）。
 - `exchange-preload.js` 新增桥键 **3 枚**（逐名）：`prefsLike(name, on)` · `prefsBlock(name, on)` · `setFavOnly(on)`。
+- **三 handle 的落盘后通路**（修正轮 1 · #1）：`prefs:like` / `prefs:block` ⇒ 写 `pet-prefs.json` 后调 `pet.recalcAndBroadcast()`——**经既有 `deps.pet` 注入**（`main.js:117` `affinity.init` 已传 `pet` 本体；`shell-affinity.js:148` 已用同通路；**零新增注入键、零新增绑定**）。
+  `unlock:fav-only` ⇒ 写 settings + 同点重算 + `rebuildTrayMenu()`（**唯一新增注入键**——`main.js` `affinity.init` 既有行就地改写，Δ 0）。
 - `pet-chain-config` payload 扩两字段：**`blockSet`**（段名数组——渲染层 events 过滤的唯一输入）· **`likeSet`**（段名数组——`weightOf` 构造输入）；`allowSet` 已由主进程完成「门控 ∧ 非屏蔽 ∧（favOnly ⇒ 喜欢）」合取（渲染层零判定，承 B23 DD-B23-8）。
 - `unlock:view` payload 演进（§2.2.9）：`{ favorites: [card], sections: [{id, unlocked, total, cards:[card]}], resident: [card], totals: {unlocked, total}, favOnly, level }`；
   `card = { name, src, cond, unlocked, liked, blocked, likeable, blockable, badges: [] }`（`src` = `dir + '/' + encodeURIComponent(name) + ext`，主进程按池数据生成——渲染层零拼接）。
@@ -190,8 +193,11 @@ eligible(input)   input 增：prefs = { liked, blocked }（缺席 = 空集）；
 
 - `pet-chain-core.js`（**加性可选参**，B18 次序不变）：`pick(pool, exclude, weightOf)`——`weightOf` 缺席 = 既有均匀逐字；`pickChainNext` / `decideNext` 透传 `weightOf`；常量 `PET_FAV_WEIGHT = 3` 入常量表（一处定义）。`pickSlot` / `nextInSlot`（事件档）**不动**（不加权，§2.2.2）。
 - `pet-chain.js`：`onConfig` 收 `blockSet` / `likeSet`；池重建单点（原 `applyAllowSet` 扩展为 prefs 版）——categories 按 `allowSet` 过滤（照旧）+ **events 按 `blockSet` 过滤**（独占三段结构上不可能在 blockSet 内 ⇒ drag / escape / quiet 永不空）+ 构造 `weightOf`（`likeSet` 命中 ⇒ `PET_FAV_WEIGHT`）传入 `chainStep` / `triggerChainDecision`。
-- **温和切换（U-8 ②）**：prefs / 开关变化 ⇒ 主进程重下发（池指纹不变 ⇒ 承 B23 支路「只换名单不重置播放态」）；在播段**不切断**——仅撤下一次入选资格；**在播段为 loop 段且已被排除** ⇒ 把前台元素 `loop` 置 `false`（本遍收尾后走 `ended` 回链），下一个决策点起被屏蔽段 `pick=` 零出现（机检锚不变）。
+- **温和切换（U-8 ②）**：prefs / 开关变化 ⇒ 主进程重下发（池指纹不变 ⇒ 承 B23 支路「只换名单不重置播放态」）；在播段**不切断**——仅撤下一次入选资格；**在播段为 loop 段且已被排除** ⇒ 把前台元素 `loop` 置 `false` **并同置 `onended` 收尾挂钩**（= 既有 `handleEnded` 入口，走段末决策 `triggerChainDecision('ended', 0)`；`gen` / `playing` 守卫逐字沿用——与 `pet-chain.js:255` 的 loop=false 分支同形）。
+  **不补武装预触发**——预触发只在 `loop=false` 段 `play()` 成功回调武装（`pet-chain.js:288`），本遍为 loop 段、武装时点已过，收尾走 `ended` 兜底（`overlap=0`）；挂钩随换段（`old.onended = null`）/ 通道回落（`setChannel` 清除面）走既有失效路径；下一个决策点起被屏蔽段 `pick=` 零出现（机检锚不变）。
 - **事件空集回落**：`startSlot` 取档后候选数组长度 0 ⇒ 不切段（保持当前段）+ 日志 `anim event-empty slot=<key>`（debug 面）；喂食 / 点击的状态机与台词面逐字不动。
+- **空分类处置与 `FALLBACK` 落点**（承 B23 `PET-UNLOCK.md` §2.5.3 口径）：分类内段名过滤（allowSet ∕ favOnly ∕ 屏蔽）后**空分类保留**（`weight` 照旧——`pickWeightedCategory` 只滤 `actions.length > 0`，`pet-chain-core.js:44`）；`pick` 的「排除后为空 ⇒ 退回原池」语义**不得**用到（`pet-chain-core.js:36-39`——退回原池 = 把被排除段重新纳入抽选，硬排除破口）。
+  **全分类空**（favOnly 无收藏 / 屏蔽到空）⇒ 走 `pickChainNext` 既有 `FALLBACK` 支路（`pet-chain-core.js:77`：`category:'FALLBACK'` ⇒ `kind='idle'` + `pick(pool.idle, cur)`；日志 `anim chain … cat=FALLBACK`）——链不死（idle / turn / moves 不属过滤面）、事件档照常（独占三段不可屏蔽）。
 
 #### 2.5.3 卡墙播放调度（`exchange.js` + `playbackPlan` 纯函数）
 
@@ -201,8 +207,8 @@ eligible(input)   input 增：prefs = { liked, blocked }（缺席 = 空集）；
 
 #### 2.5.4 触发面（承 B23 §2.5.4 五触发点，本批增 ⑥⑦）
 
-- ⑥ **prefs 变更**（`prefs:like` / `prefs:block` 落盘后）：`pet.recalcAndBroadcast()` 重算重下发（链面立即按新集合执行，在播段温和收尾——§2.5.2）。
-- ⑦ **两开关翻转**：托盘 checkbox ×2（承 `setUnlock` 先例）与图鉴内「只看喜欢」（`unlock:fav-only` 处理器同一语义：写 settings + 重算 + 托盘菜单重建）——两面写同一键，无双源（settings 单点）。
+- ⑥ **prefs 变更**（`prefs:like` / `prefs:block` 落盘后）：`pet.recalcAndBroadcast()` 重算重下发（链面立即按新集合执行，在播段温和收尾——§2.5.2）。**通路落点**：经 `shell-affinity.js` **既有 `deps.pet` 注入**调用（`main.js:117` 已传 `pet` 本体；`shell-affinity.js:148` 已用同一通路）——零新增注入键、零新增绑定。
+- ⑦ **两开关翻转**：托盘 checkbox ×2（承 `setUnlock` 先例）与图鉴内「只看喜欢」（`unlock:fav-only` 处理器同一语义：写 settings + 重算 + 托盘菜单重建——重建经**新增注入键 `rebuildTrayMenu`**，`main.js` `affinity.init` 既有行就地改写）——两面写同一键，无双源（settings 单点）。
 - 既有五触发点（首算 / 等级推送 / 饭点演过 / 三锁翻转 / 提示探测）逐字不变；B23 O-B23-8 已知限界（窗口关闭沿 → 下一重算点）**不随本批变化**（登记不改判）。
 
 #### 2.5.5 窗口几何（`shell-affinity.js` `openExchangeWindow` 重写）
@@ -238,14 +244,15 @@ eligible(input)   input 增：prefs = { liked, blocked }（缺席 = 空集）；
 | `exchange.html` | 79 | **+130**（≈210，重写） | 双标签卡保留；喂养面头部卡 + 食品网格；图鉴面板 = 进度头 + 卡墙网格 + 常驻/事件区；`<script src="pet-unlock-core.js">` 一行；**CSP 预计零改动**（§2.2.1，若不成立 ⇒ meta 行增 `media-src 'self'` 一枚——允许面显式登记） |
 | `exchange.js` | 173 | **+170**（≈345，重写） | 喂养面渲染重排 + 卡墙渲染（分组 / 徽标 / 置顶 / favOnly 过滤）+ IO 懒加载与并发调度 + 喜欢 / 屏蔽 / favOnly 交互 + 指纹跳过重渲染 |
 | `exchange-preload.js` | 9 | **+3**（=12） | 桥键三枚：`prefsLike` / `prefsBlock` / `setFavOnly`（§2.4.3 逐名） |
-| `shell-affinity.js` | 372 | **+70**（≈442） | `openExchangeWindow` 重写（尺寸 / 位置 / 持久化）+ pet-prefs.json 属主（装载 / 保存 / `petPrefs()` 访问器）+ 三 handle 自注册 + `unlock:view` 组装传 prefs·favOnly·lv10 + init 增传 `rebuildTrayMenu` |
-| `shell-pet.js` | 498 | **+1**（=499，**余量 1 行**） | `gateStep` 输入增 `prefs` 一行 + 注入键 `petPrefsProvider`（**既有行就地扩展，Δ 计入上值**；switches 增 favOnly·lv10 为既有行加宽）；**越 500 ⇒ 停下上报**（拆分预案承 B23 §2.8：门控面迁 `shell-pet-unlock.js`，须回填并重走评审） |
+| `shell-affinity.js` | 372 | **+70**（≈442） | `openExchangeWindow` 重写（尺寸 / 位置 / 持久化）+ pet-prefs.json 属主（装载 / 保存 / `petPrefs()` 访问器）+ 三 handle 自注册（落盘后经既有 `deps.pet` 调 `recalcAndBroadcast`——零新增键，§2.5.4 ⑥）+ `unlock:view` 组装传 prefs·favOnly·lv10 + init 注入面增 `rebuildTrayMenu`（唯一新增键） |
+| `shell-pet.js` | 498 | **+1**（=499） | `gateStep` 输入增 `prefs` 一行 + 注入键 `petPrefsProvider`（**既有行就地扩展，Δ 计入上值**；switches 增 favOnly·lv10 为既有行加宽）；**越 499（= 实测 ≥500）⇒ 停下上报**（严格于门禁 ≤500——承 B23 §2.8 先例；拆分预案 = 门控面迁 `shell-pet-unlock.js`，须回填并重走评审） |
 | `shell-settings.js` | 65 | **+3**（=68） | 默认表三键（§2.4.2；逐行中文注释承 `petUnlock*` 行形） |
 | `shell-tray.js` | 209 | **+4**（≈213） | 设置子菜单两 checkbox（`petUnlockFavOnly` / `petUnlockLv10`，承 `setUnlock` 复用；专注模式置灰同口径） |
-| `main.js` | 263 | **0** | 两处既有行就地改写：`pet.init` 增传 `petPrefsProvider: () => affinity.petPrefs()`；`affinity.init` 增传 `rebuildTrayMenu: tray.rebuildTrayMenu`（承 B23/B31 装配面先例；无新绑定） |
+| `main.js` | 263 | **0** | 两处既有行就地改写：`pet.init` 增传 `petPrefsProvider: () => affinity.petPrefs()`；`affinity.init` 增传 `rebuildTrayMenu: tray.rebuildTrayMenu`（承 B23/B31 装配面先例；无新绑定）。重算通路 = `affinity.init` 既有行已在注入的 `pet` 本体（§2.5.4 ⑥——零新增键） |
 | `package.json` | 143 | **0** | deps / build.files 零 diff（**本批零新源档**——NFR-8 carve-out 不触发） |
 | 冻结面（NFR-32 清单） | — | 0 | 几何 / 拖拽 / `pet.html` / `pet.js` / `pet-preload.js` / webm / `pool.json` / `unlock-rules.json` / `affinity-core.js` / `shell-ipc.js` / `scripts/gates/**`（基线零改动）/ `tests/**` / updater·market·backend 面 |
-| 桩测 `.thincoder/b35-gallery-stub.mjs` | — | +260 | 桩测（gitignore 惯例，同 B23/B31 先例）；B23 桩测档断言同批更新（§2.2.9 代价面） |
+| 桩测 `.thincoder/b35-gallery-stub.mjs` | — | +260 | 桩测（gitignore 惯例，同 B23/B31 先例）；**B23 用例组（时节 / 饭点 / 等级 / 关门 / 跨日 / 提示六组）在本档内重建复跑**（AC-B35-9 断言面——B23 桩测档不在盘，见下行） |
+| 桩测 `.thincoder/b23-unlock-stub.mjs`（B23 档） | **不在盘**（as-of 2026-09-20 实测——B23 §6.3「转 ②③」的实物未落盘；跨批事项已通报） | 0（本批不更新该档） | 本批承载 = 上行的重建复跑；复原该档 / 维持重建 = 主 agent 裁定项（批次档 §2 修正轮 1 记录） |
 
 ### 2.7 关键决策记录（DD-N）
 
@@ -257,7 +264,7 @@ eligible(input)   input 增：prefs = { liked, blocked }（缺席 = 空集）；
 - **DD-B35-6 持久化分面**：集合 = `pet-prefs.json`（先例 `unlock-state.json`），开关与尺寸 = settings（与 `petUnlock*` 同面）。否决：全进 settings（混面）；并入 unlock-state（属主行数余量 1 行 + 语义分家）。
 - **DD-B35-7 窗口 = 默认 720×560 / 最小 480×420 / 尺寸持久化 / 位置现算**（U-2）：位置记屏幕坐标无义（宠会动），贴宠相对位是既有语义。否决：位置持久化；固定大窗。
 - **DD-B35-8 只看喜欢 = 合取双面**（U-7 ①）：链面 `喜欢 ∩ 已解锁 − 屏蔽`，卡墙同开关过滤显示。否决：越锁放行（冲硬排除）；仅显示过滤（名实不符）。**双面语义待用户批准时确认。**
-- **DD-B35-9 温和切换**（U-8 ②）：只撤下一次入选资格；在播 loop 段置 `loop=false` 收尾本遍。否决：立即切走（观感粗暴 + 打断面改写）。
+- **DD-B35-9 温和切换**（U-8 ②）：只撤下一次入选资格；在播 loop 段置 `loop=false` **+ 同置 `onended` 收尾挂钩**（既有 `handleEnded` 入口）收尾本遍。否决：立即切走（观感粗暴 + 打断面改写）。
 - **DD-B35-10 事件空集 = 动画面忽略 + 日志行**（硬约束 4 显式定义）：独占三段结构保护 ⇒ drag / escape / quiet 永不空；喂食的好感 / 台词面不受影响。
 - **DD-B35-11 卡墙覆盖 = 80 + 16 签展示，未引用 12 段不入墙**（U-6 ①）：链不可达段展示即误导；素材本体不动（残留段处置登记 O-B35-5）。否决：全 106 入墙。
 
@@ -266,24 +273,25 @@ eligible(input)   input 增：prefs = { liked, blocked }（缺席 = 空集）；
 | 纪律 | 核对结果 |
 |---|---|
 | B18 池校验 V1–V6 / 掷骰次序 | ✓ `pool.json` 零 diff；`pick` 为加性可选参（缺席路径逐字）；`rollKind` / `pickWeightedCategory` / `pickSlot` / `nextInSlot` 不动 |
+| B18 播放器契约（三禁止形态 ①②③ / `PET-ANIMATION.md` §3.7 AC28） | ✓ 温和切换收尾挂钩（修正轮 1 · #2）只发生两处赋值（`loop` / `onended`）——不触 `is-front`（禁止①：摘前台仍只在 `loadeddata` 回调内）；不新增 `pause()` 调用点（禁止②：唯一调用点 = 淡出窗末回调）；不加第 3 个 `<video>`（禁止③）；预触发路径不受影响（本遍为 loop 段、武装时点已过，收尾走 `ended` 兜底 `overlap=0`；静默段 `loop=true` 不武装预触发的既有规则逐字不变） |
 | B23 三锁语义（Lv.1–9） | ✓ `lv10Free` 恒假路径 + prefs 空集路径 = 原式（§2.5.1）；桩测复跑（AC-B35-9）；`unlock-rules.json` 零 diff |
 | B23 `pick=` 机检锚 | ✓ 锚零迁移；屏蔽断言面 = 同一日志行（TC-B35-20） |
 | 几何 / 拖拽冻结面 | ✓ 零触碰（弹窗 ≠ 桌宠窗；`screen.getDisplayNearestPoint` 为弹窗定位读取，不写几何层） |
-| 结构判据 D①②③ + E | ✓ 零新静态相对 require 边（prefs 经注入访问器；核档已在绑定面）；扇出 `shell-pet.js` 5→5 · `shell-affinity.js` 3→3；D③ 绑定 17 条不变、免检清单不变；`baseline.json` 零改动；E 零命中 |
+| 结构判据 D①②③ + E | ✓ 零新静态 require 边（prefs 注入访问器 · 核档绑定面均在位；重算通路 = 既有 `deps.pet` 属性面）；扇出 5→5 · 3→3（`shell-pet.js` / `shell-affinity.js`）；D③ 绑定 17 条不变（无新 `init` 调用 / 免检条目——`rebuildTrayMenu` 经既有调用行内改写）；装配处数 2 处不变（`:94` / `:117` 行内改写，Δ 0；#1 三面复核）；`baseline.json` 零改动；E 零命中 |
 | 零新依赖 / build.files | ✓ `package.json` 整档零 diff（零新源档） |
 | IPC 通道面 | `shell-ipc.js` 零 diff；三枚新 handle 模块内自注册（承 `unlock:view` 先例，登记例外同 O-B23-9 口径） |
 | CSP / 桥面最小化（硬约束 9） | CSP 预计零改动（§2.2.1 实证；备选 `media-src 'self'` 单行已显式登记）；preload 新增键 = 3 枚逐名（§2.4.3） |
-| 行宽 ≤300 / 单档 ≤500 / 文件头 / 注释中文 | ✓ NFR-33；`pet-unlock-core.js` ≈470（提示线 480 下）；`shell-pet.js` 499（余量 1，越线停下上报） |
+| 行宽 ≤300 / 单档 ≤500 / 文件头 / 注释中文 | ✓ NFR-33；`pet-unlock-core.js` ≈470（提示线 480 下）；`shell-pet.js` 499（**越 499 ⇒ 停下上报**——实测 ≥500 即触发，严格于门禁 ≤500） |
 | 许可面（B18 素材禁商用 + 署名） | ✓ 素材零增删改；视频卡 = 同包同素材的展示形态，不产生新许可面 |
 
 ### 2.9 观察项（O-N）
 
 - **O-B35-1（并发上限 8 的实机体感）**：8 路 640×360 VP9-alpha 解码在低端集显的占用待实机；常量单点（`GALLERY_MAX_PLAYING`），回调属需求层判定。
 - **O-B35-2（×3 倍率体感）**：喜欢段占比 = 3·|liked| /（|cat| + 2·|liked|）；太弱 / 太强只改 `PET_FAV_WEIGHT` 一处（数据面调整零机制改动）。
-- **O-B35-3（只看喜欢的空态）**：favOnly 开 + 零收藏 ⇒ 卡墙空态一行提示 + 链面 = 分类全空 ⇒ 链回 idle 基础段（`FALLBACK` 既有路径，TC-B35-12）；提示文案实现期填入。
+- **O-B35-3（只看喜欢的空态）**：favOnly 开 + 零收藏 ⇒ 卡墙空态一行提示 + 链面 = 分类全空 ⇒ 走 `pickChainNext` 的 `FALLBACK` 支路（`pet-chain-core.js:77`——`kind='idle'` + idle 基础段；§2.5.2，TC-B35-12）；提示文案实现期填入。
 - **O-B35-4（事件全屏蔽的用户可见性）**：当前 = 动画面忽略 + debug 日志；卡墙面对全屏蔽事件**不做**横幅（卡片徽标已可推断）；实机若确认误导感，另立需求点。
 - **O-B35-5（未引用 12 段残留）**：`余额-*` / `碎碎念-*` 等为 D2 面素材残留（链不可达）；本批只不入墙、不删素材（冻结面）；处置归 D2 面批次。
-- **O-B35-6（`shell-pet.js` 余量耗尽登记）**：本批后实测预计 499/500——**下一批任何改动前须先拆分**（预案 = 门控面迁 `shell-pet-unlock.js`，承 B23 §2.8）；本批越 500 即停下上报。
+- **O-B35-6（`shell-pet.js` 余量耗尽登记）**：本批后实测预计 **499**（门禁 ≤500；越 499 = 实测 ≥500 即停下上报）——**下一批任何改动前须先拆分**（预案 = 门控面迁 `shell-pet-unlock.js`，承 B23 §2.8）。
 - **O-B35-7（图鉴视频与系统「减少动态效果」）**：卡墙视频属用户主动浏览的媒体面（非装饰动效），本批按**照常播放**处理；若用户裁定让步，出口 = `matchMedia` 判据 + 全墙 pause（另批）。
 
 ### 2.10 用例表（TC）
@@ -301,15 +309,17 @@ eligible(input)   input 增：prefs = { liked, blocked }（缺席 = 空集）；
 | TC-B35-9 | 错误 | togglePref 屏蔽「被吓一跳」（独占段） | 返回 null；`validatePrefs` 同拒；UI 无屏蔽钮（结构断言 blockable=false） |
 | TC-B35-10 | 机检 | liked=[照镜子]（同分类 18 段），抽样 10000 次类内选段 | 「照镜子」频率比 ≈ 3×（容差带 [2.4, 3.6]）；weightOf 缺席路径与既有均匀逐位一致 |
 | TC-B35-11 | 边界 | favOnly 开 + liked 含一锁定段（level 不足） | 该段仍 ∉（合取不越锁）；其余喜欢已解锁段 ∈ |
-| TC-B35-12 | 边界 | favOnly 开 + liked 空（或全锁） | 分类候选全空 ⇒ 链回 idle 基础段（FALLBACK 路径），链不死、事件档照常 |
+| TC-B35-12 | 边界 | favOnly 开 + liked 空（或全锁） | 分类候选全空 ⇒ `pickChainNext` 的 `FALLBACK` 支路（`kind='idle'` + idle 基础段；`pet-chain-core.js:77`）——链不死、事件档照常（§2.5.2 空分类处置） |
 | TC-B35-13 | 正常 | gallery 视图（level=3、liked 2、blocked 1、时节窗口内） | 分组结构齐备（喜欢组置顶且不重出）；字段八项齐备；分母 80；src 编码正确；未引用 12 段缺席 |
 | TC-B35-14 | 机检 | playbackPlan：可见 12 卡、cap 8 | 8 播 4 待命；一卡离屏 ⇒ pause + 按入视先后补播 1 |
 | TC-B35-15 | 机检 | 卡墙初次渲染（DOM 断言 / 桩测 DOM 桩） | 未入视卡 `video` 无 `src` 属性（懒加载）；`preload="none"` 在场 |
 | TC-B35-16 | 错误 | `pet-prefs.json` 写入非法 JSON | 按首次使用重置，不崩；视图 = 全中性 |
 | TC-B35-17 | 边界 | prefs 含交集（同名既 liked 又 blocked）/ 池外名 / 重复名 | 校验归一：交集按屏蔽生效并移出 liked；池外剔除；去重 |
 | TC-B35-18 | 边界 | `petExchangeSize` = 2000×2000（超 workArea）/ 「abc」/ null | 钳入 workArea / 回落默认 720×560 / 默认；最小钳 480×420 |
-| TC-B35-19 | 边界 | 屏蔽在播段（loop=true 单候选分类段） | 本遍收尾（loop 置 false）后回链；此后 `pick=` 不含该段；非 loop 在播段 = 播完本段后不再出现 |
+| TC-B35-19 | 边界 | 屏蔽在播段（loop=true 单候选分类段——过滤后单候选 ⇒ `chainPoolSize ≤ 1` ⇒ `loop=true`；`pet-chain.js:150-155` / `:164`） | 本遍收尾（`loop` 置 false **+ 同置 `onended` 收尾挂钩**——§2.5.2）后回链；此后 `pick=` 不含该段；非 loop 在播段 = 播完本段后不再出现 |
 | TC-B35-20 | 机检 | 虚拟时钟 ×1000 链决策（blocked 3 段 + favOnly 开喜欢 5 段） | blocked 段 `pick=` 零出现；入选段 ⊆ 喜欢 ∩ 已解锁；B23 断言面（锁定段零出现）保持绿 |
+| TC-B35-21 | 机检 | 「特权」徽标谓词（§2.3）：① level=10 + 特权开 + 时节段（窗口外）② 同前 + 饭点段（窗口外）③ 同前 + 饭点段（窗口内 ∧ 当日已演）④ 特权关 / level=9 ⑤ 等级域普通段 | ①②③ ⇒ 卡 badges 含「特权」（与「已解锁」并存）；④⑤ ⇒ 无；谓词 = 段属时节 / 饭点域 ∧ 对应门开 ∧ 无特权下当刻为锁 ∧ `lv10Free` ∧ 未被屏蔽 |
+| TC-B35-22 | 机检 | 弹窗首次渲染（DOM 断言 / 桩测 DOM 桩） | 喂养面：双标签卡（喂养 / 图鉴）· 头部卡（好感等级 / 余额 / 可兑换量）· 食品网格（卡 ≥1）在场；图鉴面：卡墙容器 · 进度头在场（AC-B35-12 机检面） |
 
 ---
 
@@ -339,15 +349,15 @@ exchange.js（图鉴卡激活 / 5 s 节拍 + focus，指纹不变则跳过重建
   → 组装输入：池 + 规则（惰性装载，承 B23）· 等级（affinityLevel()）· 演过快照（unlock-state.json 只读）· prefs（本档属主）· 开关（settings）
   → pet-unlock-core.unlockView → { favorites, sections, resident, totals, favOnly, level }（card 八字段 + src，§2.4.3）
   → exchange.js 渲染卡墙（分组 / 徽标 / 置顶 / favOnly 过滤）；IO 调度播放（playbackPlan，window.PetUnlockCore 同源）
-交互写：☆/⊘ 钮 → prefs:like / prefs:block（togglePref 原子翻转 → 落盘 → recalcAndBroadcast → 视图重取）
-        「只看喜欢」→ unlock:fav-only（写 settings + 重算 + 托盘菜单重建）——托盘两 checkbox 同键同语义（无双源）
+交互写：☆/⊘ 钮 → prefs:like / prefs:block（togglePref 原子翻转 → 落盘 → `pet.recalcAndBroadcast()`（经既有 `deps.pet` 注入——§2.5.4 ⑥）→ 视图重取）
+        「只看喜欢」→ unlock:fav-only（写 settings + 重算 + `rebuildTrayMenu()` 托盘重建——新增注入键）——托盘两 checkbox 同键同语义（无双源）
 ```
 
 ### 3.3 通道与函数清单（新增面）
 
 - IPC 新增 handle ×3（`shell-affinity.js` 自注册；`shell-ipc.js` 零 diff）：`prefs:like` · `prefs:block` · `unlock:fav-only`；payload 扩字段：`pet-chain-config` + `blockSet` / `likeSet`；`unlock:view` 形状演进（§2.4.3）。
 - `exchange-preload.js` 桥键 +3（逐名）：`prefsLike(name, on)` · `prefsBlock(name, on)` · `setFavOnly(on)`。
-- `pet-unlock-core.js` 导出面（13 → **19**）：新增 `validatePrefs` · `togglePref` · `playbackPlan` · `clampWindowSize` + 常量 `GALLERY_MAX_PLAYING`；`eligible` / `gateStep` / `unlockView` 签名扩展（向后兼容，缺席 = B23 语义）。
+- `pet-unlock-core.js` 导出面（13 → **18**）：新增 `validatePrefs` · `togglePref` · `playbackPlan` · `clampWindowSize` + 常量 `GALLERY_MAX_PLAYING`；`eligible` / `gateStep` / `unlockView` 签名扩展（向后兼容，缺席 = B23 语义）。
 - `pet-chain-core.js` 导出面：常量 `PET_FAV_WEIGHT`；`pick` / `pickChainNext` / `decideNext` 加性可选参 `weightOf`。
 - `shell-affinity.js`：导出 `petPrefs()` 访问器；init 注入键增 `rebuildTrayMenu`；常量 `EXCHANGE_DEFAULT_SIZE` / `EXCHANGE_MIN_SIZE`。
 - `shell-pet.js`：init 注入键增 `petPrefsProvider`；`unlockPayload` 增 `prefs` 入参一行（Δ +1，§2.6 预算）。
@@ -364,19 +374,19 @@ exchange.js（图鉴卡激活 / 5 s 节拍 + focus，指纹不变则跳过重建
 - **AC-B35-5（US-47）**：TC-B35-10（×3 分布 + 缺席路径逐位一致）+ TC-B35-11（合取不越锁）+ TC-B35-13（置顶分组）+ toggle 落盘回读断言。
 - **AC-B35-6（US-48 / 硬约束 3）**：TC-B35-7（双点过滤）+ TC-B35-20（`pick=` 零出现 ×1000）+ TC-B35-9（独占段结构保护）；机检由**硬排除**达成（过滤名单不含段名），无权重写入路径（代码评审断言）。
 - **AC-B35-7（US-48 / 硬约束 4）**：TC-B35-8（事件全屏蔽 ⇒ 不切段 + `event-empty` 日志行）；独占三事件结构上永不空（TC-B35-9 同源）。
-- **AC-B35-8（US-48 / U-8）**：TC-B35-19（在播段温和收尾：loop 段置 false 本遍回链、非 loop 段播完后不再出现；期间无硬切）。
-- **AC-B35-9（US-49 / 硬约束 5）**：TC-B35-1…6（特权三组 + 开关关 + 越级不生效 + 状态面）；**Lv.1–9 逐位一致 = B23 桩测用例组（时节 / 饭点 / 等级 / 关门 / 跨日 / 提示）在新 eligible 面全量复跑绿**。
+- **AC-B35-8（US-48 / U-8）**：TC-B35-19（在播段温和收尾：loop 段置 `false` **+ `onended` 收尾挂钩**本遍回链、非 loop 段播完后不再出现；期间无硬切）。
+- **AC-B35-9（US-49 / 硬约束 5）**：TC-B35-1…6（特权三组 + 开关关 + 越级不生效 + 状态面）+ TC-B35-21（「特权」徽标谓词）；**Lv.1–9 逐位一致 = B23 用例组（时节 / 饭点 / 等级 / 关门 / 跨日 / 提示）在新 eligible 面全量复跑绿**（承载 = B35 桩测内重建——B23 桩测档不在盘，as-of 2026-09-20 实测，§2.6 桩测行）。
 - **AC-B35-10（US-50 / NFR-33）**：TC-B35-16 / TC-B35-17（损坏重置 + 校验归一三谓词）；写盘仅事件点（桩测断言写盘调用次数 = 触发次数）。
 - **AC-B35-11（NFR-32）**：`git diff --stat` 冻结清单零 diff + 允许面符合（§2.6）+ `package.json` 整档零 diff + 三道门（`lint` → `test:full` → `test:integration`）+ 既有 45 单元 + 3 集成全绿 + 结构判据零新增（`baseline.json` 零 diff）。
-- **AC-B35-12（US-45）**：**人工目视项（如实标注）**——喂养面头部卡 / 食品网格 / 卡墙观感的「好看」由用户实机验收；机检面 = DOM 结构断言（双标签卡 / 头部卡 / 食品网格 / 卡墙容器 / 进度头在场）。
-- **AC-B35-13（规范）**：改动档行宽 ≤300 / 单档 ≤500（`pet-unlock-core.js` ≤500——越线停下上报走 §2.2.8 预案；`shell-pet.js` ≤500——越线停下上报走 §2.6 预案）/ 注释中文 / 文件头标准形（零新档，既有档头在场）。
+- **AC-B35-12（US-45）**：**人工目视项（如实标注）**——喂养面头部卡 / 食品网格 / 卡墙观感的「好看」由用户实机验收；机检面 = DOM 结构断言（双标签卡 / 头部卡 / 食品网格 / 卡墙容器 / 进度头在场——TC-B35-22）。
+- **AC-B35-13（规范）**：改动档行宽 ≤300 / 单档 ≤500（`pet-unlock-core.js` 实测 >500 ⇒ 停下上报走 §2.2.8 预案；`shell-pet.js` **越 499（= 实测 ≥500）** ⇒ 停下上报走 §2.6 预案）/ 注释中文 / 文件头标准形（零新档，既有档头在场）。
 
 ---
 
 ## 5. 测试层（TC 汇总与归属）
 
-- 用例表见 §2.10（20 条：正常 5 / 边界 11 / 错误 2 / 机检 2）；每条功能性需求 ≥1 用例：US-44→TC-18 · US-46→TC-13/14/15 · US-47→TC-10/11/13 · US-48→TC-7/8/9/19/20 · US-49→TC-1…6 · US-50→TC-16/17/18。
-- **测试寿命分层**（承 B23 口径）：本批桩测 = **开发期工具**（装载真实 `pet-unlock-core.js` / `pet-chain-core.js`，注入虚拟时钟 / 假池 / 假 prefs / DOM 桩；`.thincoder/b35-gallery-stub.mjs`，gitignore 惯例）；B23 桩测档同批更新断言（payload 演进面，§2.2.9）；集成资产沿用既有 3 场景，零回退由 `test:full` / `test:integration` 承载。
+- 用例表见 §2.10（**22 条：正常 4 / 边界 10 / 错误 2 / 机检 6**）；每条功能性需求 ≥1 用例：US-44→TC-18 · **US-45→TC-22** · US-46→TC-13/14/15 · US-47→TC-10/11/13 · US-48→TC-7/8/9/19/20 · **US-49→TC-1…6、21** · US-50→TC-16/17/18。
+- **测试寿命分层**：本批桩测 = **开发期工具**（装载真实 `pet-unlock-core.js` / `pet-chain-core.js`，注入虚拟时钟 / 假池 / 假 prefs / DOM 桩；`.thincoder/b35-gallery-stub.mjs`，gitignore 惯例）；**B23 用例组（时节 / 饭点 / 等级 / 关门 / 跨日 / 提示）在本档内重建复跑**（B23 桩测档不在盘；§2.6 桩测行）；集成资产 = 既有 3 场景；零回退由 `test:full` / `test:integration` 承载。
 - **人工项**（如实标注）：AC-B35-4 内存实测 · AC-B35-12 布局观感 · AC-B35-3 的 `file://` 媒体加载实证（待实机，批次档 §2）。
 - 发布门 = `lint` → `test:full` → `test:integration`（批次档 §6 取证）。
 
@@ -404,12 +414,12 @@ exchange.js（图鉴卡激活 / 5 s 节拍 + focus，指纹不变则跳过重建
 | 卡墙覆盖 | categories 80 主面 + 常驻 / 事件 16 签展示；未引用 12 段不入墙 | 定（U-6 ①），**批准时确认** |
 | 喜欢语义 | 星标 + 类内加权 ×3 + 置顶成组 + 只看喜欢（合取双面） | 定（D-2 / U-1 / U-7）；**双面语义与 ×3 值批准时确认** |
 | 屏蔽语义 | 全屏蔽（链 + 事件）；独占三段保护；事件空集 = 忽略 + 日志；温和切换 | 定（D-3 / U-8）；**事件空集回落形态批准时确认** |
-| Lv.10 特权 | 三解除（时节窗 / 饭点窗 / 一天一次）；默认开 + 托盘可关 | 定（D-4 / U-5 ②），**默认值批准时确认** |
+| Lv.10 特权 | 三解除（时节窗 / 饭点窗 / 一天一次）；默认开 + 托盘可关；**托盘项未满级不显示**（微修②，用户 2026-09-20 实机裁定——批次档 §5.4） | 定（D-4 / U-5 ②），**默认值批准时确认** |
 | 窗口尺寸 | 默认 720×560 / 最小 480×420 / 尺寸持久化 / 位置贴宠现算（所在屏钳制） | 定（U-2），**数值批准时确认** |
 | 只看喜欢默认 | 默认关（`petUnlockFavOnly=false`） | 定，**批准时确认** |
 | 持久化分面 | 集合 = pet-prefs.json；开关 / 尺寸 = settings | 定（U-4 ②） |
 | CSP | 预计零改动；备选 `media-src 'self'` 单行已登记 | 定（§2.2.1），实施期实证收口 |
-| 行数预案 | `pet-unlock-core.js` / `shell-pet.js` 越 500 ⇒ 停下上报（两处预案） | 定（§2.2.8 / §2.6），**预案触发口径批准时确认** |
+| 行数预案 | `pet-unlock-core.js` 越 500 / `shell-pet.js` **越 499** ⇒ 停下上报（两处预案） | 定（§2.2.8 / §2.6），**预案触发口径批准时确认** |
 
 ---
 
@@ -417,4 +427,5 @@ exchange.js（图鉴卡激活 / 5 s 节拍 + focus，指纹不变则跳过重建
 
 | 日期 | 变更点 |
 |---|---|
-| 2026-09-20 | 建档（B35 设计稿）：需求三层回指 / 选型对比九组（媒体装载与并发 · 喜欢权重 · 屏蔽落点 · Lv.10 谓词 · 持久化 · 窗口几何 · 只看喜欢合取 · 纯函数归宿二选一 · payload 演进）/ 数据面契约（pet-prefs.json + settings 三键 + IPC 三键 + payload 四字段）/ 行为契约（eligible 扩展 · 链面接驳 · 播放调度 · 触发面 ⑥⑦ · 窗口几何）/ U-1…U-8 裁定落档 / 受影响文件清单（门禁口径行数）/ DD-B35-1…11 / O-B35-1…7 / TC 20 条 / AC-B35-1…13 / 边界 / UI 决策表。依据 = 批次档 §1（用户 2026-09-20 原话 + D-1…D-4 裁定）+ 代码现状亲读。 |
+| 2026-09-20 | 建档（B35 设计稿）：需求三层 / 选型对比九组（媒体 / 权重 / 屏蔽 / 特权 / 持久化 / 窗口 / 合取 / 归宿 / payload）/ 数据面契约（pet-prefs.json + settings / IPC 三键 + payload）/ 行为契约（eligible / 链面 / 调度）/ U-1…U-8 落档 / 受影响文件清单 / DD-B35-1…11 / O-B35-1…7 / TC 20 条 / AC-B35-1…13 / 边界 / UI 决策表。依据 = 批次档 §1（用户原话 + D-1…D-4）+ 代码现状亲读。 |
+| 2026-09-20 | **修正轮 1（🔴2 / 🟡5 / 🔵4 = 11 条全修）**：🔴 重算通路落档（既有 `deps.pet` 注入——零新增键）· 温和切换补 `onended` 挂钩（核三禁止形态 / AC28）；🟡 499 触发线统一 · 「特权」徽标谓词 · US-45 DOM 用例（TC-21 / 22）· `FALLBACK` 落点 · PET-UNLOCK 回填；🔵 指针 / 计数（TC 22 条 4·10·2·6 · 导出面 18）/ 段名（垂头叹气冒汗）/ 桩测行（B23 桩测档不在盘 ⇒ B35 桩测重建）；行宽合规化（存量 7 行）。 |

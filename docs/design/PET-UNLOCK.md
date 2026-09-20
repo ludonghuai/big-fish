@@ -163,6 +163,8 @@ validateRules(rules, poolNames)     → { ok, reason }              // 结构谓
   但**当日已演过的饭点段照旧被排除**（US-39 本体语义；机检 TC-B23-19）。
   ⇒ 硬约束 7「关掉时与今天逐位一致」的实际口径 = **除 US-39 一天一次外逐位一致**（该例外面登记于此，唯一权威句）。
 - **排除面**：eligible 输出的 allowSet 按**段名集合**表达；主进程据此对 `pool.categories[*].actions` 过滤后**空分类保留**（weight 照旧，抽中后无候选 ⇒ 既有 `pick` 退回原池逻辑**不得**用到——见 §2.5.3 过滤时机，锁死在「分类内段名过滤」而非「分类整删」）。
+- **B35 回填注记（2026-09-20；源 = `docs/design/PET-GALLERY.md` §2.5.1）**：`eligible` 输入扩展——`prefs = { liked, blocked }`（缺席 = 空集）· `switches` 增 `favOnly`（缺席 = false）· `lv10`（缺席 = true）；`gateStep` 输入增 `prefs`、输出增 `blockSet` / `likeSet`（校验归一后的集合——payload 直用；`lockHint` 形态不变）。
+  **B23 期语义对 Lv.1–Lv.9 逐字不变**（B35 以「新入参缺席 / `lv10Free` 恒假」两路保证）；本节原条文 = B23 期口径原文，现行权威 = `PET-GALLERY.md` §2.5.1。
 
 #### 2.5.2 时间语义
 
@@ -183,9 +185,10 @@ validateRules(rules, poolNames)     → { ok, reason }              // 结构谓
 - **门控计算在主进程**（评审 #2/#4 裁定）：`shell-pet.js` 读 `unlock-rules.json`（与池同批、进程内持有）+ 三开关（settings）
   + **等级值（经 init 注入的访问器 `affinityLevelProvider`，接线见 §3.3——`shell-pet.js` 不 require 好感面，扇出 ±0）**
   + **核档本体（经 init 注入的 `unlockCore`——组合根送达，§2.2.4；本档不静态 require 核档）**
-  ⇒ 在主进程组装配.Payload = `pet-unlock-core.gateStep(...)` 的输出（一步完成校验 / 跨日裁剪 / 三门判定 / 提示判据——纯组装已下沉核档，导出面见 §3.3）
+  ⇒ 主进程组装 payload = `pet-unlock-core.gateStep(...)` 的输出（一步完成校验 / 跨日裁剪 / 三门判定 / 提示判据——纯组装已下沉核档，导出面见 §3.3）
   ⇒ `pet-chain-config` payload 增两个字段：`allowSet`（本 tick 可入选段名数组）与
   `lockHint`（门控元信息 `{valid, reason, switches, meals}`：rules 校验态 + 开关态 + **`meals` = 饭点段名 → 饭点键映射**（渲染层上报 `pet-meal-played` 的唯一输入）；不含等级数值与阈值——等级面不进 payload）。
+  **B35 回填注记（2026-09-20）**：同 payload 再扩 `blockSet` / `likeSet` 两字段（`gateStep` 输出直用——渲染层 events 过滤 / 类内加权构造的唯一输入）；权威 = `PET-GALLERY.md` §2.4.3。
 - **喂入点**：`pet-chain.js` 在 `onConfig` 收到 `allowSet` 后维护于进程内；`rollKind`/`pickWeightedCategory`/`pick` 的**掷骰次序与函数签名逐字不变**（DD-B23-2），
   变化仅一处：`pool.categories[*].actions` 在进入既有函数前**按 allowSet 过滤**（idle/turn/moves 基础档不过滤——基础段不在门控内）；
   事件档 `pool.events` **不过滤**（事件档由交互触发、非解锁系统管辖——§2.2.3 口径 ②）。渲染层**不感知门控规则**（零新核、零新判定——只消费名单）。
@@ -410,6 +413,8 @@ exchange.js（图鉴卡激活时）→ unlock:view（ipcMain.handle，**shell-af
   → 渲染层纯展示（灰化 / 分组 / 百分比）；窗口聚焦刷新（复用既有 refresh 节拍）
 ```
 
+- **B35 回填注记（2026-09-20）**：`unlock:view` 输出自 B35 起**演进为卡片视图**（`{ favorites, sections, resident, totals, favOnly, level }`，card 八字段 + src）——旧 `rows` 形状作废；唯一消费者 = `exchange.js`（B35 同批重写）。权威 = `PET-GALLERY.md` §2.4.3 / §2.2.9。
+
 ### 3.3 通道与函数清单（新增面）
 
 - IPC：`unlock:view`（handle，**在 `shell-affinity.js` 内自注册**——先例 `shell-pet.js:30`；`shell-ipc.js` 保持零 diff）/ `pet-meal-played`（send，`shell-pet.js` 监听）/ `pet-chain-config` payload 扩 `allowSet` + `lockHint` 字段（既有通道）。
@@ -419,6 +424,7 @@ exchange.js（图鉴卡激活时）→ unlock:view（ipcMain.handle，**shell-af
   `rollDayKey` / `resolveWindows` / `isSeasonOpen` / `isMealOpen` / `validateRules` / `eligible`（§2.5.1/§2.5.2）+ 上列七。
   **扩张理由（实施期订正）**：把纯组装（跨日裁剪 / 提示集合 / 饭点映射 / 图鉴视图）下沉核档，使 `shell-pet.js` 只留装载与接线——守住单档 ≤499 行（AC-B23-13）；
   语义零漂移（三把门判定仍单点同源，渲染层仍零新核）。
+- **B35 回填注记（2026-09-20）**：B35 核档导出面新增 `validatePrefs` · `togglePref` · `playbackPlan` · `clampWindowSize` + 常量 `GALLERY_MAX_PLAYING`（导出面 13 → **18**）；`eligible` / `gateStep` / `unlockView` 为签名扩展（向后兼容——缺席 = B23 语义）。权威 = `PET-GALLERY.md` §3.3。
 - `shell-pet.js` 主进程面：`recalcAndBroadcast()`（重算 + 重下发单点，§2.5.4 触发面）；init 注入键 = `affinityLevelProvider`（等级访问器）· `notifyUnlock`（提示复用入口）· `unlockCore`（核档本体，§2.2.4）。
 - 组合根接线（`main.js`）：**装配 2 处**——`:94` `pet.init({...})` 增传 `() => affinity.affinityLevel()` / `notifier.notifyUnlock` / 核档绑定；`:117` `affinity.init({...})` 增传 `settings`（图鉴开关态）与核档绑定；
   `shell-affinity.js` 导出 `affinityLevel()` 访问器。**`main.js` Δ = +1 行**（核档 require 一行；两处 init 均既有行就地改写——实施实测这两处改写 = Δ 0 行）。
@@ -514,3 +520,4 @@ exchange.js（图鉴卡激活时）→ unlock:view（ipcMain.handle，**shell-af
 ② §2.8 补登**允许面外三档**（`scripts/gates/baseline.json` · `selftest.js` · `run.js`）+ 实施轮实测行订正（`shell-pet.js` **498** / `shell-affinity.js` **372** / `main.js` **263**）+ 拆分预案句改实测；
 ③ §2.11 O-B23-9 与 §2.10 D③ 行的例外计数 一 → **两处**（`shell-affinity.js:29` · `shell-pet.js:28` 实测）；
 ④ §1.2 / §2.5.2 / §2.6 差异申报 ⑥ / §7 / AC-B23-1 的时节窗口天数按**用户 2026-09-20 裁定 = 10 天**收口（差额消解、11 天变体作废）。**计数不变（TC 19 / AC 13）**；逐条落点见批次档 §2.10.8。 |
+| 2026-09-20 | **B35 回填注记（跨批；源 = `docs/design/PET-GALLERY.md`）**：`eligible` 输入扩展（prefs / favOnly / lv10）· `gateStep` 输出扩展（blockSet / likeSet）· `unlock:view` 形状演进（卡片视图）· 导出面计数 13 → 18——四处注记落 §2.5.1 / §2.5.3 / §3.2 / §3.3；B23 期条文原文保留（回填形态）。 |

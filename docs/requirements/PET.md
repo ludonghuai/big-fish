@@ -453,7 +453,7 @@
 
 作为一个被固定小窗卡住的用户，我希望右键弹窗可以**拖动边角调整大小**、重开与重启后**记住我调好的尺寸**，以便视频卡片墙有足够的展示面、不用每次重调。
 
-- 口径：`resizable` 放开（`maximizable` / `fullscreenable` 照旧关）；**默认 720×560、最小 480×420**（单一常量表，设计档 §2.5.6）；尺寸落 `settings.json`（`petExchangeSize`，损坏 / 越界值回落默认并钳入当前工作区）；**位置不持久化**——每次打开按「贴宠右侧弹出、放不下改左侧」现算，并按**宠所在屏的 `workArea`** 钳制（含多屏）。
+- 口径：`resizable` 放开（`maximizable` / `fullscreenable` 照旧关）；**默认 720×560、最小 480×420**（单一常量表，设计档 §2.5.5）；尺寸落 `settings.json`（`petExchangeSize`，损坏 / 越界值回落默认并钳入当前工作区）；**位置不持久化**——每次打开按「贴宠右侧弹出、放不下改左侧」现算，并按**宠所在屏的 `workArea`** 钳制（含多屏）。
 - 边界（不做）：不改桌宠窗口与本仓其余窗口的形态；不改弹窗入口（右键 / 托盘「鲸鱼娘兑换屋」照旧）；不做最大化 / 全屏 / 分栏拖拽布局。
 
 ### US-45 喂养面布局重做（验收：`docs/design/PET-GALLERY.md` §4 AC-B35-12）
@@ -490,6 +490,7 @@
 
 - 口径：谓词 = **level ≥ 10 ∧ 特权开关开**（设置键 `petUnlockLv10`，**默认开**、托盘设置子菜单可关——与三锁开关同面；关 ⇒ 回到 B23 语义）；特权只解除三类**时间**限制，**不**解除用户屏蔽（屏蔽优先于特权）与规则档坏档回落；**Lv.1–Lv.9 的门控语义与 B23 交付态逐位一致**（桩测断言面 = B23 用例全量复跑）；图鉴卡对特权放行的时节 / 饭点段显示「特权」徽标。
 - 边界（不做）：不动 Lv.1–Lv.9 任何门控语义；不给 Lv.10 加新动作 / 新素材 / 新数值；不做特权等级细分（只有 ≥10 一档）。
+- **修订（B35 微修②，2026-09-20；类别 = 呈现面；源 = 用户实机裁定「我才六级，托盘不应该看到这些东西」）**：托盘「满级特权 · 无视时间限制」项**未满级不显示**（满级后出现；开关值与「默认开」语义不变）；显隐刷新 = 等级跨档触发托盘菜单重建 + 启动 `loadAffinity` 后重建一次。
 
 ### US-50 偏好与窗口尺寸持久化（验收：`docs/design/PET-GALLERY.md` §4 AC-B35-10）
 
@@ -754,7 +755,7 @@
 ### NFR-30 卡片墙性能面（验收：`docs/design/PET-GALLERY.md` §4 AC-B35-4）
 
 - **并发上界**：卡墙同时播放的视频 ≤ **8** 段（单一常量 `GALLERY_MAX_PLAYING`；可见卡超出上限时待命，有卡离屏后按入视先后补播）；
-- **懒加载与离屏即停**：未入视卡**不赋 `src`**（`preload="none"`；首次入视才赋 src 起载）；离视卡即 `pause()`（IntersectionObserver 驱动，阈值与常量表见设计档 §2.5.5）；
+- **懒加载与离屏即停**：未入视卡**不赋 `src`**（`preload="none"`；首次入视才赋 src 起载）；离视卡即 `pause()`（IntersectionObserver 驱动，阈值与常量表见设计档 §2.5.3）；
 - **开销判据**：卡墙打开连续 10 分钟，exchange 渲染进程工作集相对「打开后首屏」基线增幅 < **100 MB**；窗口关闭 ⇒ 视频解码面全灭（元素随窗口销毁）；主进程零解码增量（全部解码在 exchange 渲染进程）；
 - 度量方式：`playbackPlan` 纯函数桩测（可见集 × 上限的状态转移断言）+ DOM 断言（`video[src]` 计数 / playing 计数，开发期探针）+ `app.getAppMetrics()` 实测（口径同 NFR-10）。
 
@@ -762,7 +763,7 @@
 
 - **纯函数集中**：喜欢加权参数化 / 屏蔽过滤 / Lv.10 特权谓词 / 图鉴卡墙组装 / 并发计划 = **纯函数**，集中在可被 node 直接装载的档内（`pet-unlock-core.js` 双环境导出，口径同 NFR-27；链选段的加权入口 = `pet-chain-core.js` 的**加性可选参** `weightOf`，缺席 = 既有均匀语义逐字不变）；桩测**装载真实实现**逐条断言（不写镜像断言）；
 - **屏蔽硬排除机检口径（承 B23 硬约束 3）**：被屏蔽段在运行期 `pick=` 日志行**零出现**（虚拟时钟 × 1000 次链决策断言面；事件面过滤同名单下发）；
-- **Lv.1–Lv.9 逐位一致**：B23 桩测（时节 / 饭点 / 等级 / 关门 / 跨日全组）在新 eligible 面**全量复跑绿**（特权谓词对 level < 10 与开关关闭两路恒假 ⇒ 既有路径逐字命中）；
+- **Lv.1–Lv.9 逐位一致**：B23 用例组（时节 / 饭点 / 等级 / 关门 / 跨日 / 提示六组）在新 eligible 面**全量复跑绿**（承载说明：B23 桩测档不在盘——as-of 2026-09-20 实测；用例组由 B35 桩测内重建承载，设计档 §2.6 桩测行；特权谓词对 level < 10 与开关关闭两路恒假 ⇒ 既有路径逐字命中）；
 - 度量方式：`node .thincoder/b35-gallery-stub.mjs` ⇒ 末行 `pass/total PASS`（gitignore 惯例，先例 = B23 / B31 桩测）。
 
 ### NFR-32 零回退面（验收：`docs/design/PET-GALLERY.md` §4 AC-B35-11）
@@ -771,7 +772,7 @@
   `scripts/gates/**` / `tests/**` / **updater · market · backend 面**（`updater.js` / `update.js` / `update-lib.js` / `update-preload.js` / `update.html` / `make-latest.js` / `shell-update.js` / `shell-market.js` / `market.js` / `market-update.js` / `market.html` / `market-preload.js` /
   `shell-backend.js` / `harness-store.js` / `shell-plugins.js` / `shell-plugin-fetch.js` / `plugins.json` / `bundled-skills/**`）零 diff；
 - **零新依赖 · 零新源档**：`package.json` 的 `dependencies` / `devDependencies` / `build.files` **零 diff**（本批新逻辑并入既有档，无新增源档 ⇒ 连 NFR-8 的 `build.files` carve-out 也不触发）；
-- **允许面** = `exchange.html` / `exchange.js` / `exchange-preload.js`（+3 invoke 键）/ `shell-affinity.js` / `shell-pet.js`（≤ +1 行，越 499 即停下上报走拆分预案——设计档 §2.7）/ `shell-settings.js` / `shell-tray.js` /
+- **允许面** = `exchange.html` / `exchange.js` / `exchange-preload.js`（+3 invoke 键）/ `shell-affinity.js` / `shell-pet.js`（≤ +1 行，越 499 即停下上报走拆分预案——设计档 §2.6 / §2.2.8）/ `shell-settings.js` / `shell-tray.js` /
   `pet-chain.js` / `pet-chain-core.js` / `pet-unlock-core.js` / `main.js`（**Δ 0**：两处 `init` 既有行就地改写增传注入键，承 B23 / B31 装配面先例）；
 - **既有测试零回退**：`tests/` 45 单元 + 集成 3 场景全绿；结构判据 D①②③ + E **零新增**（无新绑定、无新静态相对 require 边、`scripts/gates/baseline.json` 零改动）；
 - 度量方式：`git diff --stat`（冻结清单逐档）+ 三道门（`lint` → `test:full` → `test:integration`）+ 基线档零 diff。
@@ -781,7 +782,7 @@
 - **容错**：`pet-prefs.json` 损坏按「首次使用」重置（同 `unlock-state.json` / `affinity.json` 形态，不崩）；`petExchangeSize` 非法 / 越界 ⇒ 回落默认尺寸并钳入当前工作区；
 - **校验谓词**：prefs 段名 ∈ 池段集合（池外名剔除）；喜欢 ∩ 屏蔽 = ∅（交集按**屏蔽**生效并归一化落盘）；独占事件唯一段 ∈ 屏蔽集 ⇒ 拒绝（结构保护，与 US-48 口径同源）；
 - **settings 新键**：`petUnlockFavOnly`（默认 **false**）/ `petUnlockLv10`（默认 **true**——用户裁定 D-4 + U-5 ②）/ `petExchangeSize`（默认 **null**）；
-- **规范**：改动档行宽 ≤300（不含行尾 CR）、单档 ≤500 行（门禁口径 = `\n` 计数；`pet-unlock-core.js` 与 `shell-pet.js` 的预算与拆分预案见设计档 §2.7）、注释以中文为主、文件头标准形（本批零新档——既有改动档档头已在场，`docs/CONVENTIONS.md` §一 / §五 / §三）；
+- **规范**：改动档行宽 ≤300（不含行尾 CR）、单档 ≤500 行（门禁口径 = `\n` 计数；`pet-unlock-core.js` 与 `shell-pet.js` 的预算与拆分预案见设计档 §2.6 / §2.2.8）、注释以中文为主、文件头标准形（本批零新档——既有改动档档头已在场，`docs/CONVENTIONS.md` §一 / §五 / §三）；
 - 度量方式：桩测（损坏注入 + 校验谓词 + 写盘次数 = 触发次数）+ 静态核行宽 / 行数 / 文件头。
 
 ---
@@ -844,3 +845,4 @@
 | 2026-09-20 | **B35 批次追加（设计稿；源 = `docs/batches/B35-pet-gallery-ui.md` §1，承台账 R24，本仓原创需求）**：§一 追加 B35 目标段；§二 追加 B35 分层行与两条「不做」项（抽卡 / 导入 / 抽帧封面 / 其余窗口 UI 不做）；档头批次与设计档清单各补 B35 / PET-GALLERY 行；
 §三 追加 **US-44…US-50**（弹窗可调整与尺寸持久化 / 喂养面布局重做 / 图鉴视频卡片墙 / 喜欢体系 / 屏蔽体系 / Lv.10 特权 / 偏好持久化），并对 **US-43** 补一条 B35 修订注记（「不显示缩略图」作废 → 视频卡片墙，其余口径保留）；§四 追加 **NFR-30…NFR-33**（卡片墙性能面 / 可机检面 / 零回退面 / 持久化容错与规范）。
 **计数：US 43 → 50；NFR 29 → 33**；除 US-43 注记外既有条目逐字未改。待用户批准时确认的裁点清单见 `docs/design/PET-GALLERY.md` §7（U-1…U-8 裁定值 + 双面开关语义）。 |
+| 2026-09-20 | **B35 设计评审修正轮 1（需求档侧；源 = 批次档 §3 轮次 1 + 主 agent 裁决）**：NFR-30 / NFR-32 / NFR-33 三处设计档指针收口（§2.5.5→§2.5.3；§2.7→§2.6 / §2.2.8）+ US-44 常量表指针订正（§2.5.6→§2.5.5）+ NFR-31 补承载说明（B23 桩测档不在盘——as-of 2026-09-20 实测；用例组由 B35 桩测内重建承载）。**计数不变（US 50 / NFR 33）**；无新增条目。 |
