@@ -89,7 +89,7 @@ function setQuitting(v) { quitting = v; }
 notifier.init({ getDshHome: backend.dshHome, petSay: pet.petSay, IDLE_NOTIFY_MS: idleNotifyMs(), IDLE_NOTIFY_FALLBACK_MS, WAITING_NOTIFY_MS: waitingNotifyMs() });
 backend.init({ HOST, READY_TIMEOUT_MS, sanitizeProfileBundles: plugins.sanitizeProfileBundles, getMainWindow: win.getMainWindow });
 geometry.init({ getPetWindow: pet.getPetWindow, getPetDrag: drag.getPetDrag });
-drag.init({ getPetWindow: pet.getPetWindow, pet });
+drag.init({ getPetWindow: pet.getPetWindow, pet, petWouldArmFlight: physics.petWouldArmFlight }); // T60：甩抛放行面接线
 pet.init({ showMainWindow: win.showMainWindow, openExchangeWindow: affinity.openExchangeWindow, broadcastAffinity: affinity.broadcastAffinity });
 // 工作状态联动接线（B19 / §2.7 注入面 9 项；shell-pet.js 不 require 工作模块 ⇒ 背底档经 setBaseStateProvider 注入）
 work.init({

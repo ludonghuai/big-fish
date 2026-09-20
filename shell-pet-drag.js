@@ -10,10 +10,16 @@ const path = require('node:path');
 const fs = require('node:fs');
 const geometry = require('./shell-pet-geometry.js');
 
-// 注入面（组合根 main.js 接线）：getPetWindow（pet）+ pet 状态访问面（§2.2.6 注 S2）
+// 注入面（组合根 main.js 接线）：getPetWindow（pet）+ pet 状态访问面（§2.2.6 注 S2）+ petWouldArmFlight（物理起飞预判，T60）
 let getPetWindow = null;
 let pet = null;
-function init(deps) { getPetWindow = deps.getPetWindow; pet = deps.pet; }
+let petWouldArmFlight = null;
+function init(deps) {
+  getPetWindow = deps.getPetWindow;
+  pet = deps.pet;
+  // T60：物理域零副作用读面（shell-pet-physics.petWouldArmFlight）；未接线 ⇒ 恒 false（= 旧行为：彩蛋优先）
+  petWouldArmFlight = typeof deps.petWouldArmFlight === 'function' ? deps.petWouldArmFlight : () => false;
+}
 
 // ---------------------------------------------------------------------------
 // Pet drag-follow — 主进程按全局光标绝对定位驱动窗口（设计档 docs/design/PET-DRAG.md §2.2）
@@ -201,7 +207,9 @@ function handlePetDragEnd(_e, reason) {
     if (geometry.PET_GEOM_DEBUG) {
       geometry.petGeomLog(`wall x=${x} minX=${bounds ? bounds.minX : 'n/a'} maxX=${bounds ? bounds.maxX : 'n/a'} escaped=${escaped ? 1 : 0}`);
     }
-    if (escaped) {
+    // 甩抛放行（T60，2026-09-20 用户裁定）：物理开 ∧ 本把是甩抛（物理自己的起飞门判 ok）⇒ 彩蛋不劫持，
+    //   本把交给物理接管飞行（物理在同一事件上的评估经 setImmediate 晚到，正好接上）；慢放 ⇒ 彩蛋照触发（US-7 不回退）
+    if (escaped && !petWouldArmFlight()) {
       pet.setWanderDir(x <= bounds.minX + geometry.PET_WALL_EPS ? 'right' : 'left');
       pet.setBounceLeft(2);
       pet.setForceRun(true);

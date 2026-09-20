@@ -290,10 +290,11 @@ function scheduleWander() {
   }, 15000 + Math.random() * 20000);
 }
 
-// 逃跑腿专用常量（B27 / R22-①；docs/design/PET-ANIMATION.md §2.14.8 常量表）：定义单点、doWander escape 分支单点消费（AC34⑤）。
+// 逃跑腿专用常量（B27 / R22-① + T59/T60 位移窗；docs/design/PET-ANIMATION.md §2.14.8 常量表）：定义单点、doWander escape 分支单点消费（AC34⑤）。
 const ESCAPE_LEG_MIN_DIP = 300;   // px：逃跑腿最短腿长（腿长 = MIN + rand×RANGE ⇒ 300~600）
 const ESCAPE_LEG_RANGE_DIP = 300; // px：随机腿长增量
-const ESCAPE_LEG_SPEED = 0.45;    // px/ms：逃跑移速（普通跑 0.34 / 走 0.17）
+const ESCAPE_RUN_START_MS = 1750; // ms：逃跑素材起跑点（原地左转奔跑 ≈10.04 s：0~1.3 s 正面站立、~1.75 s 起侧身奔跑——逐帧标定）——escape 腿位移与该点对齐（T59）
+const ESCAPE_TRIP_MS = 4000;      // ms：素材跑停站直点（3.9~4.2 s 跑停微晃、4.3 s 起前扑摔倒——逐帧标定）——escape 腿时长 = TRIP − RUN_START = 2250 ms，移速按腿长派生（T60；ESCAPE_LEG_SPEED 退役）
 
 /**
  * 散步/跑步：随机走一段距离就停下休息（不必走完全程）。
@@ -339,8 +340,12 @@ function doWander() {
     doWander();
     return;
   }
-  const speed = escape ? ESCAPE_LEG_SPEED : (run ? 0.34 : 0.17); // px/ms；B27：escape 单点消费 ESCAPE_LEG_SPEED
-  const duration = Math.max(250, dist / speed);
+  // 时长（T60，2026-09-20 用户裁定）：escape 腿 = 位移窗定值（ESCAPE_TRIP_MS − ESCAPE_RUN_START_MS），移速 = 腿长 ÷ 窗长派生
+  //   （≈0.13~0.27 px/ms，较原 0.45 慢一半到三分之二；撞墙腿长缩短 ⇒ 只慢、不错节奏）；walk/run 腿照旧（0.34 / 0.17，下限 250 ms）。
+  const duration = escape ? ESCAPE_TRIP_MS - ESCAPE_RUN_START_MS : Math.max(250, dist / (run ? 0.34 : 0.17));
+  // 位移与素材起跑点对齐（T59，2026-09-20 用户裁定）：escape 腿位移时钟整体后移 ESCAPE_RUN_START_MS——
+  // 素材前段（站立 + 转身）窗口原地不动，奔跑姿态一出来位移同步起跑；walk/run 腿 = 0 照旧。零新增定时器（偏移只做进既有 moveTimer）。
+  const moveDelayMs = escape ? ESCAPE_RUN_START_MS : 0;
   setPetState((escape ? 'escape-' : (run ? 'run-' : 'walk-')) + petWanderDir);
   const startX = x;
   const startTime = Date.now();
@@ -356,7 +361,7 @@ function doWander() {
   }
   clearInterval(moveTimer);
   moveTimer = setInterval(() => {
-    const t = Math.min(1, (Date.now() - startTime) / duration);
+    const t = Math.min(1, Math.max(0, (Date.now() - startTime - moveDelayMs) / duration));
     const nx = Math.round(startX + (targetX - startX) * t);
     petWindow.setPosition(nx, targetY); // y = 归位后的值（写入前钳制，根因 2）
     // 段起点（y 归位后）1 行 geom——AC7 取证点

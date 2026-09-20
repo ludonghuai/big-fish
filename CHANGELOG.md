@@ -14,6 +14,8 @@
 - 插件市场卡片「主页」不再直接跳转（导航守卫——`docs/batches/B28-plugin-fixes.md`）
 - 仓库门禁：新增样本区解耦判据（`samples/` 引用面零命中 + 打包白名单禁列，fail-closed——`docs/batches/B29-samples-guard.md`）
 - 好感度数值标尺重定：10 级不变但门槛大幅拉高（旧 10 级 ≈ 新 5 级）、喂食效率 = 被动的 2 倍；存量数据按新表自动重映射（不丢数据——`docs/batches/B31-affinity-balance.md`）
+- 「全部更新」没有可更新项时不再无谓重启后端；插件目录不可用时如实报失败（不再显示「成功 0 / 失败 0」——`docs/batches/B34-market-followup.md`）
+- 桌宠逃跑位移节奏重定：移速放缓一半到三分之二、位移持续整个奔跑段（1.75 → 4.0 秒；到位后「跑停 → 晃 → 摔倒」原地演完——`docs/TODO.md` T60）
 
 ### Fixed
 
@@ -24,6 +26,14 @@
 - 旧后端进程清理在 Windows 上失效（路径通配双形态——同上）
 - 启动 App 时误报「任务已完成」（判定加「会话有回合历史」前提——`docs/batches/B30-notify-followup.md`）
 - 好感度满级后点数无限增长（满级显示 `MAX`，不再溢出——`docs/batches/B31-affinity-balance.md`）
+- 插件市场 GitHub 源插件全部安装失败：弃用 git 协议，改 codeload tarball 下载链 + 公共镜像回退（不再需要本机 git、不再直连 github.com 主站——`docs/batches/B33-market-tarball.md`）
+- 安装失败提示出现「安装失败：安装失败」双重前缀并弹出原始英文堆栈（改为归类中文指引，技术细节记入日志——同上）
+- 市场确认弹窗重入后操作静默无反应（T57：`showModal` 重入守卫——同上）
+- 禁用插件在 profile 清单不可读时误报「已禁用」（写盘结果回传，失败如实报——`docs/batches/B34-market-followup.md`）
+- 卸载经 tarball 安装的插件后安装包残留 `plugin-tarballs/`（受管安装包随卸载清理，registry 依赖与无主文件不动——同上）
+- 桌宠逃跑「站着平移」：拖到墙角松手后位移改与逃跑素材起跑点对齐（前 1.75 秒站立 / 转身原地不动，奔跑姿态出现才起跑——`docs/TODO.md` T59，承 `docs/batches/B27-pet-feel-2.md` 逃跑面）
+- 开着「甩抛物理手感」把她甩向墙角时被「逃跑」彩蛋劫持、飞不起来（甩抛现在放行给物理接管；慢慢拖到墙角松手仍触发彩蛋——`docs/TODO.md` T60）
+- 甩抛飞行途中她演的是地面逃跑戏（飞行全程改演「被吓一跳」——惊慌扑腾，落地 Q 弹、停稳回神——`docs/TODO.md` T61）
 
 ### Added
 

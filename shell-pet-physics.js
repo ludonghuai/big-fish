@@ -42,7 +42,7 @@ function init(deps) {
 // ---------------------------------------------------------------------------
 // 状态（§2.2.1 / §2.2.2）
 // ---------------------------------------------------------------------------
-/** 飞行态（null = 未在飞）：{ state, bounds, timer, startAt, steps, prevGrounded, lastApplied, animState }。 */
+/** 飞行态（null = 未在飞）：{ state, bounds, timer, startAt, steps, prevGrounded, lastApplied }。 */
 let flying = null;
 /** 光标轨迹（§2.2.5）：[{t,x,y}]，t = performance.now()；保留窗口 200 ms（trimTrail）。 */
 let trail = [];
@@ -167,8 +167,11 @@ function armFlight(win, gate, bounds, now) {
     steps: 0,
     prevGrounded: s0.y >= bounds.maxY, // 贴地位形起飞不产生伪挤压（AC4⑤ / §2.2.5 第 7 条）
     lastApplied: [Math.round(px), Math.round(py)], // 同目标去重基准（与冻结面 lastApplied 同形）
-    animState: null,
   };
+  // 飞行期动作（T61，2026-09-20 用户裁定；DD-11 修订）：全程保持「被吓一跳」（drag 档——抓起时的惊吓延续为空中扑腾），
+  //   不再按 |vx| 切 walk/run（run 段 = 逃跑素材，空中播地面逃跑戏 = 违和根因；样本 startThrow 飞行全程亦不换档）。
+  //   停泊复位 idle 照旧（stopFlight 步骤 3）；PHYS_RUN_SPEED 消费点随之退役（core 常量导出保留）。
+  setPetState('drag');
   physLog(
     'phys-arm vel=(' + Math.round(gate.vel.vx) + ',' + Math.round(gate.vel.vy) + ')'
     + ' pos=' + geometry.petPosText([px, py]) + ' bounds=(' + bounds.minX + ',' + bounds.minY + ',' + bounds.maxX + ',' + bounds.maxY + ')'
@@ -224,9 +227,7 @@ function flightTick(dtMs) {
       sendSquash(win, depth);
     }
     flying.prevGrounded = res.landed;
-    // 飞行期动作档（DD-11）：|vx| ≥ PHYS_RUN_SPEED ⇒ run-*，否则 walk-*（不新增档位名；只在变化时下发，防 IPC 洪泛）
-    const anim = (Math.abs(res.vx) >= core.PHYS_RUN_SPEED ? 'run-' : 'walk-') + (res.vx >= 0 ? 'right' : 'left');
-    if (anim !== flying.animState) { flying.animState = anim; setPetState(anim); }
+    // 飞行期不换档（T61 / DD-11 修订）：drag 档在 armFlight 一次性下发、本 tick 内零 setPetState（原按 |vx| 切 run/walk 两行已删）
     if (PHYSICS_DEBUG && flying.steps % 16 === 0) {
       physLog('phys-tick n=' + flying.steps + ' pos=' + geometry.petPosText(rounded)
         + ' vel=(' + Math.round(res.vx) + ',' + Math.round(res.vy) + ')'
@@ -320,8 +321,34 @@ function quit() { if (flying) stopFlight('quit'); }
 /** 状态访问器（shell-pet.js 的 doWander 守卫消费，交接④：飞行中散步不得启动）。 */
 function isFlying() { return flying !== null; }
 
+/**
+ * 起飞预判（零副作用读面，T60）：与 evaluateArm 同一份 armGate 输入、同一阈值、同一轨迹——只回布尔。
+ * 唯一消费点 = 拖动收口的逃跑分支（shell-pet-drag.js）：判「本把是甩抛」⇒ 逃跑彩蛋放行、物理接管（用户 2026-09-20 裁定）。
+ * 纪律：不动 lastEvaluatedSeq（G3 会话号只能由真正的 evaluateArm 消费）、不清 trail、零日志、零写入——
+ *   违反任一条都会吞掉随后的起飞评估（同一 pet-drag-end 事件上本模块的 handleTrailEnd → setImmediate(evaluateArm)）。
+ */
+function petWouldArmFlight() {
+  const win = getPetWindow && getPetWindow();
+  const waBounds = win && !win.isDestroyed() ? geometry.petWorkAreaBounds(geometry.petCurrentDisplay()) : null;
+  const gate = core.armGate({
+    enabled: settings.get().petPhysicsEnabled === true,
+    windowAlive: !!(win && !win.isDestroyed()),
+    sessionSeq,
+    lastEvaluatedSeq,
+    dragActive: !!(getPetDrag && getPetDrag() !== null),
+    wanderInFlight: !!(getMoveTimer && getMoveTimer() !== null),
+    reasonOk: true,
+    trail,
+    now: performance.now(),
+    physics: core.PHYSICS,
+    bounds: core.petEdgeBounds(waBounds),
+    flying: flying !== null,
+  });
+  return gate.ok;
+}
+
 function physPos(win) {
   return (win && !win.isDestroyed()) ? geometry.petPosText(win.getPosition()) : 'n/a';
 }
 
-module.exports = { init, isFlying, handlePhysicsToggle, registerScreenStops, quit, stopFlight, handleTrailStart, handleTrailEnd, petEdgeBounds: core.petEdgeBounds };
+module.exports = { init, isFlying, petWouldArmFlight, handlePhysicsToggle, registerScreenStops, quit, stopFlight, handleTrailStart, handleTrailEnd, petEdgeBounds: core.petEdgeBounds };
