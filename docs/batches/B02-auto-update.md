@@ -187,7 +187,7 @@
 | `make-latest.js` | 0（新） | +约 100 | ≈100 |
 | `tests/update-lib.test.js` | 0（新） | +约 80 | ≈80 |
 | `tests/update-stub.mjs` | 0（新） | +约 60 | ≈60 |
-| `build/installer.nsh` | 7 | **不改**（runAfterFinish 已在 `package.json:85` 配置） | 7 |
+| `build/installer.nsh` | 7 | **不改**（runAfterFinish 已在 `package.json` 的 `nsis` 段配置——T31 订正 2026-09-20：原锚 `:85` 为 as-of 记录，实测 `:122`） | 7 |
 | `pet.js` / `pet.html` / `pet-preload.js` | 186/92/16 | **不改**（B01 活跃文件，C8） | 不变 |
 | `docs/README.md` | — | **不改**（主 agent 收口时自更新） | 不变 |
 
@@ -292,7 +292,7 @@ Windows 下运行中目录 rename 可能 EPERM，rename 目标已存在（dsh-pr
 | 9 | Acceptance criteria | 🔵 | AC12 快照面不含 ~/.dsh/pnpm-store——Harness 更新会向共享 store 写新依赖树（预期增量）；全量快照会误报 | AC12 判定行注明 pnpm-store 增量为预期、非破坏性 |
 | 10 | Methodology | 🔵 | T3 处置（选型 D）为 open 项，设计正确地不代用户裁定（§2.1 注；批次 §1.7 要求评审时裁定）——实施前须在批次 §4 落裁定 | 评审裁决时批次 §4 记录 T3 结论（推荐删除死代码），结论未落前不得静默跳过 |
 | 11 | Structure | 🔵 | updater.js ≈380 行（<500 合规），含 App 四阶段 + Harness 五阶段流——防单函数 ≥300 行（函数级分层同样适用） | 实施时 installHarness 拆阶段函数，coder 落档自查 |
-| 12 | Review limitation | 🔵 | 无 AGENTS.md / 项目标准文档；现有代码行号与 package.json:85/11 等声称均为设计者亲核，三档范围内不可独立验证（设计 §2.3 与批次 §2.3 两表一致性已核对） | 主 agent 内容核验时抽查 package.json 两处、main.js 九处改动点行号 |
+| 12 | Review limitation | 🔵 | 无 AGENTS.md / 项目标准文档；现有代码行号与 `package.json` 的 `runAfterFinish` / homepage 行等声称均为设计者亲核（T31 订正 2026-09-20：原记 `package.json:85/11` 为 as-of 记录，不指现行行号），三档范围内不可独立验证（设计 §2.3 与批次 §2.3 两表一致性已核对） | 主 agent 内容核验时抽查 package.json 两处、main.js 九处改动点行号 |
 
 超范围备注（不评严重度）：文档地图「当前文档」表未登记 UPDATE.md / AUTO-UPDATE.md / B02——父文档层收口协调项。
 

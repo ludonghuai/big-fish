@@ -473,6 +473,7 @@ VERDICT: pass
 
 **测试面处置（① 寿命判）**：`.thincoder/b31-affinity-stub.mjs`（61/61）+ `.thincoder/b31-verify.mjs` = **退役**（开发期工具、不入仓 ✓）。
 
-**收口轮（文档折账）**：五件（`PET.md` NFR-26 口径 / 设计三处「零改动」措辞 / §2.7 + AC-B31-10 清单外 2 档登记 / `CONVENTIONS` + `REPO-CONVENTIONS` 现状数 16 · 3 / 变更记录）= **微轮 #6 已落地并经父侧核验** ✓（2026-09-19；关键落点逐条核验：`docs/requirements/PET.md:602-603` · `docs/design/PET-AFFINITY.md:204/:287/:298` · `docs/CONVENTIONS.md:119/:122-123` · `docs/design/REPO-CONVENTIONS.md:425/:427/:439`）；其披露的 3 处残留已转 **T55** ✓。
+**收口轮（文档折账）**：五件（`PET.md` NFR-26 口径 / 设计三处「零改动」措辞 / §2.7 + AC-B31-10 清单外 2 档登记 / `CONVENTIONS` + `REPO-CONVENTIONS` 现状数 16 · 3 / 变更记录）= **微轮 #6 已落地并经父侧核验** ✓（2026-09-19）。
+关键落点逐条核验：`docs/requirements/PET.md:602-603` · `docs/design/PET-AFFINITY.md:204/:287/:298` · `docs/CONVENTIONS.md:119/:122-123` · `docs/design/REPO-CONVENTIONS.md:425/:427/:439`；其披露的 3 处残留已转 **T55** ✓。
 
 **台账**：**T48 / T49 → 已核销**（逐条移入 `docs/TODO-archive.md`）✓；地图 B31 行 / `docs/design/PET-AFFINITY.md` 行 → 「已收口 + 核销 / 生效」✓。

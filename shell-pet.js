@@ -3,7 +3,7 @@
  * shell-pet.js — 桌宠窗口与状态机 + 台词 + 点击 IPC 处理器函数（B06 F6 拆分；设计档 docs/design/SHELL-UX.md §2.2.6 注 S3）。
  * 函数清单（注 S3）：PET_QUOTES · petSay · playIdleVariant · schedulePetChatter · clearPetTimers · setPetState · scheduleSleep · wakePet ·
  * scheduleWander · doWander · summonPet · createPetWindow · ensurePet · destroyPetWindow · 状态（petWindow / petState / 定时器 / 散步状态）·
- * 处理器 handlePetClicked / handlePetRightClicked。
+ * 处理器 handlePetClicked / handlePetRightClicked；B23 门控 unlockPayload · handleMealPlayed · recalcAndBroadcast。
  */
 
 const { app, BrowserWindow, ipcMain } = require('electron');
@@ -19,10 +19,13 @@ const physics = require('./shell-pet-physics.js');
 let showMainWindow = null;
 let openExchangeWindow = null;
 let broadcastAffinity = null;
+let affinityLevelProvider = null, notifyUnlock = null, unlockCore = null;   // B23 注入（等级值访问器 / 解锁提示通知包装 / 解锁核；组合根接线——本档不 require 好感面与核档）
 function init(deps) {
   showMainWindow = deps.showMainWindow;
   openExchangeWindow = deps.openExchangeWindow;
   broadcastAffinity = deps.broadcastAffinity;
+  affinityLevelProvider = deps.affinityLevelProvider; notifyUnlock = deps.notifyUnlock; unlockCore = deps.unlockCore;
+  ipcMain.on('pet-meal-played', handleMealPlayed);   // B23：饭点「演过」上报（渲染层只上报饭点键；ipcMain 派发形态 = (event, mealKey)——承 shell-pet-physics.js:97 同款注）
   // 渲染层请求一次散步（复用既有 doWander 的守卫与位移纪律；本批不改其内部，DD-6）
   ipcMain.on('pet-chain-move', () => doWander());
   // 物理域接线（B20）：doWander 守卫读 physics.isFlying()（下面 require 定序先于本 init 调用）
@@ -79,8 +82,35 @@ function sendAnimConfig() {
   if (!petWindow || petWindow.isDestroyed()) return;
   if (!animPoolResult) animPoolResult = loadAnimPool();
   animLog(animPoolResult.line);
-  petWindow.webContents.send('pet-chain-config', Object.assign({ debug: animDebug() }, animPoolResult.payload));
+  petWindow.webContents.send('pet-chain-config', Object.assign({ debug: animDebug() }, animPoolResult.payload, unlockPayload()));   // B23：payload 扩 allowSet / lockHint
 }
+
+// B23 动作解锁门控（设计档 docs/design/PET-UNLOCK.md §2.5.3 / §2.5.4）：规则档装载 + payload 组装 + 解锁提示 + 饭点「演过」回写
+const ANIM_RULES_PATH = path.join(__dirname, 'assets', 'pet-anim', 'unlock-rules.json');
+const UNLOCK_STATE_NAME = 'unlock-state.json', UNLOCK_SAY = '解锁了新动作，去图鉴看看吧~';
+let animRulesText = null, unlockState = null, unlockFirst = true, unlockWarned = false;   // 规则档原文 / 状态副本 / ① 首算静默 / 坏档告警至多一行
+function unlockStatePath() { return path.join(app.getPath('userData'), UNLOCK_STATE_NAME); }
+function loadUnlockState() { unlockState = { playedMeals: {}, notified: {} }; try { const j = JSON.parse(fs.readFileSync(unlockStatePath(), 'utf8')); unlockState.playedMeals = j.playedMeals || {}; unlockState.notified = j.notified || {}; } catch { /* 损坏 ⇒ 首次使用重置（NFR-28） */ } }
+function saveUnlockState() { try { fs.mkdirSync(path.dirname(unlockStatePath()), { recursive: true }); fs.writeFileSync(unlockStatePath(), JSON.stringify(unlockState), 'utf8'); } catch (err) { console.error('[bigfish] unlock state save failed:', err); } }
+function unlockPayload() {   // §2.5.3 组装；跨日键比对（§2.5.2）与提示探测（§2.5.4）同点（核心纯函数 = pet-unlock-core.gateStep）
+  if (animRulesText === null) { let text = null; try { text = fs.readFileSync(ANIM_RULES_PATH, 'utf8'); } catch { text = null; } animRulesText = text; }
+  if (!unlockState) loadUnlockState(); const s = settings.get();
+  const t = unlockCore.gateStep({
+    rulesText: animRulesText, now: new Date(), level: affinityLevelProvider ? affinityLevelProvider() : 1,
+    poolNames: animPoolResult && animPoolResult.payload.pool ? animPoolResult.payload.pool.categories.flatMap((c) => c.actions) : [],
+    switches: { season: s.petUnlockSeason !== false, meal: s.petUnlockMeal !== false, level: s.petUnlockLevel !== false }, state: unlockState,
+  });
+  if (!t.lockHint.valid && !unlockWarned) { unlockWarned = true; console.error('[bigfish] unlock rules unusable (' + t.lockHint.reason + ') — gating falls back to no-lock'); }
+  unlockState = t.state;
+  if (unlockFirst) { unlockFirst = false; saveUnlockState(); }   // ① 首算静默（只落 notified 快照）
+  else if (t.fresh.length) { if (notifyUnlock) notifyUnlock(UNLOCK_SAY); petSay(UNLOCK_SAY); saveUnlockState(); }   // 新解锁一次播报（US-42）
+  return { allowSet: t.allowSet, lockHint: t.lockHint };
+}
+function handleMealPlayed(_e, mealKey) { if (!unlockState) return;   // §2.5.3：渲染层只上报饭点键、判据单点在主进程；落盘后立即重下发（§2.5.4 ③）
+  const next = unlockCore.mealPlayed(unlockState, mealKey, unlockCore.rollDayKey(new Date())); if (!next) return;
+  unlockState = next; saveUnlockState(); recalcAndBroadcast();
+}
+function recalcAndBroadcast() { sendAnimConfig(); }   // 重算 + 重下发单点（§2.5.4 触发面 ②③④；① 首算 = sendAnimConfig 同点）
 
 /** @type {BrowserWindow | null} */
 let petWindow = null;
@@ -463,5 +493,6 @@ module.exports = {
   logAnim,
   setBaseStateProvider,
   petBaseState,
+  recalcAndBroadcast,
   init,
 };

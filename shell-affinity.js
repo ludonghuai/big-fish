@@ -3,7 +3,7 @@
  * shell-affinity.js — 好感度 + 兑换屋窗口 + 重置两函数 + affinity:* 处理器函数（B06 F6 拆分；设计档 docs/design/SHELL-UX.md §2.2.6）。
  */
 
-const { app, BrowserWindow, screen, dialog } = require('electron');
+const { app, BrowserWindow, screen, dialog, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const backend = require('./shell-backend.js');
@@ -11,18 +11,22 @@ const notifier = require('./shell-notify.js');
 const assets = require('./shell-assets.js');
 
 // 注入面（组合根 main.js 接线）：getPetWindow + pet 状态访问面（pet）/ setQuitting（组合根）/ APP_NAME（常量）/
-//   affinityCore（好感度数值面纯函数核心 affinity-core.js——不新增静态相对 require，判据 D② 扇出保持 3）
+//   affinityCore / unlockCore（数值面核 affinity-core.js / 解锁核 pet-unlock-core.js——均经 main.js 绑定 + init(deps) 注入送达，本档不新增静态相对 require）
 let getPetWindow = null;
 let pet = null;
 let setQuitting = null;
 let APP_NAME = null;
-let affinityCore = null;
+let affinityCore = null; let unlockCore = null;   // B23 解锁核经 init(deps) 注入（本档零静态 require 边——设计档 PET-UNLOCK.md §2.2.4）
+let settings = null;
 function init(deps) {
   getPetWindow = deps.getPetWindow;
   pet = deps.pet;
   setQuitting = deps.setQuitting;
   APP_NAME = deps.APP_NAME;
   affinityCore = deps.affinityCore;
+  settings = deps.settings; unlockCore = deps.unlockCore;
+  // B23：图鉴数据通道自注册（先例 = shell-pet.js 模块内自注册；shell-ipc.js 保持零 diff——设计档 §3.3 / O-B23-9）
+  ipcMain.handle('unlock:view', handleUnlockView);
 }
 
 // ---------------------------------------------------------------------------
@@ -134,10 +138,14 @@ function affinityView() {
   // 好感 = 终身使用换算 + 喂食加成（只增不减，兑换不影响好感）——数值面在 affinityCore（B31 §2.6）
   return affinityCore.buildAffinityView(affinity);
 }
+let lastPushedLevel = null;
 function broadcastAffinity() {
   if (getPetWindow() && !getPetWindow().isDestroyed()) {
     getPetWindow().webContents.send('pet-affinity', affinityView());
   }
+  // B23：等级**变化**才触发门控重算 + 重下发（设计档 §2.5.4 触发面 ②；非变化时不重下发——避免每 10 s 重启链段）
+  const level = affinityView().level;
+  if (level !== lastPushedLevel) { lastPushedLevel = level; if (pet.recalcAndBroadcast) pet.recalcAndBroadcast(); }
 }
 
 function startAffinityWatcher() {
@@ -288,6 +296,34 @@ async function resetConfigKeepSessions() {
 
 function handleAffinityView() { return affinityView(); }
 
+// ---------------------------------------------------------------------------
+// B23 动作图鉴（设计档 docs/design/PET-UNLOCK.md §3.2）：`unlock:view` 处理器 + affinityLevel() 导出（US-43）
+// ---------------------------------------------------------------------------
+let unlockPoolCache = null, unlockRulesCache = null;   // 静态数据档惰性装载各一次（运行期零变更 ⇒ 无漂移面）
+
+/** 静态数据档读取（路径形态承 shell-pet.js:41 的 __dirname 拼接）。 */
+function readStaticJson(rel) {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, rel), 'utf8')); } catch { return null; }
+}
+
+/** 当前好感等级（**运行时值**；图鉴与提示的 `Lv.n` 一律取此值——本档 §3.3 导出，main.js pet.init 注入 shell-pet 同源）。 */
+function affinityLevel() { return affinityView().level; }
+
+/** 解锁开关态（默认全开；关 = 该门来源不做过滤——设计档 §2.5.1 单一口径）。 */
+function unlockSwitches() {
+  const s = settings ? settings.get() : {};
+  return { season: s.petUnlockSeason !== false, meal: s.petUnlockMeal !== false, level: s.petUnlockLevel !== false };
+}
+
+/** 图鉴视图（US-43 / AC-B23-8）：本档只做数据读取（池 / 规则 / 只读演过快照），组装与判定均在 pet-unlock-core.js（与链同源单点）。 */
+function handleUnlockView() {
+  if (!unlockPoolCache) unlockPoolCache = readStaticJson('assets/pet-anim/pool.json');
+  if (!unlockRulesCache) unlockRulesCache = readStaticJson('assets/pet-anim/unlock-rules.json');
+  let playedMeals = {};
+  try { playedMeals = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'unlock-state.json'), 'utf8')).playedMeals || {}; } catch { /* 首次使用 / 损坏 ⇒ 无演过记录（只读面，属主 = shell-pet） */ }
+  return unlockCore.unlockView({ pool: unlockPoolCache, rules: unlockRulesCache, now: new Date(), level: affinityLevel(), switches: unlockSwitches(), playedMeals });
+}
+
 function handleAffinityExchange() {
   const gain = Math.floor(affinity.wallet / affinityCore.EXCHANGE_RATE);
   if (gain <= 0) return { ok: false, message: `还不够兑换 1💴（需 ${affinityCore.EXCHANGE_RATE} token）` };
@@ -328,6 +364,8 @@ module.exports = {
   resetAllData,
   resetConfigKeepSessions,
   handleAffinityView,
+  handleUnlockView,
+  affinityLevel,
   handleAffinityExchange,
   handleAffinityBuy,
   init,

@@ -31,9 +31,25 @@
     .food .buy:disabled { opacity:.4; cursor:not-allowed; }
     #msg { margin-top:10px; font-size:12px; min-height:18px; color:var(--accent); text-align:center; }
     .hint { color:var(--dim); font-size:11px; margin-top:10px; text-align:center; }
+    /* B23 动作图鉴：双标签卡 + 图鉴行（未解锁 = 显名灰化 U-7 ①） */
+    .tabs { display:flex; gap:8px; margin-bottom:12px; }
+    .tab { flex:1; background:var(--panel); border:1px solid var(--border); color:var(--dim); border-radius:8px; padding:7px 0; cursor:pointer; font-size:13px; }
+    .tab.active { background:#262c38; color:var(--text); font-weight:600; border-color:var(--accent); }
+    .ugroup { color:var(--dim); font-size:11px; margin:8px 0 6px; }
+    .urow { display:flex; justify-content:space-between; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:6px 10px; margin-bottom:6px; }
+    .urow.locked { opacity:.45; }
+    .urow .uname { font-weight:600; font-size:12px; }
+    .urow .ucond { color:var(--dim); font-size:11px; }
+    .urow .ustate { color:var(--accent); font-size:11px; white-space:nowrap; }
   </style>
 </head>
 <body>
+  <div class="tabs">
+    <button class="tab active" id="tab-food">喂养</button>
+    <button class="tab" id="tab-unlock">图鉴</button>
+  </div>
+
+  <div id="panel-food">
   <h1>🐳 鲸鱼娘兑换屋</h1>
 
   <div class="row"><span class="label">累计消耗 token（好感来源）</span><span class="val" id="usage">0</span></div>
@@ -50,6 +66,13 @@
 
   <div id="foods"></div>
   <div class="hint">右键鲸鱼娘随时打开本窗口</div>
+  </div>
+
+  <div id="panel-unlock" hidden>
+    <div class="row"><span class="label">解锁进度（可解锁动作）</span><span class="val" id="unlock-total">0 / 0（0%）</span></div>
+    <div id="unlock-cats"></div>
+    <div id="unlock-rows"></div>
+  </div>
 
   <script src="exchange.js"></script>
 </body>

@@ -466,6 +466,7 @@ market:update-all → 重新 fetchPluginRegistry() 重算 updates → 逐个 ins
 - 版本对比与更新规格全部在主进程计算，前端只按 `id` 匹配渲染（避免 normalize 逻辑双份漂移）。
 - 内置插件（builtin:）随 App 包更新，不参与（US-7 边界）。
 - `installPlugin` 内部已有 realName 解析与 bundles 防呆（C2/C3），更新路径零新增 manifest 写入点。
+- **前置注记（B12 起；T21 补记 2026-09-20）**：更新路径复用 `installPlugin`（`market:update` / `market:update-all`）⇒ 与安装路径同样先过 **B12 插件标识入参门**（三形态白名单 + 越界校验；权威口径 = `docs/design/SHELL-UX.md` §2.2.14）。本节原文未记此前置；门的判定语义以该节为准，本注不改变本节判定语义。
 
 #### 2.2.6 版本比较语义（-rc.N）
 
@@ -861,7 +862,7 @@ node scripts/refresh-dsh-bundle.js [--check] [--registry <url>] [--tag <dist-tag
 | AC8 | US-6 | `node --test tests/update-lib.test.js` 全绿——§2.2.6 断言表 10 例（含 `0.1.5-rc.1` > `0.1.0-rc.6`）+ `parseRegistryMetadata` 假源 fixture（dist-tags.latest=0.1.5-rc.1）+ `decideUpdate` 判定有更新；注册表源回退（npmmirror 失败 → npmjs 兜底）以 update-stub 组合路由断言（TC-24） | 半机检（node --test + 假源桩组合） |
 | AC9（B04 重定义判定面） | US-6 | 打包版真机：激活后 `dshBinPath()` 解析到 **userData 副本**（非出厂路径）、该副本 `package.json.version` = 目标、后端以该副本重启成功 | 半机检（日志 + fs 断言；真实更新人判）——逐条判定面见下表后「注 B04-1」 |
 | AC9-b（B04） | US-6 | **无静默假成功路径**：激活后对活跃路径复测（解析存在性 + 版本读数 + 冒烟），任一不满足即记 `phase=activate ok=0` 并回滚 | **机检（单元故障注入 + 日志断言 + fs 断言）**——注 B04-2 |
-| AC10 | US-7 | 假注册表条目 version 高于已装 → 市场「已安装」视图出现「可更新」徽标；单个更新 → `plugin update spec=… result=ok` + 后端重启；全部更新 → 逐项日志 + 一次重启；github: 条目按原 installSpec 重装（日志 spec 前缀 `github:`） | 半机检（日志；徽标/按钮人判） |
+| AC10 | US-7 | 假注册表条目 version 高于已装 → 市场「已安装」视图出现「可更新」徽标；单个更新 → `plugin update spec=… result=ok` + 后端重启；全部更新 → 逐项日志 + 一次重启；github: 条目按原 installSpec 重装（日志 spec 前缀 `github:`）；前置：`updateSpec` 过 B12 插件标识入参门（`docs/design/SHELL-UX.md` §2.2.14——T21 补记 2026-09-20） | 半机检（日志；徽标/按钮人判） |
 | AC11 | US-8 | 发版演练：`node make-latest.js --note "…"` → latest.json 生成（三平台 URL + sha256 与文件实测一致）→ 打印上传清单；`node make-latest.js`（无产物）→ 退出码 1 + 明确错误 | 人判（发版演练）+ 机检（sha256 与 `certutil`/`sha256sum` 对照） |
 | AC12 | US-9 | 更新演练前后对 `~/.dsh` **关键面**做快照对比（profiles/web、sessions/、已装插件目录）→ 无差异；`~/.dsh/pnpm-store` 写入新依赖树为 Harness 更新的**预期增量**（共享 store 的正常写入面），不计破坏性差异（评审 #9） | 人判（快照对比） |
 | AC13（B04） | US-6 | 回滚可用：激活后若后端重启失败 → 回滚到旧副本，旧版能正常启动；`startupCleanup` 不误删现行副本 | 机检（单元 + 日志 + fs 断言）——注 B04-3 |

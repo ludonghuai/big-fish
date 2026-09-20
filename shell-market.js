@@ -120,8 +120,8 @@ async function marketUninstall(_e, pkg) {
 async function marketDisable(_e, pkg) {
   const real = plugins.resolveInstalledName(pkg);
   if (!real) return { ok: false, message: '无法解析插件包名：' + String(pkg).slice(0, 60) };
-  plugins.removeBundle(real);
-  return { ok: true, message: `已禁用 ${real}（重启后生效）` };
+  const removed = plugins.removeBundle(real); // B34：写盘失败不得报假成功（静默失效家族）
+  return { ok: removed, message: removed ? `已禁用 ${real}（重启后生效）` : `禁用失败：${real}（profile 清单不可读，未改动）` };
 }
 
 async function marketEnable(_e, pkg) {
@@ -162,7 +162,9 @@ async function marketUpdate(_e, spec) {
 
 async function marketUpdateAll() {
   const registry = await fetchPluginRegistry();
+  if (registry.source === 'none') return [{ id: '', name: '插件目录', ok: false, message: '插件目录不可用（在线源与内置副本均缺失），未执行更新' }];
   const updates = plugins.computePluginUpdates(registry.plugins);
+  if (updates.length === 0) return []; // B34：无可更新项 ⇒ 不重启后端、不起 pnpm（渲染层报「全部已最新」）
   const results = [];
   for (const u of updates) {
     const res = await plugins.installPlugin(u.updateSpec);

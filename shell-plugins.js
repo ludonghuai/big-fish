@@ -1,7 +1,7 @@
 'use strict';
 /**
- * shell-plugins.js — 插件引擎（profile 读写 / bundles 防呆 / 版本对比 / installPlugin / uninstallPlugin / pnpm 通道）
- * （B06 F6 拆分；设计档 docs/design/SHELL-UX.md §2.2.6）。
+ * shell-plugins.js — 插件引擎（profile 读写 / bundles 防呆 / 版本对比 / installPlugin / uninstallPlugin / pnpm + github tarball 通道）
+ * （B06 F6 拆分；设计档 docs/design/SHELL-UX.md §2.2.6；B33 github tarball 链契约 = §2.2.16）。
  */
 
 const { app } = require('electron');
@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const { compareVersions } = require('./update-lib.js');
 const backend = require('./shell-backend.js');
+const pluginFetch = require('./shell-plugin-fetch.js');
 
 // 注入面（组合根 main.js 接线）：updaterLog（update 域日志；§2.2.6 依赖方向规则 2）
 let updaterLog = null;
@@ -93,11 +94,13 @@ function addBundle(pkgName) {
   writeProfileManifest(m);
   return true;
 }
+/** 注销 bundle；返回是否真写盘（B34：读不到 manifest ⇒ false，调用方不得报假成功）。 */
 function removeBundle(pkgName) {
   const m = readProfileManifest();
-  if (!m || !m.dsh || !m.dsh.profile || !Array.isArray(m.dsh.profile.bundles)) return;
+  if (!m || !m.dsh || !m.dsh.profile || !Array.isArray(m.dsh.profile.bundles)) return false;
   m.dsh.profile.bundles = m.dsh.profile.bundles.filter((b) => b !== pkgName);
   writeProfileManifest(m);
+  return true;
 }
 /** 是否像合法的 npm 包名（拒绝 github:/git+/link: 等原始安装标识）。 */
 function isPlainPackageName(name) {
@@ -353,6 +356,11 @@ function rejectSpec(prefix, spec) {
   return { ok: false, message: prefix + String(spec).slice(0, 60) };
 }
 
+/** 安装失败细节落 update 域日志（UI 只给归类指引——B33；原始输出不弹窗）。 */
+function logInstallFail(spec, detail) {
+  if (updaterLog) updaterLog(`plugin install spec=${String(spec).slice(0, 80)} result=fail detail=${String(detail).replace(/\s+/g, ' ').slice(0, 200)}`);
+}
+
 /** 安装插件：内置插件离线拷贝；npm 插件走 pnpm add。返回 { ok, message } */
 async function installPlugin(spec) {
   const kind = installSpecKind(spec);
@@ -371,15 +379,29 @@ async function installPlugin(spec) {
     return { ok: true, message: `已安装内置插件 ${bundledName}` };
   }
   // npm / GitHub 插件：用内置 pnpm 安装到 profile
+  // github 源（B33）：弃用 git 协议（国内无代理多不可达 + 依赖本机 git），先走 HTTPS tarball 下载链再 pnpm add 本地包
+  let addSpec = spec;
+  if (kind === 'github') {
+    const dl = await pluginFetch.downloadPluginTarball(spec);
+    if (!dl.ok) {
+      logInstallFail(spec, 'tarball: ' + dl.attempts.join(' ; '));
+      return { ok: false, message: '安装失败：下载插件包失败——GitHub 直连与镜像源均不可用（网络受限）。可检查网络或代理后重试，或稍后再试（镜像源可能临时失效）。' };
+    }
+    // 相对 profile 目录的 posix 形态：避免盘符被 pnpm 误解析，与 manifest 的 file: 引用同径
+    addSpec = path.relative(profileDir(), dl.file).split(path.sep).join('/');
+    if (updaterLog) updaterLog(`plugin install spec=${spec} tarball=${dl.url}`);
+  }
   const beforeMods = topLevelModules();
   const beforeDeps = (() => { const b = readProfileManifest(); return b && b.dependencies ? Object.keys(b.dependencies) : []; })();
   // 更新分支（AC10）：目标已装（依赖键或顶层目录存在）→ 装完跳过 realName 探测与 addBundle
   //   （realName 探测只识别「新增」包——更新时依赖键与顶层名不变，会误报失败）
   const knownName = resolveInstalledName(spec);
   const isUpdate = !!knownName && (beforeDeps.includes(knownName) || beforeMods.has(knownName));
-  const res = await runCmd(runtimeNodeExe(), pnpmArgs('add', spec), { timeout: 15 * 60 * 1000 });
+  const res = await runCmd(runtimeNodeExe(), pnpmArgs('add', addSpec), { timeout: 15 * 60 * 1000 });
   if (res.code !== 0) {
-    return { ok: false, message: `安装失败（pnpm exit ${res.code}）：\n${res.output.slice(-800)}` };
+    logInstallFail(spec, `pnpm exit ${res.code}: ${res.output.slice(-400)}`);
+    const why = pluginFetch.friendlyInstallError(res.output);
+    return { ok: false, message: why ? `安装失败：${why}。可稍后重试；技术细节已记入日志。` : '安装失败：插件源返回了无法归类的错误。可稍后重试；技术细节已记入日志。' };
   }
   if (isUpdate) {
     return { ok: true, message: `已更新 ${knownName}` };
@@ -418,6 +440,8 @@ async function uninstallPlugin(pkgName) {
     removeBundle(realName);
     return { ok: true, message: `已卸载内置插件 ${realName}` };
   }
+  // 受管 tarball 记录（B34）：dependencies 里 file: 指向 plugin-tarballs 的条目，卸载成功后清理安装包；外物不动
+  const depSpec = (() => { const m = readProfileManifest(); return m && m.dependencies ? m.dependencies[realName] : ''; })();
   const res = await runCmd(runtimeNodeExe(), pnpmArgs('remove', realName), { timeout: 10 * 60 * 1000 });
   if (res.code !== 0) {
     // pnpm 可能已经改了一半，无论如何把 bundles 清理掉
@@ -425,6 +449,12 @@ async function uninstallPlugin(pkgName) {
     return { ok: true, message: `已卸载 ${realName}（pnpm 有警告，已清理注册）` };
   }
   removeBundle(realName);
+  if (typeof depSpec === 'string' && depSpec.startsWith('file:')) {
+    const tgz = path.resolve(profileDir(), depSpec.slice('file:'.length));
+    if (isInsideDir(tgz, path.join(backend.dshHome(), 'plugin-tarballs'))) {
+      try { fs.rmSync(tgz, { force: true }); } catch { /* best effort */ }
+    }
+  }
   return { ok: true, message: `已卸载 ${realName}` };
 }
 

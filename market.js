@@ -75,6 +75,7 @@ function toast(msg, kind, actions) {
 let modalResolve = null;
 function showModal(title, bodyNode, okLabel) {
   return new Promise((resolve) => {
+    if (modalResolve) { console.warn('[market] 弹窗重入，忽略后者:', title); resolve(false); return; } // T57/B33：防 modalResolve 被覆盖致前者 Promise 悬挂
     modalResolve = resolve;
     document.getElementById('m-title').textContent = title;
     const body = document.getElementById('m-body');
@@ -305,7 +306,7 @@ async function onInstall(p) {
   try {
     const res = await api.install(spec);
     if (!res.ok) {
-      toast(`安装失败：${res.message}`, 'err', []);
+      toast(failText('安装失败：', res.message), 'err', []); // B33：message 自带失败前缀时不叠加
       return;
     }
     toast(`✅ ${res.message}，点击重启生效`, 'ok', [
@@ -332,7 +333,7 @@ async function onUninstall(p) {
   try {
     const res = await api.uninstall(name);
     if (!res.ok) {
-      toast(`卸载失败：${res.message}`, 'err', []);
+      toast(failText('卸载失败：', res.message), 'err', []);
       return;
     }
     toast(`🗑️ ${res.message}，点击重启生效`, 'ok', [
@@ -358,7 +359,7 @@ async function onDisable(p) {
   setBusy(true);
   try {
     const res = await api.disable(name);
-    if (!res.ok) { toast(`禁用失败：${res.message}`, 'err', []); return; }
+    if (!res.ok) { toast(failText('禁用失败：', res.message), 'err', []); return; }
     toast(`⏸️ ${res.message}`, 'ok', [
       { label: '立即重启', cls: 'primary', run: () => doRestart() },
       { label: '稍后重启', run: () => {} },
@@ -374,12 +375,10 @@ async function onDisable(p) {
 async function onEnable(p) {
   if (state.busy) return;
   const name = pkgBase(p.installSpec);
-  console.log('[market] enable click:', p.name, 'spec=', p.installSpec, 'name=', name);
   setBusy(true);
   try {
     const res = await api.enable(name);
-    console.log('[market] enable result:', JSON.stringify(res));
-    if (!res.ok) { toast(`启用失败：${res.message}`, 'err', []); return; }
+    if (!res.ok) { toast(failText('启用失败：', res.message), 'err', []); return; }
     toast(`▶️ ${res.message}`, 'ok', [
       { label: '立即重启', cls: 'primary', run: () => doRestart() },
       { label: '稍后重启', run: () => {} },

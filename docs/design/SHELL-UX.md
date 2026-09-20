@@ -58,7 +58,7 @@
 | C5 | 更新门禁（dev）：手动检查弹「只在安装版可用」+ 日志；自动检查静默跳过；`dshBinPath()` dev 固定走 `dsh-bundle/` | `main.js:567-576` / `:578-584` / `:131-140` |
 | C6 | `main.js` 现 2831 行（远超 500 行硬上限；T2 存量债） | 实测；技术待办 T2 |
 | C7 | `createWindow()` 为「建窗即 show」形态（`show:false` + `ready-to-show` 自动显示；向导窗同刻被拉起） | `main.js:725-773` |
-| C8 | 零新依赖 / 不引构建步骤（保持「直接跑源码」可运行） | `package.json:25-29`（dependencies 空数组） |
+| C8 | 零新依赖 / 不引构建步骤（保持「直接跑源码」可运行） | `package.json` 的 `dependencies` 段为空对象（T31 订正 2026-09-20：原锚 `:25-29` 为 as-of 记录，实测 `dependencies` = `:31`） |
 | C9 | 既有取证锚点（B01/B03 桌宠日志、B02/B04/B05 updater.log 行、console 行、env 开关）——拆分不得丢失 | `docs/design/AUTO-UPDATE.md` §2.2.9；`docs/design/PET-MULTIMONITOR.md` §3.3 |
 | C10 | 既有 dev 提示家族三处：卸载（`:319`）、Windows 右键菜单安装（`:1976`）、更新检查（`:569`）——本批只动更新检查面 | 逐处亲读 |
 
@@ -164,7 +164,7 @@
 |---|---|---|---|---|
 | 1 | **`fs.watch(home, {recursive:true})` 主路径 + 非 Windows 异步扫描回落**；5 s 定时器只做纯算术空闲判定 | 零遍历（OS 级事件推送）✓；不阻塞（事件回调只做字符串 + 赋值；回落走 `fs.promises`）✓；零新依赖（`node:fs`）✓ | Windows 递归 watch 有 OS 缓冲溢出 — 漏事件的固有风险（记为 L-B07-3）；回落路径每 5 s 仍全树异步扫描（不阻塞但持续 I/O，记为 L-B07-2） | **选定** |
 | 2 | 保持 5 s 轮询，只把递归 `stat` 改异步（旧实现的异步化） | 不阻塞 ✓；但每 5 s 仍对 20,849 文件（`~/.dsh` 实测总量 20,857）做一轮 stat——持续 I/O / 耗电，与「开销与规模解耦」相抵 | — | 否决 |
-| 3 | 引入 `chokidar` 等成熟库 | 违零新依赖纪律（`dependencies` 保持空数组，`package.json:25`）；且需同步 `build.files` | — | 否决 |
+| 3 | 引入 `chokidar` 等成熟库 | 违零新依赖纪律（`dependencies` 保持空对象，`package.json` 的 `dependencies` 段——T31 订正 2026-09-20：原锚 `:25` 为 as-of 记录）；且需同步 `build.files` | — | 否决 |
 | 4 | 收窄监视面（只监视 `storages/` + 顶层文件） | 开销最小；但**改变了 busy 判定面**（写入 `profiles/` 深层不再计忙）——语义变更，超出本批（在途改动已定口径） | 改动面小，但引入了需求层未审的口径变更 | 否决（登记为后续可选加固，见 O9） |
 
 #### 选型 J —— F6 遗留缺陷修复口径（B07 C4 / T12·US-7 补注）
@@ -548,7 +548,7 @@ runAutoChecks(reason)：
 | `shell-pet-geometry.js`（新） | 桌宠几何 helper 组 + 日志 / 尺寸校准（函数清单见注 S4） | `785-1113`/`1209-1210`/`1219-1270` | electron(screen)、fs、`shell-settings`→注入 `getPetWindow`、`getPetDrag`（无新注入） |
 | `shell-pet-drag.js`（新） | 拖动跟随 + 拖动 / 穿透 IPC 处理器函数（函数清单见注 S2） | `1190-1208` / `1212-1217` / `1272-1373` / `2591-2618` / `2619-2658` / `2679-2687`（`:1209-1210` / `:1219-1270` 归 geometry——注 S4） | electron(screen)、`shell-settings`、`shell-pet-geometry` → 注入 `getPetWindow`、pet 状态访问面（注 S2） |
 | `shell-pet.js`（新） | 桌宠窗口与状态机 + 台词 + 点击 IPC 处理器函数（函数清单见注 S3） | `260-315` / `1114-1188` / `1374-1520` / `2660-2678` | electron、`shell-settings`、`shell-pet-geometry`、`shell-pet-drag` → 注入 `showMainWindow`、`openExchangeWindow`、`broadcastAffinity` |
-| `shell-affinity.js`（新） | 好感度 + 兑换屋窗口 + 重置两函数 + `affinity:*` 处理器函数 | `1521-1757` / `2803-2830` | electron、fs、`shell-backend`、`shell-notify`、`shell-assets` → 注入 `petSay`、`setPetState`、`getPetWindow`、`setQuitting` |
+| `shell-affinity.js`（新） | 好感度 + 兑换屋窗口 + 重置两函数 + `affinity:*` 处理器函数 | `1521-1757` / `2803-2830` | electron、fs、`shell-backend`、`shell-notify`、`shell-assets` → 注入 `getPetWindow`、`pet`（状态访问面——`petSay` / `setPetState` 为 `pet` 的成员；T28 订正 2026-09-20）、`setQuitting`、`APP_NAME`、`affinityCore` |
 | `shell-mode.js`（新） | 背景与模式（`backgroundImagePath`/`applyBackground`/`setMode`/`maybeShowModeDialog`/`chooseBackground`/`resetBackground`） | `1774-1888` | electron、fs、`shell-settings` → 注入 `getMainWindow`、`destroyPetWindow`、`ensurePet`、`rebuildTrayMenu`、`notify` |
 | `shell-plugins.js`（新） | 插件引擎（profile 读写 / bundles 防呆 / 版本对比 / `installPlugin` / `uninstallPlugin` / pnpm 通道） | `2007-2364`（除 `restartBackend`） | electron、fs/child_process、`shell-backend` → — |
 | `shell-window.js`（新） | 主窗口（`createWindow`/`showMainWindow`/`toggleMainWindow`/`handleOpenArg`） | `722-780` / `1999-2006` | electron、`shell-backend`、`shell-mode`、`shell-assets` → — |
@@ -883,6 +883,10 @@ startCompletionWatcher()
 **边界（不做）**：不做全仓（非壳档）未绑定扫描的修复；不改托盘菜单结构；不改 `notify` 自身实现。
 
 #### 2.2.12 完成提醒的判定面（B09 / US-12）
+
+> **T33 互指注（2026-09-20，文档面）**：本节判定面与 `docs/design/PET-ANIMATION.md` §2.6.4（B19 判定门复用度）是**同源事实**——两处各自读 `<DSH_HOME>/storages/session_projcache/sessions/*.json` 的 per-record 单元并各自维护同族谓词（新鲜度 / 回合边界：本节 = `shell-notify.js` 的 `completionGate()`；彼处 = B19 新增读面），**互不依赖、各面语义同源**（同族解耦先例 = §2.5 C33 / O17）；
+> 抽共享只读模块 = 代码面，归 B17（台账 T33）。
+> 本注只登记同源关系，不改任何判定规则 / 前提 / 诊断行。
 
 **问题（现状语义的缺口）**：触发条件 = `now - lastBusyAt > IDLE_NOTIFY_MS`（`shell-notify.js:132`），忙信号 = `~/.dsh` 下非 `profiles` / `node_modules` 的写入（`isIgnoredPath`）。
 该信号与「回合是否结束」**无因果**：工具在用户工程目录里长跑（构建 / 安装 / 长命令）期间 `~/.dsh` 零写入，等待模型（首字延迟）期间同样零写入 ⇒ 静默窗口与「已完成」在现状判据下不可区分。
@@ -1361,6 +1365,33 @@ startCompletionWatcher()
 
 **边界（不做）**：不改 IPC 通道名 / 参数契约 / 返回字段；不改白名单 / 越界 / 解析门判据句与消息前缀；不改 `installPlugin` 与更新链（`pluginUpdateSpecOf` 已 skip `builtin:`，本批不触）；不改 `market.html` / `market-preload.js` / `shell-ipc.js`；不改 POSIX 清理侧（O26）；不做「已装未收录条目」的 `installSpec` 补全（O25，语义面超批）；不拆分 `shell-plugins.js`（C42 复核结论）。
 
+#### 2.2.16 GitHub tarball 安装链与失败文案契约（B33 / T57）
+
+**根因（as-of 2026-09-20 实测）**：`github:` 源走 pnpm 的 git 协议解析（`getRepoRefs → git ls-remote`）——国内无代理环境到 github.com 的 git 连接被重置（本机实测 `git ls-remote https://github.com/ysyyhhh/dsh-pet` ⇒ `Connection was reset`），且依赖本机 git 环境；
+   同机实测 `codeload.github.com/<owner>/<repo>/tar.gz/HEAD` 直连 HTTP 200（0.7 s）⇒ 改走 HTTPS tarball 链。
+
+**契约**：
+
+1. **下载链**：`installSpecKind = 'github'` 的标识先经 `shell-plugin-fetch.js` 下载 tarball——源序 = codeload 直连（`/tar.gz/<ref|HEAD>`）+ 镜像表 `GITHUB_MIRRORS` 的 github `/archive/<ref>.tar.gz` 形态，逐源串行、单源超时 45 s；镜像表 = 易变资源，失效只改表。
+2. **防呆**：响应体须为 gzip（魔数 `1f 8b`）——镜像错误页（HTML 200）不落盘。
+3. **持久落点**：`dshHome()/plugin-tarballs/<owner>-<repo>[-<ref安全形>].tgz`——pnpm 会把 `file:` 引用写进 profile manifest，文件必须留住；传给 pnpm 的实参 = 相对 profile 目录的 posix 形态（避免盘符被误解析为协议）。
+4. **失败文案**：`friendlyInstallError` 四类（缺 git / 网络受限 / 源不存在 404 / 缺 package.json）+ 兜底句；UI 只展示归类句，原始输出落 update 域日志（`plugin install spec=… result=fail detail=…`）；下载链全败 = 固定中文指引句（不起 pnpm、注册面零改动）。
+5. **UI 两处**：`failText(prefix, msg)`（`market-update.js` 定义、`market.js` 经同页全局共用）——message 自带「安装 / 卸载 / 更新 / 禁用 / 启用失败」前缀时不叠加（去「安装失败：安装失败」双重前缀）；`showModal` 重入守卫（T57）——模态打开期间第二次调用立即 `resolve(false)`，杜绝 `modalResolve` 被覆盖致前者 Promise 悬挂。
+6. **零回退面**：白名单 / 越界 / 解析门判据句不动；npm 源与内置源安装路径不动；IPC 通道与返回契约不动；`market.js` 净行数 ≤0（贴线档纪律）。
+
+**验收** = 批次档 `docs/batches/B33-market-tarball.md` §6（AC-B33-1…5）；用例 = TC-107…TC-113。
+
+#### 2.2.17 市场后续小修契约（B34 / 静默失效家族三件）
+
+**契约**：
+
+1. **禁用诚实面**：`removeBundle` 返回是否真写盘（读不到 manifest ⇒ `false`）；`marketDisable` 据返回值报「已禁用」/「禁用失败：…（profile 清单不可读，未改动）」——不得假成功。
+2. **受管 tarball 清理**：`uninstallPlugin`（pnpm remove 成功分支）先记录 `dependencies[realName]`——`file:` 形态且解析后严格位于 `dshHome()/plugin-tarballs/` 内 ⇒ 卸载成功后删安装包；registry 依赖与无主外物不动（`isInsideDir` 词法判定、不 realpath）。
+3. **全部更新空结果两态**：目录三源全败（`source === 'none'`）⇒ 返回单条失败项（「插件目录不可用…未执行更新」）；无可更新项 ⇒ 返回空表（**不重启后端、不起 pnpm**），渲染层 `doUpdateAll` 对空表报「没有可更新的插件（全部已最新）」，不再报「成功 0 / 失败 0」。
+
+**零回退面**：卸载的 pnpm 警告分支语义不变（照旧注销 bundles、不清 tarball）；`marketUpdate`（单个更新）链路不动；IPC 通道与返回字段不动。
+**验收** = 批次档 `docs/batches/B34-market-followup.md` §6（AC-B34-1…4）；用例 = TC-114…TC-119。
+
 ### 2.3 受影响文件全清单
 
 | 文件 | 当前行数 | 改动点（含现状行号） | 预计改动量 | 末行数（预估） |
@@ -1410,7 +1441,8 @@ startCompletionWatcher()
 > B07 口径：代码文件「末行数」列 = 实施前预估 → **实施期实测回填**（源 = `docs/batches/B07-harness-auth-compat.md` §5）；文档行按落档实测；行数列 as-of 2026-09-17。
 > 本批**零新增文件**——与 B06 的 15 模块新增不同，故 `package.json` 的 `build.files` 与 `dependencies` 均不动（NFR-3）。
 > **delta 口径统一（评审修正轮 1 #1）**：`shell-backend.js` 行原记 +约 22 / −约 6（未含 A5 展开项），批次档 §2.3 记 +约 30 / −约 6——本表统一为 **+约 34 / −约 6 → 实施期实测 322（预估 ≈302）**（含 A5 与 DD-28 晚命中回收）。**口径以本表为准**（批次档 §2 为 append-only——生效口径注记落批次档 §2.8）；该档 **>300 软档 体量裁定**见下条。
-> **单函数体量核对（评审修正轮 1 #7）**：三档改动均为函数内小改——最长函数 = `shell-backend.js:165` `startDsh`（48 行，本批加宽限检查 + A5 落盘 ⇒ 实施期实测 **63** 行）· `shell-notify.js:105` `startCompletionWatcher`（36 行，修正 C/D ⇒ 实施期实测 **43** 行）· `shell-mode.js:39` `applyBackground`（41 行，本批不改）——均 **<<300**，无 >300 函数面，无需拆分裁定。
+> **单函数体量核对（评审修正轮 1 #7）**：三档改动均为函数内小改——最长函数 = `shell-backend.js` `startDsh`（48 行，本批加宽限检查 + A5 落盘 ⇒ 实施期实测 **63** 行）· `shell-notify.js` `startCompletionWatcher`（36 行，修正 C/D ⇒ 实施期实测 **43** 行）· `shell-mode.js` `applyBackground`（41 行，本批不改）——均 **<<300**，无 >300 函数面，无需拆分裁定。
+>    （行号 as-of B07 设计期记 `:165` / `:105`——实测 2026-09-20 = `:197` / `:278`，已漂移；`shell-mode.js:39` 未漂移——T16 ① 2026-09-20 删具体行号改指符号名；D4：行号只作 as-of 参考）
 > **>300 软档 体量裁定（`shell-backend.js` 预估 ≈302 → **实测 322**；评审修正轮 1 #1 补正）**：① 事实 = 越 300 软档但 **< 400 消解线**（未触 NFR-3 的 500 硬限）；② 理由 = 本批为**纯增量**（捕获锁定 / 晚命中回收 / 取证行与 `reason` 分类 / A5 双写——无新职责、无新文件、无新依赖），单函数最长 63 行（见上条核对）；③ 消解路径 = **保持单文件、不拆分**——后续再有增量使该档**逼近 400**、或新增独立职责（新增导出面 / 新增落盘机制）时，另批做拆分复核。
 
 **B07 明确不触碰（在 B06 不改清单之外新增）**：`bundled-skills/**`（本批硬约束：只读）/ `docs/TODO.md`（台账归主 agent）/ `docs/README.md`（收口面属主 agent——T13 ②）/ B06 §1.9 与 §6（不代写他人段落——C5）。
@@ -1427,7 +1459,7 @@ startCompletionWatcher()
 
 > 本批**零新增文件**（桩测手段若采用须经主 agent 裁定——§3.3 手段 11 ③ 已标注）：`package.json` 的 `build.files` 与 `dependencies` 均不动（P3）。
 > 不触碰（明确）：`shell-tray.js`（175 行，`setNotify` 面不变）/ `shell-settings.js`（60，`notifyOnComplete` 默认值不变）/ `shell-affinity.js`（305，其读面失效 = 技术待办 T14，归 **B10**）/ 其余 `shell-*.js` / `docs/TODO.md` 与 `docs/README.md`（主 agent 写域）。
-> 单函数体量核对（**修正轮 1 #5**；口径 = 函数体起止行）：`shell-notify.js:97-139` `startCompletionWatcher()` 现 **43** 行（实施期实测口径同 B07 表 `:1117`）→ 本批在 tick 内插入判定分支 / 抑制上界 ⇒ 预估 **≈60** 行；
+> 单函数体量核对（**修正轮 1 #5**；口径 = 函数体起止行）：`shell-notify.js` `startCompletionWatcher()` 现 **43** 行（实施期实测口径同 B07 表 `:1117`；行号 as-of B09 记 `:97-139`——已漂移，T16 ① 2026-09-20 同形删注；D4：行号只作 as-of 参考）→ 本批在 tick 内插入判定分支 / 抑制上界 ⇒ 预估 **≈60** 行；
 > `completionGate()` 为新增函数，预估 **≈40** 行；两者均 **<<300**，无 >300 函数面，无需拆分裁定（NFR-3 的 500 行硬限亦无影响）。
 > **实施后收口轮实测**：`startCompletionWatcher()` **47** 行（`:238-284`）、`completionGate()` **42** 行（`:117-158`）——上述预估（≈60 / ≈40）为高估，结论（均 <<300、无需拆分裁定）不变。
 > 原记「`completionGate()` 预估 ≈40 行、`startCompletionWatcher()` 163 → ≈178 行」为**口径错误**（163 = 本档文件行数、178 与本表末行数不符）——已按实测重写。
@@ -1799,7 +1831,7 @@ startCompletionWatcher()
 
 ## 三、测试层
 
-本仓无自动化测试基建（技术待办 T4 认账不排期；`package.json` 无 `test` script）。本批验证 = **静态核对 + 行数实测 + `node --check` + 真机清单 + 日志锚点 grep**，并按本批性质（壳交互 / 结构迁移）如实标注人工项。
+本仓无自动化测试基建（技术待办 T4 认账不排期；`package.json` 无 `test` script——T31 订正 2026-09-20：本句记录的是 B06 设计期现状，现状 = B16 起 scripts 16 项含 `test` / `lint` / `test:full` / `test:integration`，门禁 3/3）。本批验证 = **静态核对 + 行数实测 + `node --check` + 真机清单 + 日志锚点 grep**，并按本批性质（壳交互 / 结构迁移）如实标注人工项。
 
 ### 3.1 验收标准逐条回指
 
@@ -2009,6 +2041,19 @@ startCompletionWatcher()
 | TC-104（B30） | 错误 | 桩测：`done` / `stale` / `unavailable` 三态 + 静默 ≥ 阈值；`notifyOnComplete=false` | 零等待提醒（互斥面）；关闭态完成 + 等待**均零提醒** | US-17 / AC38·AC39 |
 | TC-105（B30） | 边界 | 真机 / 桩测：回合在途 + ≥60 s 长工具调用静默 | 等待提醒**会触发**（判据面无法区分长工具调用）——已知限制 L-B30-1；文案为诚实口径（**非缺陷断言**） | US-17 / AC38 |
 | TC-106（B30） | 正常 | 零回退面机检：`git diff` 面限定 + 行数实测 + 门禁三连 | 冻结面零 diff；`shell-notify.js` ≤ 500；`lint` / `test:full` / `test:integration` 全绿 | NFR-3·NFR-5 / AC39 |
+| TC-107（B33） | 正常 | 桩测：github 夹具 + fetch 桩返 gzip + spawn 桩写 dependencies ⇒ `installPlugin('github:owner/dsh-x')` | `{ok:true}`；fetch 首调 = codeload `/tar.gz/HEAD`；pnpm 实参 = 本地 tgz（不含 `github:`）；tarball 持久落盘；bundles 注册真名 | AC-B33-1 |
+| TC-108（B33） | 边界 | 桩测：直连源 reject、第二源返 gzip | 装成；fetch 恰 2 次；第二源 = 镜像表首项 | AC-B33-1 |
+| TC-109（B33） | 异常 | 桩测：下载链全源 reject | `{ok:false}` 中文指引句；不含堆栈帧；零 pnpm 调用；fetch 次数 = 1 + 镜像表长；bundles 零改动 | AC-B33-2 |
+| TC-110（B33） | 异常 | 桩测：下载成功 + pnpm exit 1（stderr 含 git 克隆失败原文与 `at async` 帧） | message = 「安装失败：网络受限…」归类句；不含 `pnpm.cjs` / `at async` / `access rights` 原文 | AC-B33-2 |
+| TC-111（B33） | 正常 | vm 桩：安装失败 message 自带「安装失败：」前缀 ⇒ 点安装 → 确认 | toast 无「安装失败：安装失败」双重前缀；归类句在场 | AC-B33-3 |
+| TC-112（B33） | 边界 | vm 桩：模态打开中第二次 `showModal`（T57） | 后者立即 `resolve(false)`；前者经 m-ok 正常结算（Promise 悬挂消除） | AC-B33-4 |
+| TC-113（B33） | 正常 | 零回退面机检：`git diff` 面限定 + 行数实测 + 门禁 | 冻结面零 diff；`market.js` ≤ 500；`lint` / `test:full` 全绿；b12 / b28 档用例同绿 | NFR-3 / AC-B33-5 |
+| TC-114（B34） | 异常 | 桩测（**慢测层** `slow()`：清单不可读触发 `readProfileManifest` 三重试 ≈ 500 ms）：清单非法 JSON + 目录在场 ⇒ `marketDisable`；再修复清单 ⇒ 二次调用 | 损坏态 = `{ok:false}`「禁用失败：…」（假成功消除）；正常态 = `{ok:true}` 且 bundles 真注销 | AC-B34-1 |
+| TC-115（B34） | 正常 | 桩测：`dependencies['dsh-x'] = 'file:…/plugin-tarballs/owner-dsh-x.tgz'` + 落盘 tgz ⇒ `uninstallPlugin('dsh-x')` | `{ok:true}`；受管 tgz 已删；bundles 注销 | AC-B34-2 |
+| TC-116（B34） | 边界 | 桩测：registry 依赖（`^1.0.0`）+ 无主看门件 `plugin-tarballs/keep.tgz` ⇒ 卸载 | `{ok:true}`；`keep.tgz` 在场（外物不动） | AC-B34-2 |
+| TC-117（B34） | 正常 | 桩测：空 profile + fetch 桩即拒 ⇒ `marketUpdateAll()` | 返回 `[]`；`restartBackend` 0 次；pnpm 0 次 | AC-B34-3 |
+| TC-118（B34） | 正常 | vm 桩：`updateAll` 返 `[]` ⇒ 点「全部更新」 | toast 报「没有可更新的插件（全部已最新）」；无「成功 0 / 失败 0」 | AC-B34-3 |
+| TC-119（B34） | 正常 | 零回退面机检：`git diff` 面限定 + 行数实测 + 门禁 | 冻结面零 diff；触碰档 ≤ 500 行；`test` / `test:full` 全绿（慢测层归册）；b12 / b28 / b33 档零 diff | NFR-3 / AC-B34-4 |
 
 > **TC-31 的可达性口径（评审修正轮 1 #3）**：本用例强制宽限耗尽；若该序列中 URL 行在 `waitForWebUrl` 返回前已到达（捕获早已锁定），则只命中 `captured` 一条、不产生 `not captured` 行——此时「两条齐备」面**未构造到**，记为未覆盖该态（不伪报），回归主判据仍为 AC15 的「每次启动至少命中一条」。
 
@@ -2019,7 +2064,7 @@ startCompletionWatcher()
 1. **静态核对（grep 清单）**：① AC3 **五符号** 0 处（排除 `docs/`、`.test-*`、`dsh-bundle/`）；② `pet.js` 左键守卫三处；③ `showMainWindow` 为点击路径唯一「显示」入口；④ 托盘条目结构（§2.2.3 对照）；⑤ 门禁分支（`app.isPackaged` 保护 + `face=app` 行）；⑥ 平台分支计数（新增代码零平台分支）；⑦ `grep "更新检查只在安装版可用"` = 0 处（排除 `docs/`）。
    - ⑧ F7 删除面：四组文件不存在 + 引用 0 处（grep 范围含代码 / 配置 / 随包文档，排除 `docs/` 与 `.test-*` / `dsh-bundle`）；⑨ F7 保留面在场（`assets/pet/idle.png` / `assets/pet-new/**` / `probe-*.js` ×7 / `debug-pet.cmd`）。
 2. **行数实测**：换行符计数于全部 js（口径承 B05；口径定义见 §2.3 行数口径注）。
-3. **语法门**：`node --check` 于 15 个新模块 + `main.js` + `pet.js`（本仓无 lint / test script，此为最小机械门）。
+3. **语法门**：`node --check` 于 15 个新模块 + `main.js` + `pet.js`（本句记录的是 B06 设计期现状「本仓无 lint / test script」，T31 订正 2026-09-20：现状 = B16 起有 `lint` / `test` 等四 scripts、门禁 3/3）。
 4. **真机清单**：按 §3.2 逐条执行；冷启动类用例用隔离 `--user-data-dir` + 隔离 `DSH_HOME`（承 B02 §6.7 / B05 手法），并预置 `settings.json`（`modeChosen:true`、`mode:'whale'`）。
 5. **锚点 grep 清单**：§2.2.6 表逐条（含 `updater.log` 15 条主格式行与变体、`pet-*` 日志、console 行、env 开关）。
 6. **纯迁移 diff 判据**：P1 起点提交为基线——各层迁移提交除样板（require / exports / 限定 / 访问器）外，逐句一致；行为变更（F1–F5）不得混入 P1 各提交。
@@ -2236,4 +2281,6 @@ startCompletionWatcher()
 |  | ② §2.3 B30 表四行「实施期实测回填」完成（`shell-notify.js` **351**（+37）· `main.js` **261**（+12）——源 = 批次档 §5；文档两行（自指 / 预估）按落档实测回填：`docs/requirements/SHELL.md` **355** · 本档 **2239**）+ 表下回填注 + 体量裁定条内预估（≈350）与余量按实测同步（**351** / 余量 **49**——裁定结论不变；承 B12 收口轮先例）； |
 |  | ③ AC39 ② 括注补「**返回载荷形状**」半句（规则 ①–④ 条件 / 语义不变——diff 仅返回载荷形状，与执行面「返回三键」同指；实施按执行面落成立，源 = 批次档 §5.5 项 2）。**语义零变更；条目计数不变（AC37–AC39 / TC-97…TC-106 / DD-58…DD-61 / C48–C51 / O27 / US-16·US-17 均不变）**。 |
 |  | 补正（2026-09-19，落档实测）：本轮改后本档 **2234 → 2239**（换行符计数；+5）；`docs/requirements/SHELL.md` **355**（本轮未改该档——② 的回填为登记引用）；行宽实测 **0** 行超 300（不含行尾 CR）；EOL 全档 CRLF。 |
+| 2026-09-20 | **B33 落笔轮（快速通道：用户 2026-09-20 聊天内确认设计要点并口头批准，设计凭证记批次档 §2）**：§2.2 增 **§2.2.16**（GitHub tarball 安装链与失败文案契约——根因实测 / 契约六条 / 零回退面）；§3.2 用例表增 **TC-107…TC-113**。**既有条文与既有计数不变。** |
+| 2026-09-20 | **B34 落笔轮（快速通道，同 B33 裁定）**：§2.2 增 **§2.2.17**（市场后续小修契约——禁用诚实面 / 受管 tarball 清理 / 全部更新空结果两态）；§3.2 用例表增 **TC-114…TC-119**。**既有条文与既有计数不变。** |
 

@@ -37,7 +37,7 @@
 - `:34` `LEVEL_THRESHOLDS = [0, 20, 50, 100, 180, 300, 450, 650, 900, 1200]`——**一次长任务（2541 点）远超 1200 封顶 ⇒ 直接满级 ✗**
 - `:138` `points = Math.floor(usage / AFFINITY_RATE) + bonus`——**不封顶**（满级后继续涨 ✗）
 - `:143` `progress = nextThr === undefined ? 1 : …`（满级恒 1 ✓）；`:147` `pointsToNext = nextThr === undefined ? points : nextThr`——满级回退为 `points`（**无意义值 ✗**）
-- `:36-38` FOODS：小鱼干 1💴/bonusTokens 2000 → **+4 点** · 小蛋糕 2💴/4000 → +8 · 奶茶 3💴/6000 → +12——`bonusPoints = round(bonusTokens / AFFINITY_RATE)`（`:154`/`:331`）
+- `:36-38` FOODS：小鱼干 1💴/bonusTokens 2000 → **+4 点** · 小蛋糕 2💴/4000 → +8 · 奶茶 3💴/6000 → +12——`bonusPoints = round(bonusTokens / AFFINITY_RATE)`（`:154`/`:331`）——**B31 改前实况**（as-of 2026-09-19；现值 = `affinity-core.js:20-22`：10💴/200000 → +400 量级，消歧注 2026-09-20）
 - `:186-189` watcher 点播「好感 +1，现在是 Lv.x 啦~」——**满级仍持续播报 ✗**
 - 显示面：`exchange.js:22` `Lv.${level} · ${points} 点`（满级数字一路涨 ✗）；`pet.js:184` `'Lv.' + level + ' 好感 ' + points + '/' + pointsToNext`（满级 `好感 3545/3545` 无意义 ✗）
 

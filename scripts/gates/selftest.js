@@ -262,12 +262,12 @@ function runSelftest() {
       assertOk(problems.length === 0, `TC-11: D③ 三种红（删调 / 双调 / 解构 fail-closed；问题 = ${problems.join(',') || '无'}）`);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   }
-  // TC-B16-12 真实 main.js ⇒ 13/13 恰一处（免检 3 档；B31：+affinity-core.js 绑定 1 条 + 免检 1 档）
+  // TC-B16-12 真实 main.js ⇒ 13/13 恰一处（免检 4 档；B31：+affinity-core.js 绑定 1 条 + 免检 1 档；B23：+pet-unlock-core.js 绑定 1 条 + 免检 1 档）
   {
     const baseline = lib.loadBaseline(path.join(checks.REPO_ROOT, 'scripts', 'gates', 'baseline.json'));
     const res = checks.checkAssembly(lib.listFiles(checks.REPO_ROOT), checks.REPO_ROOT, baseline);
     const ok = res.ok + res.exemptChecked;
-    assertOk(res.ok === 13 && ok === 16 && res.violations.length === 0, `TC-12: 真实 main.js 16 条绑定全合规（13 init + 3 免检）`);
+    assertOk(res.ok === 13 && ok === 17 && res.violations.length === 0, `TC-12: 真实 main.js 17 条绑定全合规（13 init + 4 免检）`);
   }
   // TC-B16-13 基线陈旧：夹具违规已清零而条目未缩减 ⇒ 红
   {

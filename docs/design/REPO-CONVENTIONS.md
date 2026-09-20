@@ -422,9 +422,9 @@ docs/CONVENTIONS.md
 | E | 样本区零引用 | 权威 = `docs/CONVENTIONS.md` §四（B29 实施轮落笔）——判据句与口径见 附 A-续 §A-B29.2.2（本表只列名，不重述） | 同左 | 同左 |
 
 - **判据句单一权威源（D2）**：B / C 的判据句权威 = `docs/CONVENTIONS.md` §五，D①②③ 的判据句权威 = `docs/CONVENTIONS.md` §四；本表只承载**机检口径与机检方式**，**不复述判据句**（防两处措辞分叉）；规范档只留判据句 + 机检实现面的指针。
-- **D③ 的覆盖面 = 组合根绑定面**（判据闭合，2026-09-18 实测；B31 实施后计数与行锚同步，as-of 2026-09-19）：D③ 只对 `main.js` 的相对 `require`（`const <名> = require('<相对>')`）**绑定到的**档适用 —— `main.js:32-47` 共 **16** 条相对 require。
+- **D③ 的覆盖面 = 组合根绑定面**（判据闭合，2026-09-18 实测；B31 / B23 实施后计数与行锚同步，as-of 2026-09-20）：D③ 只对 `main.js` 的相对 `require`（`const <名> = require('<相对>')`）**绑定到的**档适用 —— `main.js:32-48` 共 **17** 条相对 require。
   `docs/CONVENTIONS.md` §四 列的「无 `init` 4 档」中：`shell-settings.js` / `shell-ipc.js` **在绑定面内** ⇒ 入免检清单；`shell-assets.js` / `shell-market.js` **未被组合根绑定**（`main.js` 全文无其 require）⇒ 不进绑定面、无需入清单。
-  故基线 `assemblyExempt` = **3 档**（+ `affinity-core.js`——B31 新增绑定，无 `init` 导出），与现状 `13/13 恰一处` 闭合。
+  故基线 `assemblyExempt` = **4 档**（+ `affinity-core.js`——B31 新增绑定；+ `pet-unlock-core.js`——B23 新增绑定：两者均无 `init` 导出），与现状 `13/13 恰一处` 闭合。
 - **D③ 即 §1.4-5 的 T39 ②「装配面唯一」的机检落点**（T37 的组装面接线漏调亦由本判据拦）——与 D①② 的分工见下。
 
 **各判据现状（as-of 2026-09-18）**：
@@ -436,7 +436,7 @@ docs/CONVENTIONS.md
 - **C**：最大 = `market.js` **500**（贴线）· `updater.js` 497 · `tests/b12-plugin-guards.test.js` 491；**0 档超限**。
 - **D①**：**0 环**（基线不设条目）。
 - **D②**：超限 **6 档** = `shell-tray` **10** · `shell-ipc` **6** · `shell-pet` / `shell-update` / `shell-window` 各 **5** · `shell-market` **4**。
-- **D③**：**13/13 恰一处**；免检 3 档 = `shell-settings.js`（工具档，无 `init`）· `shell-ipc.js`（走 `register()` 接线）· `affinity-core.js`（B31 新增，无 `init` 导出——结构性免检）。（D③ 数随 B31 同步，as-of 2026-09-19）
+- **D③**：**13/13 恰一处**（绑定面 **17** 条）；免检 **4 档** = `shell-settings.js`（工具档，无 `init`）· `shell-ipc.js`（走 `register()` 接线）· `affinity-core.js`（B31 新增，无 `init` 导出——结构性免检）· `pet-unlock-core.js`（B23 新增，无 `init` 导出——同形结构性免检）。（D③ 数随 B31 / B23 同步，as-of 2026-09-20）
   T37（B20 实机：`physics.init` 漏调致功能全死而 AC 全绿）正是本判据的拦截面。
 
 - **F1 覆盖面 = 七条判据**（A 语法 · B 行宽 · C 行数 · D① 无环 · D② fan-out · D③ 接线点唯一 · **E 样本区零引用（B29）**）——与 A.2.2.1 的 `checks=7` 同口径；七条各出一行 `CHECK …` 摘要（A.3.1 AC-B16-6/7/8 据此逐条回指；E 的回指 = 附 A-续 A-B29.3.1）。
@@ -900,3 +900,4 @@ docs/CONVENTIONS.md
 | 2026-09-19 | **B29 修正轮 1**（评审轮 1 pass 后，🔴0 / 🟡6 / 🔵3 逐条收敛）：E① 补第三式（末段形态）并合并 open ① 裁定（引号形态保留）；E① 排除 `package.json`；`pkg-unreadable` / `pkg-shape` fail-closed 退出码写死 = 2；300 档结论补句；扫描面行计入修订清单第五处；现状锚改按 E① 扫描面口径；`package.json` 行锚实测注；B27 冻结面依据指针。依据 = 批次档 §2 修正轮 1 记录与 §3 轮次 1。 |
 | 2026-09-19 | **B29 设计微修（代码轮裁决后文档面收口）**：§A-B29.2.2 补锚红分流规则（仅锚红按判据码报告 / 混合失败与锚红未确认退 2 / `SELFTEST-FAIL` 行不静默）+ `build` 非对象归 `pkg-shape` fail-closed（退 2）+ 反引号末段转义不判口径（`\\` 转义残留边界随下次扩展收口）+ 自证 TC 集固定 6 例（`pkg-shape` 例随扩展补）；TC-B29-06 期望行同步。依据 = 批次档 §5 代码轮报告（🟡#1 + 🔵#3/#4/#6）。 |
 | 2026-09-19 | **B31 收口轮（文档层折账；源 = `docs/batches/B31-affinity-balance.md` §5.2）**：附 A §A.2.2.2 D③ 覆盖面「`main.js:32-46` 共 15 条」→ **`:32-47` 共 16 条**；`assemblyExempt` **2 档 → 3 档**（枚举同步 + `affinity-core.js`，D3）；各判据现状 D③ 行同改（as-of 2026-09-19）。**判据句与机检口径零动。** |
+| 2026-09-20 | **B23 实施后文档同步轮（附 A §A.2.2.2 D③ 折账；源 = `docs/batches/B23-pet-action-unlock.md` §5.6 / §5.7）**：覆盖面「`main.js:32-47` 共 16 条」→ **`:32-48` 共 17 条**；`assemblyExempt` **3 档 → 4 档**（枚举同步 + `pet-unlock-core.js`，D3）；各判据现状 D③ 行同改（免检 3 → 4，as-of 2026-09-20）。**判据句与机检口径零动。** |

@@ -63,7 +63,7 @@
 | IPC 面 | `pet-preload.js`（**15 行**）：`dragStart/dragHeartbeat/dragEnd/clicked/rightClicked/setIgnoreMouse` + `onSay/onState/onAffinity/onDragCancel` | `pet-preload.js:4-15` |
 | 建窗面 | `BrowserWindow{ transparent, frame:false, alwaysOnTop, skipTaskbar, resizable:false, sandbox:true }` + `loadFile(pet.html)` + `setIgnoreMouseEvents(true,{forward:true})`（win32） | `shell-pet.js:97-121`；窗口尺寸 = `geometry.PET_SIZE_DIP`（`shell-pet-geometry.js:29`） |
 | 素材现状 | `assets/pet-new/` **51 档 / 2.52 MB**（11 个动作目录 + 1 张预览图）；`assets/pet/` 1 档（旧待机帧） | 递归实测（本批勘察） |
-| 打包面 | `build.files` = **显式白名单**，含 `assets/**/*` 与 `THIRD-PARTY-NOTICES.md`；`extraResources` 另列 | `package.json:39-80`（`assets/**/*` = `:74`；`THIRD-PARTY-NOTICES.md` = `:78`） |
+| 打包面 | `build.files` = **显式白名单**，含 `assets/**/*` 与 `THIRD-PARTY-NOTICES.md`；`extraResources` 另列 | `package.json` 的 `build` 段（T31 订正 2026-09-20：原锚 `:39-80` / `:74` / `:78` 为 as-of 记录；实测 `assets/**/*` = `:88`、`THIRD-PARTY-NOTICES.md` = `:92`） |
 | 配置面 | 用户配置 = 扁平 `settings.json`（9 个顶层键，无嵌套机制）；`shell-settings.js` 载入 / 保存 + 损坏区分 | `shell-settings.js:15-24` / `:34-51` |
 | 日志面 | 既有模式 = env 开关 `BIGFISH_PET_DEBUG=1` + 主进程追加写 `userData/pet-geometry.log` | `shell-pet-geometry.js:34` / `:51-53` |
 
@@ -85,7 +85,8 @@
 
 #### 1.3.3 测试面现状
 
-- 本仓**无测试基建**：`package.json` 无 `test` script（`package.json:13-24`）；`tests/` 3 档为**开发期工具**（`tests/harness-store.test.js` 269 行 / `tests/update-lib.test.js` 84 行 / `tests/update-stub.mjs` 91 行），不构成仓门禁（`AGENTS.md` §三）。
+- 本仓**无测试基建**：`package.json` 无 `test` script（as-of 注——T31 订正 2026-09-20：原锚 `:13-24` 已过期，B16 起 scripts = 16 项且含 `test` / `lint` / `test:full` / `test:integration`，全仓门禁 = 3/3；`tests/` 9 档）。
+  本句记录的是 B18 设计期现状（当时 `tests/` 3 档 = `harness-store.test.js` 269 行 / `update-lib.test.js` 84 行 / `update-stub.mjs` 91 行）。
 - 既有**桩测先例**：`.thincoder/b03-pet-calibrate-stub.mjs`（1205 行，B03 实施桩测，跑法 `node .thincoder/b03-pet-calibrate-stub.mjs`，末行打印 `pass/total PASS`）。
   **⚠ 前置缺陷 D1**：该工具**当前不可运行**——抽取源硬绑 `main.js`（`.thincoder/b03-pet-calibrate-stub.mjs:84`），而几何 / 拖拽 / 散步实现已由 B06 F6 拆分迁出（`main.js:35-37` 只余 `require`）；实测运行即抛 `Error: marker not found: const PET_SIZE_DIP = {`（`sliceBetween`，`:96`），**0 条断言执行**。批次档 §1.4-2 的「189/189 保持全绿」在当前树不可复现 ⇒ 见 §2.5 前置缺陷 D1 的处置请求。
 
@@ -120,7 +121,7 @@
 | **可观测信号（四条）** | ① 回合在途（`openTurnStartSeq !== null`）；② 生成中（`openStep !== null`）；③ 工具执行中（`pendingCalls` 键数 > 0）；④ 回合结束（`turn/end` 是**强制落盘点**） | 同上一行；写盘点 `dsh-session-projection-cache/lib/index.js:290-317`（`:292-294` = `turn/end` 强制 flush） |
 | **不可观测信号（本批的决定性事实）** | ① 等待批准与「工具在跑」**不可区分**；② 回合成败**不可得**；③ 样本 `result` 档是**亚秒窗口**，5 s 采样下基本不可观测 | 逐条证据行 = 本节表后**注 W3** |
 | 写入节流（时延上界） | 强制写入点 = 会话创建 / **`turn/end`** / 会话销毁；其余按 `writeEveryEvents: 200` 或 `writeIntervalMs: 5000` 节流 ⇒ 派生状态**最多滞后 ≈5 s** | 出货组合 `dsh-bundle/node_modules/@deepseek-ai/dsh-base/cordis.patch.yml:162-166`；写盘点 `dsh-session-projection-cache/lib/index.js:290-317` |
-| 会话日志（备选读面，**本批否决**） | `<dshHome>/sessions/<项目段>/<会话段>/session.v3.jsonl.zstd`（zstd 压缩帧）；本仓运行时 = Electron 33（**Node 20.x，`node:zlib` 无 zstd**）⇒ 解析需新依赖 | 本机实测 `~/.dsh/sessions/**` 仅该一档；`package.json:29`（`electron ^33.2.0`）；同源否决先例 = B09 设计（`docs/design/SHELL-UX.md` §2.5 DD-30 的备选列） |
+| 会话日志（备选读面，**本批否决**） | `<dshHome>/sessions/<项目段>/<会话段>/session.v3.jsonl.zstd`（zstd 压缩帧）；本仓运行时 = Electron 33（**Node 20.x，`node:zlib` 无 zstd**）⇒ 解析需新依赖 | 本机实测 `~/.dsh/sessions/**` 仅该一档；`package.json` 的 `devDependencies` 段（T31 订正 2026-09-20：原锚 `:29` 为 as-of 记录，实测 `:33`） |
 | 既有读面先例（**只复用口径，不 require**） | `shell-notify.js:34-43`（常量）/ `:104-158`（目录段 + 「mtime 最大记录」谓词 + `ver` 守卫 + 降级诊断行）· `shell-affinity.js:93` / `:111`（`*.json` 枚举口径；`.json.bak.<stamp>` 天然排除） | 亲读两档 |
 | 状态面落点实测（**换行符口径**） | `shell-pet.js` **426** · `pet.js` **211** · `pet-chain.js` **240** · `pet-chain-core.js` **198** · `pet-preload.js` **17** · `shell-settings.js` **60** · `shell-tray.js` **175** · `pool.json` **71**（引用 **91** 段 / 未引用 **15** 段） | 本批脚本逐档实测 |
 | 池机制无需改代码 | `pet-chain.js:130-134` 的 `pool.events[s]` 是**泛型映射**——新增档位只需池内多一个键，链逻辑与 V1–V6 谓词**零改动** | 亲读 `pet-chain.js:115-135` · `pet-chain-core.js:106-177` |
@@ -287,7 +288,10 @@
 | `pickChainNext({weights, roll, cur, facing, pool})` | `→ {kind, name\|null, mirror}` | 链的一步决策（`kind='move'` 时 `name=null`，由调用方发散步请求） |
 | `mediaBox({canvas, body, targetH, feetY})` | `→ {scale, left, top, w, h, hit}` | 见 §2.2.6 的算式（纯计算，无 DOM） |
 
-- **`nextInSlot` 的契约保留（可达性注）**：**整机形态下无消费路径**——主进程档位定时器（1.6 / 2 / 2.4 s，`shell-pet.js:116-118` / `:373-375`）先于段长（实测 10.04 s）把档位置回 `idle` ⇒ 段结束瞬间 `playing.slotKey !== slot`，轮换分支不触发（两轮长跑日志 `reason=slot-rotate` **零行**）。
+- **`nextInSlot` 的契约保留（可达性注；T44 订正 2026-09-20——原注「整机形态下无消费路径」与实测相抵，可达性结论分两段）**：
+  ① **B18 设计期（当时成立）**：主进程档位定时器（1.6 / 2 / 2.4 s，`shell-pet.js` as-of 记录）先于段长（实测 10.04 s）把档位置回 `idle` ⇒ 段结束瞬间 `playing.slotKey !== slot`，轮换分支不触发（两轮长跑日志 `reason=slot-rotate` **零行**）。
+  ② **B19 起（现状）**：B19 工作档在途期持续重断言槽位 ⇒ 段结束时 `playing.slotKey === slot` 成立 ⇒ 轮换分支**可达**——产线代码 `pet-chain-core.js` 的 `decideNext()` rotate 分支在场（`playing.kind === 'event' && playing.slotKey === slot`）；
+  实测日志 `[2026-09-18T14:12:07.616Z] anim switch anim=深度思考碎碎念 from=工作状态-思考冒泡 … reason=slot-rotate`（`%APPDATA%\Bigfish\pet-anim.log`）。
 - **不删的理由**：删它 = 丢断言面——该函数由**桩测面**覆盖（`.thincoder/b18-pet-chain-stub.mjs` 的档内轮换断言），承载「档内轮换不重复」不变式。
 
 **链的四条规则**
@@ -377,7 +381,7 @@
 
 | 落点 | 内容 | 状态 |
 |---|---|---|
-| `THIRD-PARTY-NOTICES.md`（随包，`package.json:78`） | 新增「桌宠动画素材 —— dsh-pet（PC2005-cloud, v0.2.11）」节：素材许可原文（开源可用 / **禁商用**）+ 原作者 GitHub 地址 + 二创约定 + 商用化消解路径 | 待实现 |
+| `THIRD-PARTY-NOTICES.md`（随包，在 `package.json` 的 `build.files` 白名单内——T31 订正 2026-09-20：原锚 `:78` 为 as-of 记录，实测 `:92`） | 新增「桌宠动画素材 —— dsh-pet（PC2005-cloud, v0.2.11）」节：素材许可原文（开源可用 / **禁商用**）+ 原作者 GitHub 地址 + 二创约定 + 商用化消解路径 | 待实现 |
 | `README.md` §「致谢与合规」（`README.md:152-154`） | 补一行同源指针 | 待实现 |
 | `版本说明.txt` §「四、说明」（`版本说明.txt:57-61`） | 补一行同源指针（固定致谢行，非版本条目；不参与「CHANGELOG → 版本说明」的摘要方向，`docs/CONVENTIONS.md` §七） | 待实现 |
 | 发布页（Gitee / GitHub Releases 说明） | 二创约定要求「任何介绍 / 展示 / 分发处」附原作者地址 ⇒ 发版说明同步（人工动作） | 发版流程项 |
@@ -423,7 +427,8 @@
 | `.thincoder/b18-pet-chain-stub.mjs` | **新建** | 开发期桩测（**不入包**；`.thincoder/` 不入 `build.files`） | +350 ~ +450 | — |
 | `probe-pet-media.js` | **新建** | 开发期探针（**不入包**；`docs/CONVENTIONS.md` §八）：加载 `pet.html`，读首帧 alpha 包围盒 + 双通道命中矩形 + `<video>` 元素计数 | +100 ~ +140 | — |
 
-> **注 F1（贴线档拆分计划，预登记）**：`shell-pet.js` 预算末值 **≤ 446 行**（阈值 500；贴线档判据 ≥ 480）。若实现期超过 **480 行**，**就地拆分**：把「池装载 + V1–V6 校验 + `src` 生成」抽为 `shell-pet-anim.js`（`init(deps)` 形态，承 `docs/CONVENTIONS.md` §四），并同步 `package.json` 的 `build.files` 与 `main.js` 的接线（**新增源档须一并登记**，否则打包后缺失）。
+> **注 F1（贴线档拆分计划，预登记）**：`shell-pet.js` 预算末值 **≤ 446 行**（阈值 500；贴线档判据 ≥ 480）。若实现期超过 **480 行**，**就地拆分**：把「池装载 + V1–V6 校验 + `src` 生成」抽为 `shell-pet-anim.js`（`init(deps)` 形态，承 `docs/CONVENTIONS.md` §四），
+> 并同步 `package.json` 的 `build.files`（T31 订正 2026-09-20：原锚 `:36-58` 为 as-of 记录，现白名单 = `:45-94`）与 `main.js` 的接线（**新增源档须一并登记**，否则打包后缺失）。
 > **单档 ≤500 行**：本批所有档的预算末值均 ≤ 500 ✓（最大 = `shell-pet.js` 446）。
 
 ### 2.4 关键决策记录
@@ -432,7 +437,7 @@
 |---|---|---|---|
 | DD-1 | 播放器形态 = 双 `<video>` 渲染位交替 + CSS 交叉淡入 | 无空白帧有结构性保证（等就绪再换前台）；无逐帧 JS；零依赖；样本已在透明窗形态实证 | 否决 canvas 逐帧（复杂度换不来判据）、单 video（US-16 硬冲突）——§2.1.1 |
 | DD-2 | 池 = **随包数据文件** + 主进程装载校验后经 IPC 下发；渲染层零 fs / 零 fetch | 渲染进程 `sandbox: true`，不能读盘；`file://` 页面 `fetch` 不可用；校验与「缺失即回落」的判据都在主进程一次完成 | 否决「渲染层 `<script>` 数据档」（无校验面、换池要改 HTML）、否决「自定义协议 / 本地 HTTP」（代价大于收益） |
-| DD-3 | 素材目录 = `assets/pet-anim/`（**随包**） | `build.files` 的 `assets/**/*` 已覆盖（`package.json:74`）；与既有 `assets/pet-new/` 同机制；不改打包白名单结构 | 否决「userData 外置池」（本批无需求；`file://` 绝对路径面 = 新风险）——出批项 O3 |
+| DD-3 | 素材目录 = `assets/pet-anim/`（**随包**） | `build.files` 的 `assets/**/*` 已覆盖（`package.json` 的 `build.files` 段；T31 订正 2026-09-20：原锚 `:74` 为 as-of 记录，实测 `:88`）；与既有 `assets/pet-new/` 同机制；不改打包白名单结构 | 否决「userData 外置池」（本批无需求；`file://` 绝对路径面 = 新风险）——出批项 O3 |
 | DD-4 | 池 schema **与样本同形**（`idle` / `turn` / `moves` / `categories` / `events` / `weights`） | 机制的语义已被样本验证；评审可逐条对照；迁移 / 借鉴成本最低 | 差异两处（**有意**）：① `moves` 按 `walk` / `run` 分键（本仓语义档位需要）；② 不设 `moves.default` 的距离参数（本批无消费者） |
 | DD-5 | **事件档位的键 = 本仓既有语义档位名**（`happy` / `eat` / `sleep` / `read` / `starry` / `scared`） | 主进程零语义变更（不改既有触发点与词表）；映射表可逐档机检 | 否决「另起一套事件名」（两套词表 = 双层映射 = 漂移源） |
 | DD-6 | 链的 `move` 档 = **复用既有 `doWander()`**（IPC 请求），不引入动画驱动位移 | 位移纪律（`docs/design/PET-MULTIMONITOR.md` §2.3.5）零触碰；B03 桩测与实机取证面不变 | 否决「照搬样本 `startMoveDrive`（rAF 按 `el.duration` 逐帧写窗口位置）」：与「每帧零尺寸写入 / 段起点兜底」正面冲突，且属 D 面 |
@@ -519,6 +524,9 @@
 | 3 | 顶层新段 `workStatus: { … }` | 段名自明 | 需扩 `POOL_KEYS`（V1 结构键）+ 新校验面 + `startSlot` 分支 ⇒ 碰 V1–V6 与链 | 否决 |
 
 #### 2.6.4 判定门复用度（候选 3；对应 U-5）
+
+> **T33 互指注（2026-09-20，文档面）**：本表候选 1 的「同族读面谓词重复」代价与 `docs/design/SHELL-UX.md` §2.2.12（B09 判定门）是**同源事实**
+> ——两处各自读 `<DSH_HOME>/storages/session_projcache/sessions/*.json` 的 per-record 单元并各自维护同族谓词（新鲜度 / 回合边界，`shell-notify.js` 的 `completionGate()` 与 B19 新增读面），**互不依赖、各面语义同源**；抽共享只读模块 = 代码面，归 B17（台账 T33）；本批只落两处互指注，不改任何判据 / 候选取舍。
 
 | # | 候选方案 | 判据逐项评估 | 取舍 | 结论 |
 |---|---|---|---|---|
@@ -1301,7 +1309,7 @@ t = D（不再到达）           旧段自然结束不产生二次决策（onen
 | AC11 | NFR-9 | 延迟：`shown − t0 ≤ 300 ms`（池内切换，**无容差**，与 AC3 同口径）；冷启动首次播放 `≤ 800 ms` | 机检（日志） |
 | AC12 | NFR-10 | `<video>` 元素数恒 = 2（运行期断言 + 探针计数）；链跑 10 min 后渲染进程 `memory.workingSetSize` 增幅 < **50 MB**（`app.getAppMetrics()`，`electron.d.ts:1079`）；池内单段 ≤ 1.5 MB（V3） | 机检（探针 + 主进程采样） |
 | AC13 | NFR-11 | 体积：**记录** `assets/pet-anim/**` 递归实测字节数（**无上界**，用户裁定 2026-09-17；作为**交付登记项**、**不判阈值**，交付时记入 `docs/batches/B18-pet-animation-chain.md` §5 / §6）；且逐段 ≤ 1.5 MB（V3） | 机检（实测登记） |
-| AC14 | NFR-12 | 署名：`THIRD-PARTY-NOTICES.md` / `README.md` / `版本说明.txt` 三处命中「PC2005-cloud」+ GitHub 地址 + 禁商用与消解路径；`package.json:78` 仍含 `THIRD-PARTY-NOTICES.md` | 机检（静态文本核对） |
+| AC14 | NFR-12 | 署名：`THIRD-PARTY-NOTICES.md` / `README.md` / `版本说明.txt` 三处命中「PC2005-cloud」+ GitHub 地址 + 禁商用与消解路径；`package.json` 的 `build.files` 仍含 `THIRD-PARTY-NOTICES.md`（T31 订正 2026-09-20：原锚 `:78` 为 as-of 记录，实测 `:92`） | 机检（静态文本核对） |
 | AC15 | NFR-13 | 不回退与规范：`shell-pet-geometry.js` 零 diff；`package.json` 依赖段零 diff；新增档行宽 ≤ 300 / 行数 ≤ 500；全仓零 `require`·`import` 指向 `samples/**`；既有验收清单（US-1…US-14 / NFR-1…NFR-8）逐条复核 | 机检（静态核对）；**补充证据（前置待修）** = B03 桩测全绿（§2.5 D1） |
 
 **注 A —— AC3 判据细目（行为面活性；取证口径 = 保持清醒的 600 s 探针：`npx electron probe-pet-media.js --chain 600`）**

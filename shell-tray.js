@@ -81,6 +81,10 @@ function rebuildTrayMenu() {
         { label: '甩抛物理手感', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petPhysicsEnabled, click: (item) => setPetPhysics(item.checked) },
         // 工作状态联动（B19 / US-23）：与「任务完成时通知」同形；专注模式（无桌宠窗口）下开关无对象 ⇒ 置灰（同物理开关口径）
         { label: '工作状态联动', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petWorkStatus, click: (item) => setPetWork(item.checked) },
+        // 动作解锁三把锁（B23 / US-38…US-41）：默认全开；关 = 该门来源不做过滤（全解锁）；专注模式下无桌宠 ⇒ 置灰（同物理开关口径）
+        { label: '动作解锁 · 时节', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petUnlockSeason, click: (item) => setUnlock('petUnlockSeason', item.checked) },
+        { label: '动作解锁 · 饭点', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petUnlockMeal, click: (item) => setUnlock('petUnlockMeal', item.checked) },
+        { label: '动作解锁 · 等级', type: 'checkbox', enabled: settings.get().mode !== 'focus', checked: settings.get().petUnlockLevel, click: (item) => setUnlock('petUnlockLevel', item.checked) },
         { label: '开机自启', type: 'checkbox', checked: settings.get().launchAtLogin, click: (item) => setAutoStart(item.checked) },
         {
           label: 'Windows 右键菜单',
@@ -139,6 +143,14 @@ function setPetWork(enabled) {
   settings.get().petWorkStatus = enabled;
   settings.saveSettings();
   if (setPetWorkStatus) setPetWorkStatus(enabled);
+  rebuildTrayMenu();
+}
+
+/** 动作解锁开关（B23 / US-41）：写权 = 本处（落盘 settings.json 顶层布尔，默认全开）；关 = 该门来源不做过滤（设计档 §2.5.1）；改后重算并重下发。 */
+function setUnlock(key, enabled) {
+  settings.get()[key] = enabled;
+  settings.saveSettings();
+  pet.recalcAndBroadcast();   // 触发面 ④（设计档 PET-UNLOCK.md §2.5.4）
   rebuildTrayMenu();
 }
 

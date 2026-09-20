@@ -109,7 +109,7 @@ function main() {
     for (const v of assembly.violations) lib.say(`VIOLATION assembly ${v.kind} :: ${v.message}`);
   } else {
     // 摘要串与设计档 A.3.1 AC-B16-8 钉死的机器 grep 串同形：(N/N) = N 条 init 绑定恰一处；免检另计一行
-    // N 动态取真实值（免检归零后串随实况，防陈旧）——当前实测 N = 13（16 绑定 − 3 免检；B31）
+    // N 动态取真实值（免检归零后串随实况，防陈旧）——当前实测 N = 13（17 绑定 − 4 免检；B31 + B23）
     lib.say(`CHECK assembly PASS (${assembly.ok}/${assembly.ok})`);
     lib.say(`CHECK assembly exempt=${assembly.exemptChecked} (面内无 init 导出的免检档，理由在 baseline.json)`);
   }

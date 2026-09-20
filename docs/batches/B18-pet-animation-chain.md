@@ -166,7 +166,7 @@
 - 规范：行宽 ≤ 300（不含行尾 CR）· 单档 ≤ 500 行（硬限）· 文件头标准形（`docs/CONVENTIONS.md` §一）；上表预算末值最大 = 446 ✓。
 
 > **注 F2（开发期产物落点与打包面；评审第 1 轮 #10）**：探针 `probe-pet-media.js` 落**仓根** ＝ 沿用既有开发期脚本口径（`docs/CONVENTIONS.md` §八：根目录 `probe-*.js` 7 档 + `debug-pet.cmd` 同置）；
-> 桩测 `.thincoder/b18-pet-chain-stub.mjs` 落 `.thincoder/`（`.gitignore:17` 覆盖；该目录不入仓）。**两者均在 `build.files` 白名单之外**——实测 `package.json:39-80` 对 `probe-*` / `.thincoder/` 零命中；本批 `build.files` 增列面 = §2.3 表第 7 项（仅两个新渲染档）。
+> 桩测 `.thincoder/b18-pet-chain-stub.mjs` 落 `.thincoder/`（`.gitignore:17` 覆盖；该目录不入仓）。**两者均在 `build.files` 白名单之外**——实测（T31 订正 2026-09-20：原锚 `package.json:39-80` 为 as-of 记录，现白名单 = `:45-94`）对 `probe-*` / `.thincoder/` 零命中；本批 `build.files` 增列面 = §2.3 表第 7 项（仅两个新渲染档）。
 
 ### 2.4 验收标准（AC → 取证）
 
@@ -187,7 +187,7 @@
 | AC11 | NFR-9 | 日志 `shown − t0 ≤ 300 ms`（池内切换，**无容差**，与 AC3 同口径）；冷启动首次播放 ≤ 800 ms |
 | AC12 | NFR-10 | 探针计数 `<video>` 元素恒 = 2；链跑 10 min 后 `app.getAppMetrics()` 渲染进程 `memory.workingSetSize` 增幅 < 50 MB；池内单段 ≤ 1.5 MB |
 | AC13 | NFR-11 | `assets/pet-anim/**` 递归实测**字节数 + 段数**登记为交付登记项（**无上界、不判阈值**，见 §2.5 第 2 项） |
-| AC14 | NFR-12 | 静态核对：`THIRD-PARTY-NOTICES.md` / `README.md` / `版本说明.txt` 三处命中「PC2005-cloud」+ 原作者 GitHub 地址 + 禁商用与消解路径；`package.json:78` 仍含 `THIRD-PARTY-NOTICES.md` |
+| AC14 | NFR-12 | 静态核对：`THIRD-PARTY-NOTICES.md` / `README.md` / `版本说明.txt` 三处命中「PC2005-cloud」+ 原作者 GitHub 地址 + 禁商用与消解路径；`package.json` 的 `build.files` 仍含 `THIRD-PARTY-NOTICES.md`（T31 订正 2026-09-20：原锚 `:78` 为 as-of 记录，实测 `:92`） |
 | AC15 | NFR-13 | `git diff --stat shell-pet-geometry.js shell-pet-drag.js` **空**；`package.json` 依赖段零 diff；新增档行宽 ≤ 300 / 行数 ≤ 500；全仓零 `samples/**` 引用；US-1…US-14 / NFR-1…NFR-8 逐条复核 |
 
 - **验收依据** = 上表机检证据 + 人工项（AC5 / AC9 的观感面）如实标注；本批**不建仓级门禁**（现状 = `AGENTS.md` §三 0/3）、不引入测试框架（设计档 §3.3）。

@@ -136,7 +136,7 @@ main.js ─ init(deps)×13 ─► notify / backend / geometry / drag / pet / phy
 
 | 档 | 行数 | 一句话角色 | require 本地档 | init |
 |---|---|---|---|---|
-| `shell-affinity.js` | 357 | 好感度 + 兑换屋窗口 + 重置两函数 + `affinity:*` 处理器 | shell-backend · shell-notify · shell-assets | `:18` |
+| `shell-affinity.js` | 334（as-of 2026-09-20 实测；原记 357 过期） | 好感度 + 兑换屋窗口 + 重置两函数 + `affinity:*` 处理器 | shell-backend · shell-notify · shell-assets | `:18` |
 | `shell-assets.js` | 33 | 图标路径 | — | 无（纯函数面） |
 | `shell-backend.js` | 324 | 后端生命周期 + 路径解析（spawn / 端口 / dshBin / 技能目录） | harness-store | `:24` |
 | `shell-ipc.js` | 51 | IPC 通道注册层（薄绑定，通道清单单点可审计） | shell-pet · shell-pet-drag · shell-pet-physics · shell-affinity · shell-market · shell-update | 无（`register()`） |
@@ -147,7 +147,7 @@ main.js ─ init(deps)×13 ─► notify / backend / geometry / drag / pet / phy
 | `shell-pet-geometry.js` | 438 | 桌宠几何 helper 组 + 日志 / 尺寸校准 | shell-settings | `:15` |
 | `shell-pet-physics.js` | 328 | 物理域：光标采样 + 起飞门 + 飞行循环 + 停泊收口 + 挤压 IPC | pet-physics-core · shell-pet-geometry | `:34` |
 | `shell-pet-work.js` | 265 | 工作状态联动 I/O 档（fs.watch + 1 s tick + 档位下发 / 降级） | pet-work-core | `:49` |
-| `shell-pet.js` | 458 | 桌宠窗口与状态机 + 台词 + 点击 IPC 处理器 | pet-chain-core · shell-settings · shell-pet-geometry · shell-pet-drag · shell-pet-physics | `:22` |
+| `shell-pet.js` | 467（as-of 2026-09-20 实测；原记 458 过期） | 桌宠窗口与状态机 + 台词 + 点击 IPC 处理器 | pet-chain-core · shell-settings · shell-pet-geometry · shell-pet-drag · shell-pet-physics | `:22` |
 | `shell-plugins.js` | 455 | 插件引擎（profile 读写 / bundles 防呆 / pnpm 通道） | update-lib · shell-backend | `:16` |
 | `shell-settings.js` | 63 | settings 载入 / 保存 / 默认值 | — | 无（`get()` 属主状态面） |
 | `shell-tray.js` | 198 | 托盘菜单 + 全局快捷键 + Windows 右键菜单 + uninstall | 10 档（名单见 §1.2 图；实测 shell-tray.js:10-19） | `:25` |

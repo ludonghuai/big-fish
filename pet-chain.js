@@ -1,8 +1,8 @@
 'use strict';
 /**
- * pet-chain.js — 双缓冲视频播放器 + 动画链运转 + 三级回落 + 链日志（B18 + B21 衔接 + R1/R2 + drag/escape + B27 静默）。
+ * pet-chain.js — 双缓冲视频播放器 + 动画链运转 + 三级回落 + 链日志（B18 + B21 衔接 + R1/R2 + drag/escape + B27 静默 + B23 门控名单喂入）。
  * 边界（设计档 §2.2.1）：零 fs / 零 fetch——池数据只来自主进程的 `pet-chain-config`；本档不碰窗口几何。
- * 函数清单：onConfig · setSlot · setDragging · startSlot · chainStep · enterQuiet · quietExpire · clearQuiet · switchTo · handleEnded · requestMove · onPlayFail · setChannel · applyMediaBox · log。
+ * 函数清单：onConfig · setSlot · setDragging · startSlot · chainStep · enterQuiet · quietExpire · clearQuiet · switchTo · handleEnded · requestMove · onPlayFail · setChannel · applyMediaBox · log；applyAllowSet · reportMealPlayed（B23）。
  * 全局出口（渲染层内部接口，承设计档 §2.2.1）：window.petChain = { videoActive, hitRect, setSlot, setDragging }。
  */
 
@@ -21,6 +21,7 @@ let cur = null;             // 当前段名（链的「避开连播」基准）
 let failCount = 0, moveWait = null, blocked = false;   // 级③ 回落判据 / 散步请求观测定时器 / 整体回落标志
 let preEndTimer = null, pauseTimer = null, dragActive = false;  // B21：预触发定时器 / 淡出窗末 pause 定时器 / 拖动在途（避 pet.js 同名 let）
 let quietActive = false, quietTimer = null;  // B27 静默运行期状态（§2.14.9）：动作类段末进入；计时到点或槽位到达退出
+let allowSet = null, mealMap = {}, lastPoolKey = null;  // B23：可入选段名集合（null = 无门控 ⇒ 不过滤）/ 三餐段名 → 饭点键 / 上次池指纹
 const lastPick = {};        // 池键 → 上一次该档抽中的段（避开连播，US-17 / AC6）
 
 const box = core.mediaBox({
@@ -62,14 +63,34 @@ function onConfig(config) {
   debug = !!config.debug;
   if (!config.ok) { log('anim fallback reason=pool'); return; }
   if (els.media.length !== 2) { log('anim fallback reason=media-count'); return; } // 运行期不变量（NFR-10）
+  const poolKey = JSON.stringify(config.pool);
+  allowSet = Array.isArray(config.allowSet) ? config.allowSet : null;   // B23：门控名单（设计档 PET-UNLOCK.md §2.5.3）
+  mealMap = config.lockHint && config.lockHint.meals && typeof config.lockHint.meals === 'object' ? config.lockHint.meals : {};
+  // B23：池未变 ⇒ 本条下发是**门控重下发**（§2.5.4 重算点）——只换名单、**不重置播放态**（否则饭点演过 / 升级 / 开关翻转会立刻切走在播段）
+  if (poolKey === lastPoolKey) { applyAllowSet(config.pool); return; }
+  lastPoolKey = poolKey;
   clearQuiet();   // B27：池重配打断静默（§2.14.9 清除面；非静默时零行）
-  pool = config.pool;
+  applyAllowSet(config.pool);
   blocked = false;
   enterVideo();
   cur = null;
   playing = null;
   chainStep('start');
 }
+
+/** B23 门控喂入（设计档 docs/design/PET-UNLOCK.md §2.5.3 / DD-B23-2）：分类动作按 allowSet **硬排除**——锁住的段不入抽（非权重调零）；
+ *  空分类保留（weight 照旧，既有 pickWeightedCategory 只滤 actions.length > 0）；idle / turn / moves 基础档与 events 事件档**不过滤**（不属解锁系统管辖）。
+ *  过滤发生在数据进入既有掷骰函数之前 ⇒ 掷骰次序与函数签名逐字不变；每次下发按 `config.pool` 原池重建（幂等；池未变时不重置播放态）。 */
+function applyAllowSet(base) {
+  if (!base) return;
+  if (!allowSet) { pool = base; return; }   // 无门控（未下发 / 规则档坏 ⇒ allowSet=null）⇒ 原池不过滤
+  const set = {};
+  for (const n of allowSet) set[n] = true;
+  pool = Object.assign({}, base, { categories: base.categories.map((c) => Object.assign({}, c, { actions: c.actions.filter((n) => set[n]) })) });
+}
+
+/** B23 饭点「演过」上报（设计档 §2.5.3）：渲染层只上报段名对应的饭点键、不自判（一天一次判据单点在主进程）。 */
+function reportMealPlayed(mealKey) { try { window.petAPI.mealPlayed(mealKey); } catch { /* 旧 preload 无该通道 ⇒ 忽略 */ } }
 
 /** 语义档位变化（pet.js 的 setState 上报）：规则 2 = 同档忽略；规则 3 = 定时器回 idle 不切断事件段。 */
 function setSlot(s) {
@@ -262,6 +283,7 @@ function switchTo(name, loop, reason, mirror, kind, overlap) {
       failCount = 0;
       log('anim switch anim=' + name + ' from=' + (from === null ? '-' : from) + ' t0=' + t0 + ' ready=' + tReady + ' shown=' + now()
         + ' readyState=' + el.readyState + ' loop=' + (loop ? 1 : 0) + ' reason=' + reason + ' overlap=' + overlapMs);
+      if (mealMap[name]) reportMealPlayed(mealMap[name]);   // B23：三餐段演成 ⇒ 上报（主进程落盘后立即重下发）
       if (reason === 'quiet') enterQuiet(name);   // B27：静默落账在 switch 行之后（§2.14.9；AC33①②③）
       if (!loop && Number.isFinite(el.duration) && el.duration > 0) schedulePreEnd(el, el.duration * 1000);   // B21：loop=false 段武装预触发
     }).catch((err) => onPlayFail(name, String(err)));

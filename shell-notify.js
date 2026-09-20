@@ -68,6 +68,9 @@ function notify(title, body, onClick) {
   }
 }
 
+// 解锁提示托盘通知（B23 / US-42）：复用既有通知出口（同一 NOTIFY_SUPPRESSED 测试抑制面与图标），标题 = 产品名。
+function notifyUnlock(body) { notify('Bigfish', body); }
+
 // Heuristic "task completed" detector: watch DSH_HOME (excluding the static
 // profiles/ tree) for writes; after a burst of activity followed by idle, notify.
 
@@ -343,6 +346,7 @@ function setNotifiedForCycle(v) { notifiedForCycle = v; }
 
 module.exports = {
   notify,
+  notifyUnlock,
   startCompletionWatcher,
   stopCompletionWatcher,
   setLastBusyAt,

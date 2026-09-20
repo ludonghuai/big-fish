@@ -116,11 +116,11 @@
 |---|---|---|---|
 | D① | 依赖无环 | 自研档的静态相对依赖图必须是 **DAG（0 环）** | 只认字面量 `require('.<相对路径>')`；边 = 解析到仓库内自研档 |
 | D② | 域模块扇出 | **域模块**的静态相对 `require` **出度 ≤3** | 域模块 = 仓库内自研 `.js` / `.mjs` 去掉 `tests/` · `scripts/` · `probe-*` 后的档；组合根 `main.js` **免判**（装配面天然高扇出） |
-| D③ | 接线点唯一（= §1.4-5 的 **T39 ②「装配面唯一」**） | 组合根 `main.js` 的每个绑定 `const <名> = require('<相对>')` 须有**恰一处** `<名>.init(` 调用 | **覆盖面 = 组合根绑定面**（未被 `main.js` 绑定者不入清单：实测其 16 条 require 之外 = `shell-assets.js` / `shell-market.js`）；面内不导出 `init` 的档列入**免检清单**（含理由）；未解析的 `require` 形态 = **红**（fail-closed） |
+| D③ | 接线点唯一（= §1.4-5 的 **T39 ②「装配面唯一」**） | 组合根 `main.js` 的每个绑定 `const <名> = require('<相对>')` 须有**恰一处** `<名>.init(` 调用 | **覆盖面 = 组合根绑定面**（未被 `main.js` 绑定者不入清单：实测其 17 条 require 之外 = `shell-assets.js` / `shell-market.js`）；面内不导出 `init` 的档列入**免检清单**（含理由）；未解析的 `require` 形态 = **红**（fail-closed） |
 | E | 样本区解耦（B29） | **全仓引用面零命中 `samples/`（三式检测）+ `package.json` 的 `build.files` / `extraResources` 零登记 `samples`**；零命中恒判、不进基线 | 扫描面与三式细则 → `docs/design/REPO-CONVENTIONS.md` 附 A-续 §A-B29.2.2（机检口径，不复述）；错误面 fail-closed（退出 2）；裸标识符不判 |
 
-**现状（实测，as-of 2026-09-18；D③ 数随 B31 同步 as-of 2026-09-19）**：D① **0 环**；D② 超限 **6 档** = `shell-tray` **10** · `shell-ipc` **6** · `shell-pet` / `shell-update` / `shell-window` 各 **5** · `shell-market` **4**；
-D③ **13/13 恰一处**，免检 **3 档** = `shell-settings.js`（工具档，无 `init` 导出）· `shell-ipc.js`（以 `register()` 接线）· `affinity-core.js`（B31 新增，无 `init` 导出——结构性免检）。
+**现状（实测，as-of 2026-09-18；D③ 数随 B31 / B23 同步，as-of 2026-09-20）**：D① **0 环**；D② 超限 **6 档** = `shell-tray` **10** · `shell-ipc` **6** · `shell-pet` / `shell-update` / `shell-window` 各 **5** · `shell-market` **4**；
+D③ **13/13 恰一处**（绑定面 **17** 条），免检 **4 档** = `shell-settings.js`（工具档，无 `init` 导出）· `shell-ipc.js`（以 `register()` 接线）· `affinity-core.js`（B31 新增，无 `init` 导出——结构性免检）· `pet-unlock-core.js`（B23 新增，无 `init` 导出——同形结构性免检）。
 **基线处理**（已落地生效：`scripts/gates/baseline.json`——冻结 + 只拦新增 + 陈腐即红）：存量违规**冻结 + 只拦新增**；上调冻结值须登记理由与**新到期条件**；**陈腐即红**（违规已清零而基条目未缩减 ⇒ 红）；**基线不是豁免面**，到期条件逐条写死（契约 = `docs/design/REPO-CONVENTIONS.md` §A.2.2.6）。
 
 - **依赖方向与拆分纪律**的唯一详述处 = `docs/design/SHELL-UX.md` §2.2.6（本档只给指针，不重述）。
